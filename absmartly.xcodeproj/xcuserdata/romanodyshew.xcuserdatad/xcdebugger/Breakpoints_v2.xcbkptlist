@@ -1,0 +1,232 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Bucket
+   uuid = "C5E3038E-87E2-4F6F-A422-CB460F2C83E5"
+   type = "1"
+   version = "2.0">
+   <Breakpoints>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "30FA8477-79D5-41F9-9200-60311B43DA78"
+            shouldBeEnabled = "Yes"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "Sources/Context.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "565"
+            endingLineNumber = "565"
+            landmarkName = "setData(_:)"
+            landmarkType = "7">
+            <Locations>
+               <Location
+                  uuid = "30FA8477-79D5-41F9-9200-60311B43DA78 - efae5f88d5b85954"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "absmartlyTests.Context.setData(absmartlyTests.ContextData) -&gt; ()"
+                  moduleName = "absmartlyTests"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/romanodyshew/Work/absmartly/Sources/Context.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "565"
+                  endingLineNumber = "565"
+                  offsetFromSymbolStart = "1700">
+               </Location>
+               <Location
+                  uuid = "30FA8477-79D5-41F9-9200-60311B43DA78 - 715a2fb7c6112703"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "absmartly.Context.setData(absmartly.ContextData) -&gt; ()"
+                  moduleName = "absmartly"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/romanodyshew/Work/absmartly/Sources/Context.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "565"
+                  endingLineNumber = "565"
+                  offsetFromSymbolStart = "1700">
+               </Location>
+            </Locations>
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "ACA66D44-7E8F-47F1-AE7F-DFE6855DC239"
+            shouldBeEnabled = "Yes"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "Sources/Context.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "591"
+            endingLineNumber = "591"
+            landmarkName = "setData(_:)"
+            landmarkType = "7">
+            <Locations>
+               <Location
+                  uuid = "ACA66D44-7E8F-47F1-AE7F-DFE6855DC239 - efae5f88d5b85ef2"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "absmartlyTests.Context.setData(absmartlyTests.ContextData) -&gt; ()"
+                  moduleName = "absmartlyTests"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/romanodyshew/Work/absmartly/Sources/Context.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "591"
+                  endingLineNumber = "591"
+                  offsetFromSymbolStart = "7326">
+               </Location>
+               <Location
+                  uuid = "ACA66D44-7E8F-47F1-AE7F-DFE6855DC239 - 715a2fb7c61120a5"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "absmartly.Context.setData(absmartly.ContextData) -&gt; ()"
+                  moduleName = "absmartly"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/romanodyshew/Work/absmartly/Sources/Context.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "591"
+                  endingLineNumber = "591"
+                  offsetFromSymbolStart = "7326">
+               </Location>
+            </Locations>
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "F6ADADCC-7052-4F77-AE2C-DA8C0820BDAD"
+            shouldBeEnabled = "Yes"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "ContextTest.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "713"
+            endingLineNumber = "713"
+            landmarkName = "testOverrideClearsAssignmentCache()"
+            landmarkType = "7">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "D8DE083F-E753-4575-BBD6-8F0D3B879FEB"
+            shouldBeEnabled = "Yes"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "Sources/Context.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "594"
+            endingLineNumber = "594"
+            landmarkName = "setData(_:)"
+            landmarkType = "7">
+            <Locations>
+               <Location
+                  uuid = "D8DE083F-E753-4575-BBD6-8F0D3B879FEB - efae5f88d5b85d11"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "absmartlyTests.Context.setData(absmartlyTests.ContextData) -&gt; ()"
+                  moduleName = "absmartlyTests"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/romanodyshew/Work/absmartly/Sources/Context.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "594"
+                  endingLineNumber = "594"
+                  offsetFromSymbolStart = "7596">
+               </Location>
+               <Location
+                  uuid = "D8DE083F-E753-4575-BBD6-8F0D3B879FEB - 715a2fb7c6112346"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "absmartly.Context.setData(absmartly.ContextData) -&gt; ()"
+                  moduleName = "absmartly"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/romanodyshew/Work/absmartly/Sources/Context.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "594"
+                  endingLineNumber = "594"
+                  offsetFromSymbolStart = "7596">
+               </Location>
+            </Locations>
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "E28D145A-0331-4105-A007-18692BF4C799"
+            shouldBeEnabled = "No"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "Sources/Context.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "568"
+            endingLineNumber = "568"
+            landmarkName = "setData(_:)"
+            landmarkType = "7">
+            <Locations>
+               <Location
+                  uuid = "E28D145A-0331-4105-A007-18692BF4C799 - efae5f88d5b859eb"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "absmartlyTests.Context.setData(absmartlyTests.ContextData) -&gt; ()"
+                  moduleName = "absmartlyTests"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/romanodyshew/Work/absmartly/Sources/Context.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "568"
+                  endingLineNumber = "568"
+                  offsetFromSymbolStart = "2301">
+               </Location>
+               <Location
+                  uuid = "E28D145A-0331-4105-A007-18692BF4C799 - 715a2fb7c61127bc"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "absmartly.Context.setData(absmartly.ContextData) -&gt; ()"
+                  moduleName = "absmartly"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/romanodyshew/Work/absmartly/Sources/Context.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "568"
+                  endingLineNumber = "568"
+                  offsetFromSymbolStart = "2301">
+               </Location>
+            </Locations>
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "C06C1F90-C684-439D-AF6E-218EB8736394"
+            shouldBeEnabled = "No"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "Sources/PublishEvent.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "134"
+            endingLineNumber = "134"
+            landmarkName = "init(_:_:_:)"
+            landmarkType = "7">
+         </BreakpointContent>
+      </BreakpointProxy>
+   </Breakpoints>
+</Bucket>
