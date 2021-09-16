@@ -14,9 +14,11 @@ class Logger {
         if #available(macOS 11.0, *) {
             let customLog = os.Logger(subsystem: "ABSmartly", category: "")
             customLog.error("\(error)")
-        } else {
+        } else if #available(macOS 10.12, *) {
             let log = OSLog(subsystem: "ABSmartly", category: "")
             os_log("%@", log: log, type: .error, error)
+        } else {
+            print("ABSmartly Error: " + error)
         }
         
         #else
@@ -37,9 +39,11 @@ class Logger {
         if #available(macOS 11.0, *) {
             let customLog = os.Logger(subsystem: "ABSmartly", category: "")
             customLog.notice("\(note)")
-        } else {
+        } else if #available(macOS 10.12, *) {
             let log = OSLog(subsystem: "ABSmartly", category: "")
             os_log("%@", log: log, type: .default, note)
+        } else {
+            print("ABSmartly Note: " + note)
         }
         
         #else
