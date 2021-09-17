@@ -22,13 +22,13 @@ TODO: Add long description of the pod here.
                        DESC
 
   s.homepage         = 'https://github.com/absmartly/ios-sdk'
-  # s.screenshots     = 'www.example.com/screenshots_1', 'www.example.com/screenshots_2'
+  s.swift_versions   = '5'
   s.license          = { :type => 'Apache', :file => 'LICENSE' }
   s.author           = { 'odyshewroman@gmail.com' => 'roman.odyshew@quantumsoft.ru' }
   s.source           = { :git => 'https://github.com/absmartly/ios-sdk.git', :tag => s.version.to_s }
   # s.social_media_url = 'https://twitter.com/<TWITTER_USERNAME>'
 
-  s.ios.deployment_target = '9.0'
+  s.ios.deployment_target = '10.0'
 
   s.source_files = 'absmartly/Classes/**/*'
   
