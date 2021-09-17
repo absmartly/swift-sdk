@@ -42,7 +42,7 @@ public class Context {
     private var exposures: [PublishEvent.Exposure] = []
     private var achievements: [GoalAchievement] = []
     
-    private var closeCallbacks: ThreadSafeArray<(_:Any?)->()>
+    private var closeCallbacks: ThreadSafeArray<(_:Error?)->()>
     private var refreshCallbacks: ThreadSafeArray<(_:Error?)->()>
     private var readyCallback: (_:(Context?) -> ())?
     
@@ -53,7 +53,7 @@ public class Context {
         self.config = config
         
         overrides = ThreadSafeMap<String, Int>(with: config.overrides)
-        closeCallbacks = ThreadSafeArray<(_:Any?)->()>()
+        closeCallbacks = ThreadSafeArray<(_:Error?)->()>()
         refreshCallbacks = ThreadSafeArray<(_:Error?)->()>()
         
         do {
@@ -306,7 +306,7 @@ public class Context {
         }
     }
     
-    public func close(_ callback: ((_:Any?)->())?) {
+    public func close(_ callback: ((_:Error?)->())?) {
         guard !isClosed else {
             callback?(nil)
             return
