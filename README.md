@@ -23,6 +23,13 @@ Select the absmartly library
 
 Import absmart module and start to use A/B Smartly SDK
 
+### Cocoapods
+To install A/B Smartly with CocoaPods, add the following lines to your `Podfile`:
+
+```ruby
+pod "absmartly"
+```
+
 ## Getting Started
 
 Please follow the [installation](#installation) instructions before trying the following code:
