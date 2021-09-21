@@ -57,22 +57,22 @@ final class ContextTest: XCTestCase {
         let contextConfig: ContextConfig = ContextConfig()
         
         if withUnits {
-            contextConfig.setUnit("session_id", "e791e240fcd3df7d238cfc285f475e8152fcc0ec")
-            contextConfig.setUnit("user_id", "123456789")
-            contextConfig.setUnit("email", "bleh@absmartly.com")
+            contextConfig.setUnit(unitType: "session_id", uid: "e791e240fcd3df7d238cfc285f475e8152fcc0ec")
+            contextConfig.setUnit(unitType: "user_id", uid: "123456789")
+            contextConfig.setUnit(unitType: "email", uid: "bleh@absmartly.com")
         }
         
         return contextConfig
     }
     
     private func getContextDataProvider() -> ContextDataProvider {
-        let clientOptions = ClientOptions("test", "https://absmartly.com/", "", "", "")
+        let clientOptions = ClientOptions(apiKey: "test", application: "https://absmartly.com/", endpoint: "", environment: "", version: "")
         let requestFactory = RequestFactory(clientOptions)
         return ContextDataProvider(requestFactory, clientOptions)
     }
     
     private func getEventPublisher() -> EventPublisher {
-        let clientOptions = ClientOptions("test", "https://absmartly.com/", "", "", "")
+        let clientOptions = ClientOptions(apiKey: "test", application: "https://absmartly.com/", endpoint: "", environment: "", version: "")
         let requestFactory = RequestFactory(clientOptions)
         return EventPublisher(requestFactory)
     }
@@ -93,7 +93,7 @@ final class ContextTest: XCTestCase {
         let contextDataProvider = getContextDataProvider()
         let contextConfig: ContextConfig = getContextConfig(true)
         
-        overrides.forEach { contextConfig.setOverride($0.key, $0.value) }
+        overrides.forEach { contextConfig.setOverride(experimentName: $0.key, variant: $0.value) }
         
         let promise = Promise<ContextData> { success, error in
             success(contextData)
@@ -102,7 +102,7 @@ final class ContextTest: XCTestCase {
         let context = Context(eventPublisher, contextDataProvider, promise, contextConfig)
         
         overrides.forEach {
-            XCTAssertEqual($0.value, context.getOverride($0.key))
+            XCTAssertEqual($0.value, context.getOverride(experimentName: $0.key))
         }
     }
     
@@ -231,7 +231,7 @@ final class ContextTest: XCTestCase {
         let noReadyMessage = "ABSmartly Context is not yet ready."
         
         do {
-            let _ = try context.peekTreatment("exp_test_ab")
+            let _ = try context.peekTreatment(experimentName: "exp_test_ab")
             XCTFail("Expect error on peekTreatment")
         } catch {
             XCTAssertEqual(error.localizedDescription, noReadyMessage)
@@ -259,14 +259,14 @@ final class ContextTest: XCTestCase {
         }
         
         do {
-            let _ = try context.getVariableValue("banner.border", 17)
+            let _ = try context.getVariableValue(key: "banner.border", defaultValue: 17)
             XCTFail("Expect error on getVariableValue")
         } catch {
             XCTAssertEqual(error.localizedDescription, noReadyMessage)
         }
         
         do {
-            let _ = try context.peekVariableValue("banner.border", 17)
+            let _ = try context.peekVariableValue(key: "banner.border", defaultValue: 17)
             XCTFail("Expect error on peekVariableValue")
         } catch {
             XCTAssertEqual(error.localizedDescription, noReadyMessage)
@@ -303,7 +303,7 @@ final class ContextTest: XCTestCase {
         var contextTestClosures: [(_:Context)->()] = []
         contextTestClosures.append { context in
             do {
-                try context.setAttribute("attr1", "value1")
+                try context.setAttribute(name: "attr1", value: "value1")
                 XCTFail("Expect error on setAttribute")
             } catch {
                 XCTAssertEqual(error.localizedDescription, closingMessage)
@@ -321,7 +321,7 @@ final class ContextTest: XCTestCase {
         
         contextTestClosures.append { context in
             do {
-                try context.setOverride("exp1", 1)
+                try context.setOverride(experimentName: "exp1", variant: 1)
                 XCTFail("Expect error on setOverride")
             } catch {
                 XCTAssertEqual(error.localizedDescription, closingMessage)
@@ -339,7 +339,7 @@ final class ContextTest: XCTestCase {
         
         contextTestClosures.append { context in
             do {
-                let _ = try context.peekTreatment("exp_test_ab")
+                let _ = try context.peekTreatment(experimentName: "exp_test_ab")
                 XCTFail("Expect error on peekTreatment")
             } catch {
                 XCTAssertEqual(error.localizedDescription, closingMessage)
@@ -357,7 +357,7 @@ final class ContextTest: XCTestCase {
         
         contextTestClosures.append { context in
             do {
-                let _ = try context.track("goal1", [:])
+                let _ = try context.track("goal1", properties: [:])
                 XCTFail("Expect error on track")
             } catch {
                 XCTAssertEqual(error.localizedDescription, closingMessage)
@@ -393,7 +393,7 @@ final class ContextTest: XCTestCase {
         
         contextTestClosures.append { context in
             do {
-                let _ = try context.getVariableValue("banner.border", 17)
+                let _ = try context.getVariableValue(key: "banner.border", defaultValue: 17)
                 XCTFail("Expect error on getVariableValue")
             } catch {
                 XCTAssertEqual(error.localizedDescription, closingMessage)
@@ -401,7 +401,7 @@ final class ContextTest: XCTestCase {
         }
         contextTestClosures.append { context in
             do {
-                let _ = try context.peekVariableValue("banner.border", 17)
+                let _ = try context.peekVariableValue(key: "banner.border", defaultValue: 17)
                 XCTFail("Expect error on peekVariableValue")
             } catch {
                 XCTAssertEqual(error.localizedDescription, closingMessage)
@@ -424,7 +424,7 @@ final class ContextTest: XCTestCase {
             XCTAssertFalse(context.isFailed)
             
             do {
-                let _ = try context.track("goal1", ["amount": 125, "hours": 245])
+                let _ = try context.track("goal1", properties: ["amount": 125, "hours": 245])
             } catch {
                 XCTFail("Track throw error: \(error.localizedDescription)")
             }
@@ -462,7 +462,7 @@ final class ContextTest: XCTestCase {
         XCTAssertFalse(context.isFailed)
         
         do {
-            let _ = try context.track("goal1", ["amount": 125, "hours": 245])
+            let _ = try context.track("goal1", properties: ["amount": 125, "hours": 245])
         } catch {
             XCTFail("Track throw error: \(error.localizedDescription)")
         }
@@ -474,7 +474,7 @@ final class ContextTest: XCTestCase {
             let cloedMessage = "ABSmartly Context is closed."
             
             do {
-                try context.setAttribute("attr1", "value1")
+                try context.setAttribute(name: "attr1", value: "value1")
                 XCTFail("Expect error on setAttribute")
             } catch {
                 XCTAssertEqual(error.localizedDescription, cloedMessage)
@@ -488,7 +488,7 @@ final class ContextTest: XCTestCase {
             }
             
             do {
-                try context.setOverride("exp1", 1)
+                try context.setOverride(experimentName: "exp1", variant: 1)
                 XCTFail("Expect error on setOverride")
             } catch {
                 XCTAssertEqual(error.localizedDescription, cloedMessage)
@@ -502,7 +502,7 @@ final class ContextTest: XCTestCase {
             }
             
             do {
-                let _ = try context.peekTreatment("exp_test_ab")
+                let _ = try context.peekTreatment(experimentName: "exp_test_ab")
                 XCTFail("Expect error on peekTreatment")
             } catch {
                 XCTAssertEqual(error.localizedDescription, cloedMessage)
@@ -516,7 +516,7 @@ final class ContextTest: XCTestCase {
             }
             
             do {
-                let _ = try context.track("goal1", [:])
+                let _ = try context.track("goal1", properties: [:])
                 XCTFail("Expect error on track")
             } catch {
                 XCTAssertEqual(error.localizedDescription, cloedMessage)
@@ -544,14 +544,14 @@ final class ContextTest: XCTestCase {
             }
             
             do {
-                let _ = try context.getVariableValue("banner.border", 17)
+                let _ = try context.getVariableValue(key: "banner.border", defaultValue: 17)
                 XCTFail("Expect error on getVariableValue")
             } catch {
                 XCTAssertEqual(error.localizedDescription, cloedMessage)
             }
             
             do {
-                let _ = try context.peekVariableValue("banner.border", 17)
+                let _ = try context.peekVariableValue(key: "banner.border", defaultValue: 17)
                 XCTFail("Expect error on peekVariableValue")
             } catch {
                 XCTAssertEqual(error.localizedDescription, cloedMessage)
@@ -619,7 +619,7 @@ final class ContextTest: XCTestCase {
         XCTAssertFalse(context.isReady)
         
         do {
-            try context.setAttribute("attr1", "value1")
+            try context.setAttribute(name: "attr1", value: "value1")
             try context.setAttributes(["attr1": "value2"])
         } catch {
             print("Error: " + error.localizedDescription)
@@ -650,27 +650,27 @@ final class ContextTest: XCTestCase {
         XCTAssertTrue(context.isReady)
         
         do {
-            try context.setOverride("exp_test", 2)
+            try context.setOverride(experimentName: "exp_test", variant: 2)
         } catch {
             XCTFail(error.localizedDescription)
         }
-        XCTAssertEqual(2, context.getOverride("exp_test"))
+        XCTAssertEqual(2, context.getOverride(experimentName: "exp_test"))
         
         
         do {
-            try context.setOverride("exp_test", 3)
+            try context.setOverride(experimentName: "exp_test", variant: 3)
         } catch {
             XCTFail(error.localizedDescription)
         }
-        XCTAssertEqual(3, context.getOverride("exp_test"))
+        XCTAssertEqual(3, context.getOverride(experimentName: "exp_test"))
         
         
         do {
-            try context.setOverride("exp_test_2", 1)
+            try context.setOverride(experimentName: "exp_test_2", variant: 1)
         } catch {
             XCTFail(error.localizedDescription)
         }
-        XCTAssertEqual(1, context.getOverride("exp_test_2"))
+        XCTAssertEqual(1, context.getOverride(experimentName: "exp_test_2"))
         
         
         let overrides = ["exp_test_new": 3, "exp_test_new_2": 5]
@@ -680,14 +680,14 @@ final class ContextTest: XCTestCase {
             XCTFail(error.localizedDescription)
         }
         
-        XCTAssertEqual(3, context.getOverride("exp_test"))
-        XCTAssertEqual(1, context.getOverride("exp_test_2"))
+        XCTAssertEqual(3, context.getOverride(experimentName: "exp_test"))
+        XCTAssertEqual(1, context.getOverride(experimentName: "exp_test_2"))
         
         overrides.forEach {
-            XCTAssertEqual($0.value, context.getOverride($0.key))
+            XCTAssertEqual($0.value, context.getOverride(experimentName: $0.key))
         }
         
-        XCTAssertEqual(nil, context.getOverride("exp_test_not_found"))
+        XCTAssertEqual(nil, context.getOverride(experimentName: "exp_test_not_found"))
     }
     
     func testOverrideClearsAssignmentCache() {
@@ -729,7 +729,7 @@ final class ContextTest: XCTestCase {
         
         do {
             try overrides.forEach {
-                try context.setOverride($0.key, $0.value)
+                try context.setOverride(experimentName: $0.key, variant: $0.value)
                 XCTAssertEqual($0.value, try context.getTreatment($0.key))
             }
         } catch {
@@ -741,7 +741,7 @@ final class ContextTest: XCTestCase {
         
         do {
             try overrides.forEach {
-                try context.setOverride($0.key, $0.value + 11)
+                try context.setOverride(experimentName: $0.key, variant: $0.value + 11)
                 XCTAssertEqual($0.value + 11, try context.getTreatment($0.key))
             }
         } catch {
@@ -755,7 +755,7 @@ final class ContextTest: XCTestCase {
             try XCTAssertEqual(1, context.getTreatment("exp_test_ab"))
             XCTAssertEqual(overrides.count * 2 + 1, context.getPendingCount)
             
-            try context.setOverride("exp_test_ab", 9)
+            try context.setOverride(experimentName: "exp_test_ab", variant: 9)
             try XCTAssertEqual(9, context.getTreatment("exp_test_ab"))
             XCTAssertEqual(overrides.count * 2 + 2, context.getPendingCount)
         } catch {
@@ -792,7 +792,7 @@ final class ContextTest: XCTestCase {
         XCTAssertFalse(context.isReady)
         
         do {
-            try context.setOverride("exp_test", 2)
+            try context.setOverride(experimentName: "exp_test", variant: 2)
             try context.setOverrides(["exp_test_new": 3,
                                       "exp_test_new_2": 5])
         } catch {
@@ -800,9 +800,9 @@ final class ContextTest: XCTestCase {
         }
         
         context.waitUntilReadyAsync { context in
-            XCTAssertEqual(2, context?.getOverride("exp_test"))
-            XCTAssertEqual(3, context?.getOverride("exp_test_new"))
-            XCTAssertEqual(5, context?.getOverride("exp_test_new_2"))
+            XCTAssertEqual(2, context?.getOverride(experimentName: "exp_test"))
+            XCTAssertEqual(3, context?.getOverride(experimentName: "exp_test_new"))
+            XCTAssertEqual(5, context?.getOverride(experimentName: "exp_test_new_2"))
         }
         
         wait(for: [expectation], timeout: 2.5)
@@ -830,16 +830,16 @@ final class ContextTest: XCTestCase {
         
         do {
             try contextData.experiments.forEach {
-                XCTAssertEqual(expectedVariants[$0.name], try context.peekTreatment($0.name))
+                XCTAssertEqual(expectedVariants[$0.name], try context.peekTreatment(experimentName: $0.name))
             }
             
-            XCTAssertEqual(0, try context.peekTreatment("no_found"))
+            XCTAssertEqual(0, try context.peekTreatment(experimentName: "no_found"))
             
             try contextData.experiments.forEach {
-                XCTAssertEqual(expectedVariants[$0.name], try context.peekTreatment($0.name))
+                XCTAssertEqual(expectedVariants[$0.name], try context.peekTreatment(experimentName: $0.name))
             }
             
-            XCTAssertEqual(0, try context.peekTreatment("no_found"))
+            XCTAssertEqual(0, try context.peekTreatment(experimentName: "no_found"))
             XCTAssertEqual(0, context.getPendingCount)
         } catch {
             XCTFail(error.localizedDescription)
@@ -897,25 +897,25 @@ final class ContextTest: XCTestCase {
         do {
             try contextData.experiments.forEach {
                 if let variant = expectedVariants[$0.name] {
-                    try context.setOverride($0.name, 11 + variant)
+                    try context.setOverride(experimentName: $0.name, variant: 11 + variant)
                 }
             }
             
-            try context.setOverride("not_found", 3)
-            
-            try contextData.experiments.forEach {
-                if let variant = expectedVariants[$0.name] {
-                    XCTAssertEqual(variant + 11, try context.peekTreatment($0.name))
-                }
-            }
-            XCTAssertEqual(3, try context.peekTreatment("not_found"))
+            try context.setOverride(experimentName: "not_found", variant: 3)
             
             try contextData.experiments.forEach {
                 if let variant = expectedVariants[$0.name] {
-                    XCTAssertEqual(variant + 11, try context.peekTreatment($0.name))
+                    XCTAssertEqual(variant + 11, try context.peekTreatment(experimentName: $0.name))
                 }
             }
-            XCTAssertEqual(3, try context.peekTreatment("not_found"))
+            XCTAssertEqual(3, try context.peekTreatment(experimentName: "not_found"))
+            
+            try contextData.experiments.forEach {
+                if let variant = expectedVariants[$0.name] {
+                    XCTAssertEqual(variant + 11, try context.peekTreatment(experimentName: $0.name))
+                }
+            }
+            XCTAssertEqual(3, try context.peekTreatment(experimentName: "not_found"))
             XCTAssertEqual(0, context.getPendingCount)
         } catch {
             XCTFail(error.localizedDescription)

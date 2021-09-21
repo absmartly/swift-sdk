@@ -14,11 +14,11 @@ final class ABSmartlySDKTest: XCTestCase {
     func testContextReady() {
         
         let config = ContextConfig()
-        config.setUnit("session_id", "0ab1e23f4eee")
+        config.setUnit(unitType: "session_id", uid: "0ab1e23f4eee")
         
         XCTAssertEqual(config.units["session_id"], "0ab1e23f4eee")
         
-        let sdk = ABSmartlySDK(ClientOptions("", "", "", "", ""))
+        let sdk = ABSmartlySDK(ClientOptions(apiKey: "", application: "", endpoint: "", environment: "", version: ""))
         
         var contextData: ContextData?
         
@@ -34,7 +34,7 @@ final class ABSmartlySDKTest: XCTestCase {
         }
         
         if let contextData = contextData {
-            let context = sdk.createContextWithData(ContextConfig(), contextData)
+            let context = sdk.createContextWithData(config: ContextConfig(), contextData: contextData)
             context.waitUntilReadyAsync {
                 XCTAssertEqual($0?.isReady, true)
             }

@@ -137,7 +137,7 @@ public class Context {
         return data
     }
     
-    public func setOverride(_ experimentName: String, _ variant: Int) throws {
+    public func setOverride(experimentName: String, variant: Int) throws {
         try checkNotClosed()
         
         let previous: Int? = overrides[experimentName]
@@ -154,22 +154,22 @@ public class Context {
         }
     }
     
-    public func getOverride(_ experimentName: String) -> Int? {
+    public func getOverride(experimentName: String) -> Int? {
         return overrides[experimentName]
     }
     
     public func setOverrides(_ overrides: [String: Int]) throws {
-        try overrides.forEach { try setOverride($0.key, $0.value) }
+        try overrides.forEach { try setOverride(experimentName: $0.key, variant: $0.value) }
     }
     
-    public func setAttribute(_ name: String, _ value: Any?) throws {
+    public func setAttribute(name: String, value: Any?) throws {
         try checkNotClosed()
         
         attributes.append(PublishEvent.Attribute(name, value, Int64((Date().timeIntervalSince1970 * 1000.0).rounded())))
     }
     
     public func setAttributes(_ attributes: [String:Any?]) throws {
-        try attributes.forEach { try setAttribute($0, $1) }
+        try attributes.forEach { try setAttribute(name: $0, value: $1) }
     }
     
     public func getTreatment(_ experimentName: String) throws -> Int {
@@ -206,7 +206,7 @@ public class Context {
         setTimeout()
     }
     
-    public func peekTreatment(_ experimentName: String) throws ->  Int {
+    public func peekTreatment(experimentName: String) throws ->  Int {
         try checkReady(true)
         return getAssignment(experimentName).variant
     }
@@ -219,7 +219,7 @@ public class Context {
         return variableKeys
     }
     
-    public func getVariableValue(_ key: String, _ defaultValue: Any) throws -> Any {
+    public func getVariableValue(key: String, defaultValue: Any) throws -> Any {
         try checkReady(true)
         
         if let assignment = getVariableAssignment(key), assignment.variables.count > 0 {
@@ -235,7 +235,7 @@ public class Context {
         return defaultValue
     }
     
-    public func peekVariableValue(_ key: String, _ defaultValue: Any) throws -> Any {
+    public func peekVariableValue(key: String, defaultValue: Any) throws -> Any {
         try checkReady(true)
         
         if let assignment = getVariableAssignment(key) {
@@ -248,7 +248,7 @@ public class Context {
         return defaultValue
     }
     
-    public func track(_ goalName: String, _ properties: [String: Any]) throws {
+    public func track(_ goalName: String, properties: [String: Any]) throws {
         try checkNotClosed()
         
         let achievement: GoalAchievement = GoalAchievement(goalName, achievedAt: Int64((Date().timeIntervalSince1970 * 1000.0).rounded()), properties: properties)
@@ -257,7 +257,14 @@ public class Context {
         pendingCount.increment()
         achievements.append(achievement)
         eventLock.unlock()
-        Logger.notice("Goal: " + achievement.serializeValue)
+        
+        do {
+            let jsonData = try JSONEncoder().encode(achievement)
+            if let jsonString = String(data: jsonData, encoding: .ascii) {
+                Logger.notice("Goal: " + jsonString)
+            }
+        }
+        
         setTimeout()
     }
     
@@ -394,7 +401,13 @@ public class Context {
                 return
             }
             
-            Logger.notice("Publish event: " + event.serializeValue)
+            do {
+                let jsonData = try JSONEncoder().encode(event)
+                if let jsonString = String(data: jsonData, encoding: .ascii) {
+                    Logger.notice("Publish event: " + jsonString)
+                }
+            } catch {}
+            
             callBack?(nil)
         }
     }

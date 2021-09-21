@@ -12,7 +12,7 @@ final class ContextConfigTest: XCTestCase {
     
     func testSetUnit() {
         let config = ContextConfig()
-        config.setUnit("session_id", "0ab1e23f4eee")
+        config.setUnit(unitType: "session_id", uid: "0ab1e23f4eee")
         
         XCTAssertEqual(config.units["session_id"], "0ab1e23f4eee")
     }
@@ -21,14 +21,14 @@ final class ContextConfigTest: XCTestCase {
         let units = ["session_id": "0ab1e23f4eee", "user_id": String(0xabcdef)]
         let config = ContextConfig()
         
-        config.setUnits(units)
+        config.setUnits(units: units)
         XCTAssertEqual(config.units, units)
     }
     
     func testSetAttribute() {
         let config = ContextConfig()
-        config.setAttribute("user_agent", "Chrome")
-        config.setAttribute("age", 9)
+        config.setAttribute(name: "user_agent", value: "Chrome")
+        config.setAttribute(name: "age", value: 9)
         
         XCTAssertEqual(config.attributes["user_agent"] as? String, "Chrome")
         XCTAssertEqual(config.attributes["age"] as? Int, 9)
@@ -38,14 +38,14 @@ final class ContextConfigTest: XCTestCase {
         let attributes:[String: Any] = ["user_agent": "Chrome", "age" : 9]
         let config = ContextConfig()
         
-        config.setAttribuets(attributes)
+        config.setAttribuets(attributes: attributes)
         XCTAssertEqual(config.attributes["user_agent"] as? String, "Chrome")
         XCTAssertEqual(config.attributes["age"] as? Int, 9)
     }
     
     func testSetOverride() {
         let config = ContextConfig()
-        config.setOverride("exp_test", 2)
+        config.setOverride(experimentName: "exp_test", variant: 2)
         
         XCTAssertEqual(config.overrides["exp_test"], 2)
     }
@@ -54,7 +54,7 @@ final class ContextConfigTest: XCTestCase {
         let config = ContextConfig()
         let overrides = ["exp_test": 2, "exp_test_new": 1]
         
-        config.setOverrides(overrides)
+        config.setOverrides(overrides: overrides)
         XCTAssertEqual(config.overrides, overrides)
     }
     

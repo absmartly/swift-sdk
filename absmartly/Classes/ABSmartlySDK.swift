@@ -16,7 +16,7 @@ public final class ABSmartlySDK {
         self.provider = ContextDataProvider(requestFactory, options)
     }
     
-    public func createContextWithData(_ config: ContextConfig, _ contextData: ContextData) -> Context {
+    public func createContextWithData(config: ContextConfig, contextData: ContextData) -> Context {
         let promise: Promise<ContextData> = Promise({ success, error in
             success(contextData)
         })
@@ -24,7 +24,7 @@ public final class ABSmartlySDK {
         return Context(eventPublisher, provider, promise, config)
     }
     
-    public func createContext(_ config: ContextConfig) -> Context {
+    public func createContext(config: ContextConfig) -> Context {
         return Context(eventPublisher, provider, provider.getContextData(), config)
     }
   

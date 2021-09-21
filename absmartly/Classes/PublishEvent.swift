@@ -7,11 +7,7 @@
 
 import Foundation
 
-protocol StringSerializable {
-    var serializeValue: String { get }
-}
-
-public final class PublishEvent: StringSerializable {
+public final class PublishEvent: Encodable {
     var hashed: Bool
     var units: [Unit]
     var publishedAt: Int64
@@ -28,54 +24,47 @@ public final class PublishEvent: StringSerializable {
         self.attributes = attributes
     }
     
-    var serializeValue: String {
-        var serializedData: String = "{\"hashed\":" + (hashed ? "true" : "false")
-        
-        if let unitsString = serializeArray(units) {
-            serializedData += ",\"units\":" + unitsString
-        }
-        
-        serializedData += ",\"publishedAt\":\(publishedAt)"
-        
-        if let exposuresString = serializeArray(exposures) {
-            serializedData += ",\"exposures\":" + exposuresString
-        }
-        
-        if let goalsString = serializeArray(goals) {
-            serializedData += ",\"goals\":" + goalsString
-        }
-        
-        if let attributesString = serializeArray(attributes) {
-            serializedData += ",\"attributes\":" + attributesString
-        }
-        
-        serializedData += "}"
-        
-        return serializedData
+    enum CodingKeys: String, CodingKey {
+        case hashed
+        case units
+        case publishedAt
+        case exposures
+        case goals
+        case attributes
     }
-    
-    private func serializeArray(_ array: [StringSerializable]) -> String? {
-        let arrayStr: String = array.map { $0.serializeValue }.joined(separator: ",")
-        if arrayStr.isEmpty { return nil }
-        return "[" + arrayStr + "]"
+            
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(hashed, forKey: .hashed)
+        
+        if units.count > 0 {
+            try container.encode(units, forKey: .units)
+        }
+        
+        try container.encode(publishedAt, forKey: .publishedAt)
+        
+        if exposures.count > 0 {
+            try container.encode(exposures, forKey: .exposures)
+        }
+        
+        if goals.count > 0 {
+            try container.encode(goals, forKey: .goals)
+        }
+        
+        if attributes.count > 0 {
+            try container.encode(attributes, forKey: .attributes)
+        }
     }
 }
 
 extension PublishEvent {
-    class Unit: Equatable, StringSerializable {
+    class Unit: Encodable, Equatable {
         public let type: String
         public let uid: String
 
         init(_ type: String, _ uid: String) {
             self.type = type
             self.uid = uid
-        }
-        
-        var serializeValue: String {
-            return "{" +
-                "\"type\":\"" + type + "\"" +
-                ",\"uid\":\"" + uid +
-                "\"}"
         }
         
         public static func == (lhs: PublishEvent.Unit, rhs: PublishEvent.Unit) -> Bool {
@@ -85,7 +74,7 @@ extension PublishEvent {
 }
 
 extension PublishEvent {
-    class Exposure: StringSerializable {
+    class Exposure: Encodable {
         let id: Int
         let name: String
         let unit: String?
@@ -107,24 +96,11 @@ extension PublishEvent {
             self.overridden = overridden
             self.fullOn = fullOn
         }
-        
-        var serializeValue: String {
-            let serializeValuePart: String = "{\"id\":\(id),\"name\":\"" + name + "\",\"unit\":\"" + (unit ?? "") + "\""
-            
-            return serializeValuePart +
-                    ",\"variant\":\(variant)" +
-                    ",\"exposedAt\":\(exposedAt)" +
-                    ",\"assigned\":" + (assigned ? "true" : "false") +
-                    ",\"eligible\":" + (eligible ? "true" : "false") +
-                    ",\"overridden\":" + (overridden ? "true" : "false") +
-                    ",\"fullOn\":" + (fullOn ? "true" : "false") +
-                    "}";
-        }
     }
 }
 
 extension PublishEvent {
-    class Attribute: Equatable, StringSerializable {
+    class Attribute: Encodable, Equatable {
         let name: String
         
         let value: Any?
@@ -136,36 +112,51 @@ extension PublishEvent {
             self.setAt = setAt
         }
         
-        var serializeValue: String {
-            var valueString: String = ""
-            
-            if let value = value {
-                if value is Int || value is Int8 || value is Int16 || value is Int32 || value is Int64 ||
-                    value is UInt || value is UInt8 || value is UInt16 || value is UInt32 || value is UInt64 ||
-                    value is Float || value is Float32 || value is Double {
-                    
-                    valueString += ",\"value\":\(String(describing: value))"
-                }
-                
-                if value is String || value is Character {
-                    valueString += ",\"value\":\"\(String(describing: value))\""
-                }
-                
-                if let bool = value as? Bool {
-                    valueString += ",\"value\":\(bool ? "true" : "false")"
-                }
-            }
-            
-            return "{" +
-                    "\"name\":\"" + name + "\"" +
-                    valueString +
-                    ",\"setAt\":\(setAt)" +
-                    "}";
-            
+        enum CodingKeys: String, CodingKey {
+            case name
+            case value
+            case setAt
         }
         
         public static func == (lhs: PublishEvent.Attribute, rhs: PublishEvent.Attribute) -> Bool {
             return lhs.name == rhs.name && rhs.setAt == lhs.setAt && lhs.value.debugDescription == rhs.value.debugDescription
+        }
+        
+        func encode(to encoder: Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(name, forKey: .name)
+            
+            if value is Int, let value = value as? Int {
+                try container.encode(value, forKey: .value)
+            } else if value is Int8, let value = value as? Int8 {
+                try container.encode(value, forKey: .value)
+            } else if value is Int16, let value = value as? Int16 {
+                try container.encode(value, forKey: .value)
+            } else if value is Int32, let value = value as? Int32 {
+                try container.encode(value, forKey: .value)
+            } else if value is Int64, let value = value as? Int64 {
+                try container.encode(value, forKey: .value)
+            } else if value is UInt, let value = value as? UInt {
+                try container.encode(value, forKey: .value)
+            } else if value is UInt8, let value = value as? UInt8 {
+                try container.encode(value, forKey: .value)
+            } else if value is UInt16, let value = value as? UInt16 {
+                try container.encode(value, forKey: .value)
+            } else if value is UInt32, let value = value as? UInt32 {
+                try container.encode(value, forKey: .value)
+            } else if value is UInt64, let value = value as? UInt64 {
+                try container.encode(value, forKey: .value)
+            } else if value is Float, let value = value as? Float {
+                try container.encode(value, forKey: .value)
+            } else if value is Double, let value = value as? Double {
+                try container.encode(value, forKey: .value)
+            } else if value is String, let value = value as? String {
+                try container.encode(value, forKey: .value)
+            } else if value is Bool, let value = value as? Bool {
+                try container.encode(value, forKey: .value)
+            }
+            
+            try container.encode(setAt, forKey: .setAt)
         }
     }
 }

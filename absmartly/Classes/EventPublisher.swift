@@ -21,21 +21,28 @@ class EventPublisher {
         }
         
         let session = URLSession.shared
-        request.httpBody = event.serializeValue.data(using: .ascii)
-        
-        let task = session.dataTask(with: request, completionHandler: { data, response, error in
-            guard error == nil else {
-                complete?(error)
-                return
-            }
+
+        do {
+            let jsonData = try JSONEncoder().encode(event)
             
-            if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode != 200 {
-                complete?(NetworkError(httpResponse.statusCode, ""))
-                return
-            }
+            request.httpBody = jsonData
             
-            complete?(nil)
-        })
-        task.resume()
+            let task = session.dataTask(with: request, completionHandler: { data, response, error in
+                guard error == nil else {
+                    complete?(error)
+                    return
+                }
+                
+                if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode != 200 {
+                    complete?(NetworkError(httpResponse.statusCode, ""))
+                    return
+                }
+                
+                complete?(nil)
+            })
+            task.resume()
+        } catch {
+            complete?(error)
+        }
     }    
 }

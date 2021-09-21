@@ -18,7 +18,7 @@ public struct ClientOptions {
     public var environment: String
     public var version: String
     
-    public init(_ apiKey: String, _ application: String, _ endpoint: String, _ environment: String, _ version: String, _ retries: Int = 3, _ timeout: TimeInterval = 1.5) {
+    public init(apiKey: String, application: String, endpoint: String, environment: String, version: String, retries: Int = 3, timeout: TimeInterval = 1.5) {
         self.apiKey = apiKey
         self.application = application
         self.endpoint = endpoint
