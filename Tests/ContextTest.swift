@@ -231,7 +231,7 @@ final class ContextTest: XCTestCase {
         let noReadyMessage = "ABSmartly Context is not yet ready."
         
         do {
-            let _ = try context.peekTreatment(experimentName: "exp_test_ab")
+            let _ = try context.peekTreatment("exp_test_ab")
             XCTFail("Expect error on peekTreatment")
         } catch {
             XCTAssertEqual(error.localizedDescription, noReadyMessage)
@@ -339,7 +339,7 @@ final class ContextTest: XCTestCase {
         
         contextTestClosures.append { context in
             do {
-                let _ = try context.peekTreatment(experimentName: "exp_test_ab")
+                let _ = try context.peekTreatment("exp_test_ab")
                 XCTFail("Expect error on peekTreatment")
             } catch {
                 XCTAssertEqual(error.localizedDescription, closingMessage)
@@ -502,7 +502,7 @@ final class ContextTest: XCTestCase {
             }
             
             do {
-                let _ = try context.peekTreatment(experimentName: "exp_test_ab")
+                let _ = try context.peekTreatment("exp_test_ab")
                 XCTFail("Expect error on peekTreatment")
             } catch {
                 XCTAssertEqual(error.localizedDescription, cloedMessage)
@@ -830,16 +830,16 @@ final class ContextTest: XCTestCase {
         
         do {
             try contextData.experiments.forEach {
-                XCTAssertEqual(expectedVariants[$0.name], try context.peekTreatment(experimentName: $0.name))
+                XCTAssertEqual(expectedVariants[$0.name], try context.peekTreatment($0.name))
             }
             
-            XCTAssertEqual(0, try context.peekTreatment(experimentName: "no_found"))
+            XCTAssertEqual(0, try context.peekTreatment("no_found"))
             
             try contextData.experiments.forEach {
-                XCTAssertEqual(expectedVariants[$0.name], try context.peekTreatment(experimentName: $0.name))
+                XCTAssertEqual(expectedVariants[$0.name], try context.peekTreatment($0.name))
             }
             
-            XCTAssertEqual(0, try context.peekTreatment(experimentName: "no_found"))
+            XCTAssertEqual(0, try context.peekTreatment("no_found"))
             XCTAssertEqual(0, context.getPendingCount)
         } catch {
             XCTFail(error.localizedDescription)
@@ -905,17 +905,17 @@ final class ContextTest: XCTestCase {
             
             try contextData.experiments.forEach {
                 if let variant = expectedVariants[$0.name] {
-                    XCTAssertEqual(variant + 11, try context.peekTreatment(experimentName: $0.name))
+                    XCTAssertEqual(variant + 11, try context.peekTreatment($0.name))
                 }
             }
-            XCTAssertEqual(3, try context.peekTreatment(experimentName: "not_found"))
+            XCTAssertEqual(3, try context.peekTreatment("not_found"))
             
             try contextData.experiments.forEach {
                 if let variant = expectedVariants[$0.name] {
-                    XCTAssertEqual(variant + 11, try context.peekTreatment(experimentName: $0.name))
+                    XCTAssertEqual(variant + 11, try context.peekTreatment($0.name))
                 }
             }
-            XCTAssertEqual(3, try context.peekTreatment(experimentName: "not_found"))
+            XCTAssertEqual(3, try context.peekTreatment("not_found"))
             XCTAssertEqual(0, context.getPendingCount)
         } catch {
             XCTFail(error.localizedDescription)

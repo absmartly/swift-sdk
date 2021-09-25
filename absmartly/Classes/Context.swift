@@ -206,7 +206,7 @@ public class Context {
         setTimeout()
     }
     
-    public func peekTreatment(experimentName: String) throws ->  Int {
+    public func peekTreatment(_ experimentName: String) throws -> Int {
         try checkReady(true)
         return getAssignment(experimentName).variant
     }

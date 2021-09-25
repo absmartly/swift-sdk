@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>apiKey</key>
+	<string>eOYF1F6ujVI9v30UiVfHYrIYNufeXMy+yAiQ+BZ+D5aW9VD5K+5mbPndgstqnRRW</string>
+	<key>application</key>
+	<string>TestApp</string>
+	<key>endpoint</key>
+	<string>http://a0146f2ade17e4d0a9ecef064e22504f-cda0520beb5e43f8.elb.eu-west-1.amazonaws.com/v1/</string>
+	<key>environment</key>
+	<string>dev</string>
+	<key>version</key>
+	<string>0</string>
+	<key>experimentName</key>
+	<string>Exp1</string>
+	<key>goalName</key>
+	<string>up registration rate</string>
+</dict>
+</plist>

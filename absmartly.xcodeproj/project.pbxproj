@@ -67,6 +67,7 @@
 		C539836E26F9DB5C00C6E0E6 /* Buffers.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5A965D026F9D667007C218E /* Buffers.swift */; };
 		C539836F26F9DB5C00C6E0E6 /* Hashing.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5A965D226F9D667007C218E /* Hashing.swift */; };
 		C539837026F9DB5C00C6E0E6 /* MurmurHash.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5A965D126F9D667007C218E /* MurmurHash.swift */; };
+		C54086CD26FE49F300A592A1 /* VariantAssignerTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = C54086CC26FE49F300A592A1 /* VariantAssignerTest.swift */; };
 		C584CE7C26F35BA3002F83BF /* variables.json in Resources */ = {isa = PBXBuildFile; fileRef = C584CE7926F35BA2002F83BF /* variables.json */; };
 		C584CE7D26F35BA3002F83BF /* context.json in Resources */ = {isa = PBXBuildFile; fileRef = C584CE7A26F35BA2002F83BF /* context.json */; };
 		C584CE7E26F35BA3002F83BF /* refreshed.json in Resources */ = {isa = PBXBuildFile; fileRef = C584CE7B26F35BA2002F83BF /* refreshed.json */; };
@@ -123,6 +124,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		C54086CC26FE49F300A592A1 /* VariantAssignerTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VariantAssignerTest.swift; sourceTree = "<group>"; };
 		C584CE7926F35BA2002F83BF /* variables.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; name = variables.json; path = Tests/variables.json; sourceTree = "<group>"; };
 		C584CE7A26F35BA2002F83BF /* context.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; name = context.json; path = Tests/context.json; sourceTree = "<group>"; };
 		C584CE7B26F35BA2002F83BF /* refreshed.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; name = refreshed.json; path = Tests/refreshed.json; sourceTree = "<group>"; };
@@ -242,6 +244,7 @@
 			isa = PBXGroup;
 			children = (
 				C584CE8326F35BBF002F83BF /* ABSmartlySDKTest.swift */,
+				C54086CC26FE49F300A592A1 /* VariantAssignerTest.swift */,
 				C584CE7F26F35BBF002F83BF /* ContextConfigTest.swift */,
 				C584CE8026F35BBF002F83BF /* ContextDataDeserializerTests.swift */,
 				C584CE8626F35BBF002F83BF /* ContextEventSerializerTest.swift */,
@@ -442,6 +445,7 @@
 				C539834F26F9DB0100C6E0E6 /* PublishEvent.swift in Sources */,
 				C539835326F9DB0100C6E0E6 /* RequestFactory.swift in Sources */,
 				C539836926F9DB5700C6E0E6 /* ThreadSafeArray.swift in Sources */,
+				C54086CD26FE49F300A592A1 /* VariantAssignerTest.swift in Sources */,
 				C539836626F9DB5700C6E0E6 /* Errors.swift in Sources */,
 				C539834C26F9DB0100C6E0E6 /* VariantAssigner.swift in Sources */,
 				C539834626F9DAF200C6E0E6 /* ContextConfig.swift in Sources */,

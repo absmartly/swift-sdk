@@ -17,7 +17,7 @@ class VariantAssigner {
     
     func assign(_ split: [Double], _ seedHi: Int, _ seedLo: Int) -> Int {
         let prob: Double = probability(seedHi, seedLo)
-        return chooseVariant(split, prob)
+        return VariantAssigner.chooseVariant(split, prob)
     }
     
     private func probability(_ seedHi: Int, _ seedLo: Int) -> Double {
@@ -31,7 +31,7 @@ class VariantAssigner {
         return Double(hash & 0xFFFFFFFF) * normalizer
     }
     
-    private func chooseVariant(_ split: [Double], _ prob: Double) -> Int {
+    static func chooseVariant(_ split: [Double], _ prob: Double) -> Int {
         var cumSum: Double = 0
         
         for (i,_) in split.enumerated() {
