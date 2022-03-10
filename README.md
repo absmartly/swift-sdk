@@ -6,28 +6,31 @@ A/B Smartly - Swift SDK
 
 The A/B Smartly Swift SDK is supported on macOS version 10.10 or later and iOS version 10 or later.
 
-A/B Smartly doesn't contain any external dependencies.
-
 ## Installation
 
+### Swift Package Manager
 
-### [Swift Package Manager](https://github.com/apple/swift-package-manager)
+To install the A/B Smartly SDK using Swift Package Manager, following these steps:
 
-In Xcode go to: ```File -> Swift Packages -> Add Package Dependency...```
+- In Xcode go to: ```File -> Swift Packages -> Add Package Dependency...```
 
-Enter the A/B Smartly SDK GitHub repository - ```https://github.com/absmartly/ios-sdk```
+- Enter the A/B Smartly Swift SDK GitHub repository: ```https://github.com/absmartly/swift-sdk```
 
-Select the SDK version
+- Select the SDK version (latest recomended)
 
-Select the absmartly library
-
-Import absmart module and start to use A/B Smartly SDK
+- Select the ABSmartly library
 
 ### Cocoapods
-To install A/B Smartly with CocoaPods, add the following lines to your `Podfile`:
+
+To install the A/B Smartly SDK with CocoaPods, add the following lines to your `Podfile`:
 
 ```ruby
-pod "absmartly"
+pod "ABSmartly"
+```
+
+Run the following command to update your Xcode project:
+```
+pod install
 ```
 
 ## Getting Started
@@ -35,18 +38,18 @@ pod "absmartly"
 Please follow the [installation](#installation) instructions before trying the following code:
 
 #### Initialization
-This example assumes an Api Key, an Application, and an Environment have been created in the A/B Smartly web console.
+
+This example assumes an Api Key, an Application, and an Environment have already been created in the A/B Smartly web console.
 ```swift
-import absmartly
+import ABSmartly
 ...
 
 let options = ClientOptions(apiKey: "YOUR_ABSMARTLY_API_KEY",
                                     application: "YOUR_APP_NAME",
-                                    endpoint: "https://sandbox.absmartly.io/v1",
-                                    environment: "ENVIRONMENT",
-                                    version: "0")  // version number                             
-        
-let sdk = absmartly.ABSmartlySDK(options)
+                                    endpoint: "https://YOUR_SUBDOMAIN.absmartly.io/v1",
+                                    environment: "YOUR_ENVIRONMENT")
+
+let sdk = ABSmartlySDK(options)
 ```
 
 #### Creating a new Context
