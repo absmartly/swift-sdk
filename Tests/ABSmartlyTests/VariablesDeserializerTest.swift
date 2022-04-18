@@ -3,7 +3,7 @@ import XCTest
 
 @testable import ABSmartly
 
-final class VariablesDeserializerTests: XCTestCase {
+final class VariablesDeserializerTest: XCTestCase {
 
 	func testSerialize() {
 		var variables: [String: AnyObject]?

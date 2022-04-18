@@ -32,7 +32,7 @@ final class ContextConfigTest: XCTestCase {
 		let attributes: [String: Any] = ["user_agent": "Chrome", "age": 9]
 		let config = ContextConfig()
 
-		config.setAttribuets(attributes: attributes)
+		config.setAttributes(attributes: attributes)
 		XCTAssertEqual(config.attributes["user_agent"] as? String, "Chrome")
 		XCTAssertEqual(config.attributes["age"] as? Int, 9)
 	}

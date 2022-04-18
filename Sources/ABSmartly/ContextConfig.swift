@@ -1,14 +1,12 @@
 import Foundation
 
-public final class ContextConfig {
+public class ContextConfig {
 	private(set) var units: [String: String] = [:]
 	private(set) var attributes: [String: Any] = [:]
 	private(set) var overrides: [String: Int] = [:]
-
-	public var publishDelay: Int = 100
+	public var publishDelay: TimeInterval = 0.1
 
 	public init() {
-
 	}
 
 	public func setUnit(unitType: String, uid: String) {
@@ -23,7 +21,7 @@ public final class ContextConfig {
 		attributes[name] = value
 	}
 
-	public func setAttribuets(attributes: [String: Any]) {
+	public func setAttributes(attributes: [String: Any]) {
 		attributes.forEach { setAttribute(name: $0.key, value: $0.value) }
 	}
 

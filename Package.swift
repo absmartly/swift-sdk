@@ -14,11 +14,15 @@ let package = Package(
             name: "ABSmartly",
             targets: ["ABSmartly"])
     ],
-    dependencies: [],
+    dependencies: [.package(
+        url: "https://github.com/apple/swift-atomics.git",
+        .upToNextMajor(from: "1.0.2")
+      ),
+                   .package(url: "https://github.com/mxcl/PromiseKit.git", .upToNextMajor(from: "6.8.4")),],
     targets: [
         .target(
             name: "ABSmartly",
-            dependencies: [],
+            dependencies: [.product(name: "Atomics", package: "swift-atomics"), "PromiseKit"],
             path: "Sources/ABSmartly"),
         .testTarget(
             name: "ABSmartlyTests",

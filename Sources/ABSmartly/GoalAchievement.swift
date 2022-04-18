@@ -1,6 +1,6 @@
 import Foundation
 
-public class GoalAchievement: Encodable {
+public struct GoalAchievement: Encodable, Equatable {
 	let name: String
 	let achievedAt: Int64
 	let properties: [String: Any]?
@@ -92,5 +92,24 @@ public class GoalAchievement: Encodable {
 				}
 			}
 		}
+	}
+
+	public static func == (lhs: GoalAchievement, rhs: GoalAchievement) -> Bool {
+		if lhs.name != rhs.name || lhs.achievedAt != rhs.achievedAt {
+			return false
+		}
+		do {
+			let l = try lhs.toJSON()
+			let r = try rhs.toJSON()
+			return l == r
+		} catch {
+			return false
+		}
+	}
+
+	public func toJSON() throws -> String {
+		let encoder = JSONEncoder()
+		let data = try encoder.encode(self)
+		return String(data: data, encoding: .utf8) ?? ""
 	}
 }

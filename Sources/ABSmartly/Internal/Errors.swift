@@ -1,6 +1,6 @@
 import Foundation
 
-class NetworkError: Error {
+class ABSmartlyHTTPError: Error {
 	let statusCode: Int
 	let description: String
 
@@ -10,7 +10,7 @@ class NetworkError: Error {
 	}
 }
 
-extension NetworkError: LocalizedError {
+extension ABSmartlyHTTPError: LocalizedError {
 	public var errorDescription: String? {
 		return description
 	}

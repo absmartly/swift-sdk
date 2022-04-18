@@ -1,0 +1,8 @@
+sources:
+  - Sources
+templates:
+  - ../Sourcery/Templates/Templates
+output: Tests/ABSmartlyTests/Mocks/SourceryGenerated.swift
+args:
+  autoMockableTestableImports: ["ABSmartly"]
+  autoMockableImports: ["PromiseKit"]

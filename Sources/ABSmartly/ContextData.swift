@@ -7,6 +7,14 @@ public final class ContextData: Codable {
 		case experiments
 	}
 
+	public init() {
+		experiments = []
+	}
+
+	public init(experiments: [Experiment]) {
+		self.experiments = experiments
+	}
+
 	public init(from decoder: Decoder) throws {
 		if let container = try? decoder.container(keyedBy: CodingKeys.self) {
 			if let experiments = try? container.decode([OptionalDecodableObject<Experiment>].self, forKey: .experiments)

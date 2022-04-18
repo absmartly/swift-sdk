@@ -1,36 +1,162 @@
 import Foundation
+import PromiseKit
 import XCTest
 
 @testable import ABSmartly
 
 final class ABSmartlySDKTest: XCTestCase {
+	var sdk: ABSmartlySDK?
+	var client: ClientMock?
+	var contextConfig = ContextConfig()
 
-	func testContextReady() {
-		let config = ContextConfig()
-		config.setUnit(unitType: "session_id", uid: "0ab1e23f4eee")
+	func setUpSDK(block: ((ABSmartlyConfig) -> Void)? = nil) {
+		contextConfig = ContextConfig()
+		contextConfig.setUnit(unitType: "session_id", uid: "123456789")
 
-		XCTAssertEqual(config.units["session_id"], "0ab1e23f4eee")
-
-		let sdk = ABSmartlySDK(ClientOptions(apiKey: "", application: "", endpoint: "", environment: "", version: ""))
-
-		var contextData: ContextData?
-
-		let path = Bundle.module.path(forResource: "context", ofType: "json", inDirectory: "Resources")!
+		client = ClientMock()
 		do {
-			let data = try Foundation.Data(contentsOf: URL(fileURLWithPath: path), options: .mappedIfSafe)
-			contextData = try JSONDecoder().decode(ContextData.self, from: data)
+			let sdkConfig = ABSmartlyConfig(client: client!)
+			if let block = block {
+				block(sdkConfig)
+			}
+			sdk = try ABSmartlySDK(config: sdkConfig)
 		} catch {
-			XCTFail("Deserialization error: \(error.localizedDescription)")
+			XCTFail(error.localizedDescription)
+		}
+	}
+
+	func testThrowsWithInvalidConfig() {
+		let config = ABSmartlyConfig()
+
+		XCTAssertThrowsError(try ABSmartlySDK(config: config)) { error in
+			XCTAssertEqual(error.localizedDescription, "Missing Client instance")
+		}
+	}
+
+	func testCreateContext() {
+		setUpSDK()
+
+		guard let sdk = sdk, let client = client else { return }
+
+		let expectation = XCTestExpectation()
+
+		let (promise, resolver) = Promise<ContextData>.pending()
+		client.getContextDataReturnValue = promise
+
+		_ = promise.done { data in
+			expectation.fulfill()
 		}
 
-		if let contextData = contextData {
-			let context = sdk.createContextWithData(config: ContextConfig(), contextData: contextData)
-			context.waitUntilReadyAsync {
-				XCTAssertEqual($0?.isReady, true)
+		let context = sdk.createContext(config: contextConfig)
+		XCTAssertNotNil(context)
+		XCTAssertFalse(context.isReady())
+		XCTAssertEqual(1, client.getContextDataCallsCount)
+
+		resolver.fulfill(ContextData())
+
+		wait(for: [expectation], timeout: 1.0)
+	}
+
+	func testCreateContextWithData() {
+		setUpSDK()
+
+		guard let sdk = sdk, let client = client else { return }
+
+		let context = sdk.createContextWithData(config: contextConfig, contextData: ContextData())
+		XCTAssertNotNil(context)
+		XCTAssertTrue(context.isReady())
+		XCTAssertEqual(0, client.getContextDataCallsCount)
+	}
+
+	func testGetContextData() {
+		setUpSDK()
+
+		guard let sdk = sdk, let client = client else { return }
+
+		let expectation = XCTestExpectation()
+
+		let (promise, resolver) = Promise<ContextData>.pending()
+		client.getContextDataReturnValue = promise
+
+		_ = promise.done { data in
+			expectation.fulfill()
+		}
+
+		let result = sdk.getContextData()
+		XCTAssertNotNil(result)
+		XCTAssertEqual(1, client.getContextDataCallsCount)
+		resolver.fulfill(ContextData())
+
+		wait(for: [expectation], timeout: 1.0)
+	}
+
+	func testCustomContextDataProvider() {
+		let contextDataProvider = ContextDataProviderMock()
+		setUpSDK { config in
+			config.contextDataProvider = contextDataProvider
+		}
+
+		guard let sdk = sdk, let client = client else { return }
+
+		do {
+			let expectation = XCTestExpectation()
+
+			let (promise, resolver) = Promise<ContextData>.pending()
+			contextDataProvider.getContextDataReturnValue = promise
+
+			_ = promise.done { data in
+				expectation.fulfill()
 			}
 
-		} else {
-			XCTFail("No context Data")
+			let result = sdk.getContextData()
+			XCTAssertNotNil(result)
+			XCTAssertEqual(1, contextDataProvider.getContextDataCallsCount)
+			XCTAssertEqual(0, client.getContextDataCallsCount)
+			resolver.fulfill(ContextData())
+
+			wait(for: [expectation], timeout: 1.0)
 		}
+
+		do {
+			let expectation = XCTestExpectation()
+
+			let (promise, resolver) = Promise<ContextData>.pending()
+			contextDataProvider.getContextDataReturnValue = promise
+
+			_ = promise.done { data in
+				expectation.fulfill()
+			}
+
+			let result = sdk.createContext(config: contextConfig)
+			XCTAssertNotNil(result)
+			XCTAssertEqual(2, contextDataProvider.getContextDataCallsCount)
+			XCTAssertEqual(0, client.getContextDataCallsCount)
+			resolver.fulfill(ContextData())
+
+			wait(for: [expectation], timeout: 1.0)
+		}
+	}
+
+	func testClose() {
+		setUpSDK()
+
+		guard let sdk = sdk, let client = client else { return }
+
+		let expectation = XCTestExpectation()
+
+		let (promise, resolver) = Promise<Void>.pending()
+		client.closeReturnValue = promise
+
+		_ = promise.done {
+			expectation.fulfill()
+		}
+
+		let result = sdk.close()
+
+		XCTAssertNotNil(result)
+		XCTAssertEqual(1, client.closeCallsCount)
+		resolver.fulfill(())
+
+		wait(for: [expectation], timeout: 1.0)
 	}
 }

@@ -10,7 +10,7 @@
 		CEC30EEC28071F74008519D5 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = CEC30EEB28071F74008519D5 /* AppDelegate.swift */; };
 		CEC30EF028071F74008519D5 /* ViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = CEC30EEF28071F74008519D5 /* ViewController.swift */; };
 		CEC30EF528071F75008519D5 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = CEC30EF428071F75008519D5 /* Assets.xcassets */; };
-		CEC30F032807258C008519D5 /* ABSmartly in Frameworks */ = {isa = PBXBuildFile; productRef = CEC30F022807258C008519D5 /* ABSmartly */; };
+		D5675304280E088600E5ED20 /* ABSmartly in Frameworks */ = {isa = PBXBuildFile; productRef = D5675303280E088600E5ED20 /* ABSmartly */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -20,6 +20,8 @@
 		CEC30EF428071F75008519D5 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		CEC30EF928071F75008519D5 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		CEC30F0028072227008519D5 /* swift-sdk */ = {isa = PBXFileReference; lastKnownFileType = wrapper; name = "swift-sdk"; path = ..; sourceTree = "<group>"; };
+		D5675301280E082000E5ED20 /* marcio */ = {isa = PBXFileReference; lastKnownFileType = folder; name = marcio; path = ../../..; sourceTree = "<group>"; };
+		D5675302280E085C00E5ED20 /* swift-sdk */ = {isa = PBXFileReference; lastKnownFileType = wrapper; name = "swift-sdk"; path = ..; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -27,7 +29,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				CEC30F032807258C008519D5 /* ABSmartly in Frameworks */,
+				D5675304280E088600E5ED20 /* ABSmartly in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -67,6 +69,8 @@
 			isa = PBXGroup;
 			children = (
 				CEC30F0028072227008519D5 /* swift-sdk */,
+				D5675301280E082000E5ED20 /* marcio */,
+				D5675302280E085C00E5ED20 /* swift-sdk */,
 			);
 			name = Packages;
 			sourceTree = "<group>";
@@ -95,7 +99,7 @@
 			);
 			name = Example;
 			packageProductDependencies = (
-				CEC30F022807258C008519D5 /* ABSmartly */,
+				D5675303280E088600E5ED20 /* ABSmartly */,
 			);
 			productName = Example;
 			productReference = CEC30EE828071F74008519D5 /* Example.app */;
@@ -346,7 +350,7 @@
 /* End XCConfigurationList section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		CEC30F022807258C008519D5 /* ABSmartly */ = {
+		D5675303280E088600E5ED20 /* ABSmartly */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = ABSmartly;
 		};
