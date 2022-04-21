@@ -20,6 +20,19 @@ To install the A/B Smartly SDK using Swift Package Manager, following these step
 
 - Select the ABSmartly library
 
+### Cocoapods
+
+To install the A/B Smartly SDK with CocoaPods, add the following lines to your `Podfile`:
+
+```ruby
+pod 'ABSmartlySwiftSDK', '~> 1.0.2'
+```
+
+Run the following command to update your Xcode project:
+```
+pod install
+```
+
 ## Getting Started
 
 Please follow the [installation](#installation) instructions before trying the following code:
@@ -43,7 +56,7 @@ do {
         endpoint: ProcessInfo.processInfo.environment["ABSMARTLY_ENDPOINT"] ?? "",
         environment: ProcessInfo.processInfo.environment["ABSMARTLY_ENVIRONMENT"] ?? ""))
 
-    let client = try Client(config: clientConfig)
+    let client = try DefaultClient(config: clientConfig)
     let sdkConfig = ABSmartlyConfig(client: client)
     sdk = try ABSmartlySDK(config: sdkConfig)
 } catch {
