@@ -3,7 +3,7 @@ import OSLog
 
 class Logger {
 	static func error(_ error: String) {
-		if #available(macOS 11.0, iOS 14.0, *) {
+        if #available(macOS 11.0, iOS 14.0, tvOS 14.0, watchOS 7.0, *) {
 			let customLog = os.Logger(subsystem: "ABSmartly", category: "")
 			customLog.error("\(error)")
 		} else if #available(macOS 10.12, iOS 10.0, *) {
@@ -15,7 +15,7 @@ class Logger {
 	}
 
 	static func notice(_ note: String) {
-		if #available(macOS 11.0, iOS 14.0, *) {
+        if #available(macOS 11.0, iOS 14.0, tvOS 14.0, watchOS 7.0, *) {
 			let customLog = os.Logger(subsystem: "ABSmartly", category: "")
 			customLog.notice("\(note)")
 		} else if #available(macOS 10.12, iOS 10.0, *) {
