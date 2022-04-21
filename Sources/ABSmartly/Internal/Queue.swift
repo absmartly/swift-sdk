@@ -6,15 +6,14 @@ class Queue<T> {
 
 	func addElement(_ element: T) {
 		lock.lock()
+		defer { lock.unlock() }
+
 		queue.append(element)
-		lock.unlock()
 	}
 
 	func dequeue() -> T? {
 		lock.lock()
-		defer {
-			lock.unlock()
-		}
+		defer { lock.unlock() }
 
 		return queue.removeFirst()
 	}
@@ -22,6 +21,7 @@ class Queue<T> {
 	var count: Int {
 		lock.lock()
 		defer { lock.unlock() }
+
 		return queue.count
 	}
 }

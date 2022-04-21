@@ -6,7 +6,6 @@ public final class Context {
 	private let readyLock = NSLock()
 	private let dataLock = NSLock()
 	private let timeoutLock = NSLock()
-	private let compareAndSetLock = NSLock()
 	private let eventLock = NSLock()
 
 	private let clock: Clock

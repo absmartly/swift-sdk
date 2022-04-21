@@ -70,7 +70,7 @@ class ViewController: UIViewController {
 					self.button.backgroundColor = .orange
 				}
 
-                self.view.setNeedsDisplay()
+				self.view.setNeedsDisplay()
 				self.view.layer.displayIfNeeded()
 			}
 		}
