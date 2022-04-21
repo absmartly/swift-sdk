@@ -1,6 +1,5 @@
 import Foundation
 import PromiseKit
-import SystemConfiguration
 
 public class DefaultHTTPResponse: Response {
 	init(status: Int, statusMessage: String, contentType: String, content: Data) {
