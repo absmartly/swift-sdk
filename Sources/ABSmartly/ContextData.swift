@@ -17,17 +17,10 @@ public final class ContextData: Codable {
 
 	public init(from decoder: Decoder) throws {
 		if let container = try? decoder.container(keyedBy: CodingKeys.self) {
-			if let experiments = try? container.decode([OptionalDecodableObject<Experiment>].self, forKey: .experiments)
-			{
-				self.experiments = experiments.compactMap { $0.value }
+			if let experiments = try? container.decode([Experiment].self, forKey: .experiments) {
+				self.experiments = experiments
 				return
 			}
-		}
-
-		if var container = try? decoder.unkeyedContainer() {
-			experiments =
-				(try? container.decode([OptionalDecodableObject<Experiment>].self))?.compactMap { $0.value } ?? []
-			return
 		}
 
 		throw DecodingError.dataCorrupted(

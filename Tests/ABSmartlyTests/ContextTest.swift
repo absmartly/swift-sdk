@@ -92,6 +92,18 @@ final class ContextTest: XCTestCase {
 		}
 	}
 
+	func testConstructorSetsCustomAssignments() throws {
+		let cassignments: [String: Int] = ["exp_test": 2, "exp_test_1": 1]
+		let contextConfig = getContextConfig(withUnits: true)
+		contextConfig.setCustomAssignments(assignments: cassignments)
+
+		let context = try createContext(config: contextConfig)
+
+		cassignments.forEach {
+			XCTAssertEqual($0.value, context.getCustomAssignment(experimentName: $0.key))
+		}
+	}
+
 	func testBecomesReadyWithFulfilledPromise() throws {
 		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
 		let context = try createContext(config: contextConfig)
@@ -281,6 +293,89 @@ final class ContextTest: XCTestCase {
 		XCTAssertEqual(2 + 2 * UInt(overrides.count), context.getPendingCount())
 	}
 
+	func testSetCustomAssignment() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let (promise, resolver) = Promise<ContextData>.pending()
+		let context = try createContext(config: contextConfig, data: promise)
+		XCTAssertFalse(context.isReady())
+
+		let expectation = XCTestExpectation()
+
+		context.setCustomAssignment(experimentName: "exp_test", variant: 2)
+		XCTAssertEqual(2, context.getCustomAssignment(experimentName: "exp_test"))
+
+		context.setCustomAssignment(experimentName: "exp_test", variant: 3)
+		XCTAssertEqual(3, context.getCustomAssignment(experimentName: "exp_test"))
+
+		context.setCustomAssignment(experimentName: "exp_test_2", variant: 1)
+		XCTAssertEqual(1, context.getCustomAssignment(experimentName: "exp_test_2"))
+
+		let cassignments = ["exp_test_new": 3, "exp_test_new_2": 5]
+		context.setCustomAssignments(cassignments)
+
+		XCTAssertEqual(3, context.getCustomAssignment(experimentName: "exp_test_new"))
+		XCTAssertEqual(5, context.getCustomAssignment(experimentName: "exp_test_new_2"))
+		XCTAssertEqual(nil, context.getCustomAssignment(experimentName: "exp_test_not_found"))
+
+		resolver.fulfill(try getContextData())
+
+		_ = context.waitUntilReady().done { _ in
+			XCTAssertEqual(3, context.getCustomAssignment(experimentName: "exp_test"))
+			XCTAssertEqual(1, context.getCustomAssignment(experimentName: "exp_test_2"))
+			XCTAssertEqual(3, context.getCustomAssignment(experimentName: "exp_test_new"))
+			XCTAssertEqual(5, context.getCustomAssignment(experimentName: "exp_test_new_2"))
+			XCTAssertEqual(nil, context.getCustomAssignment(experimentName: "exp_test_not_found"))
+
+			expectation.fulfill()
+		}
+
+		wait(for: [expectation], timeout: 1.0)
+	}
+
+	func testSetCustomAssignmentDoesNotOverrideFullOnOrNotEligibleAssignments() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let context = try createContext(config: contextConfig)
+
+		let cassignments: [String: Int] = ["exp_test_not_eligible": 3, "exp_test_fullon": 3]
+		context.setCustomAssignments(cassignments)
+
+		XCTAssertEqual(0, context.getTreatment("exp_test_not_eligible"))
+		XCTAssertEqual(2, context.getTreatment("exp_test_fullon"))
+	}
+
+	func testSetCustomAssignmentClearsAssignmentCache() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let context = try createContext(config: contextConfig)
+
+		let cassignments: [String: Int] = ["exp_test_ab": 2, "exp_test_abc": 3]
+
+		cassignments.forEach { XCTAssertEqual(expectedVariants[$0.key], context.getTreatment($0.key)) }
+		XCTAssertEqual(UInt(cassignments.count), context.getPendingCount())
+
+		context.setCustomAssignments(cassignments)
+
+		cassignments.forEach {
+			context.setCustomAssignment(experimentName: $0.key, variant: $0.value)
+			XCTAssertEqual($0.value, context.getTreatment($0.key))
+		}
+		XCTAssertEqual(2 * UInt(cassignments.count), context.getPendingCount())
+
+		// overriding with the same variant shouldn't clear assignment cache
+		cassignments.forEach {
+			context.setCustomAssignment(experimentName: $0.key, variant: $0.value)
+			XCTAssertEqual($0.value, context.getTreatment($0.key))
+		}
+		XCTAssertEqual(2 * UInt(cassignments.count), context.getPendingCount())
+
+		// overriding with the different variant should clear assignment cache
+		cassignments.forEach {
+			context.setCustomAssignment(experimentName: $0.key, variant: $0.value + 11)
+			XCTAssertEqual($0.value + 11, context.getTreatment($0.key))
+		}
+
+		XCTAssertEqual(3 * UInt(cassignments.count), context.getPendingCount())
+	}
+
 	func testPeekTreatment() throws {
 		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
 		let contextData = try getContextData()
@@ -401,11 +496,11 @@ final class ContextTest: XCTestCase {
 		expected.units = publishUnits
 		expected.publishedAt = clock.millis()
 		expected.exposures = [
-			Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false),
-			Exposure(2, "exp_test_abc", "session_id", 2, clock.millis(), true, true, false, false),
-			Exposure(3, "exp_test_not_eligible", "user_id", 0, clock.millis(), true, false, false, false),
-			Exposure(4, "exp_test_fullon", "session_id", 2, clock.millis(), true, true, false, true),
-			Exposure(0, "not_found", nil, 0, clock.millis(), false, true, false, false),
+			Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false),
+			Exposure(2, "exp_test_abc", "session_id", 2, clock.millis(), true, true, false, false, false),
+			Exposure(3, "exp_test_not_eligible", "user_id", 0, clock.millis(), true, false, false, false, false),
+			Exposure(4, "exp_test_fullon", "session_id", 2, clock.millis(), true, true, false, true, false),
+			Exposure(0, "not_found", nil, 0, clock.millis(), false, true, false, false, false),
 		]
 
 		_ = context.publish().done {
@@ -471,11 +566,11 @@ final class ContextTest: XCTestCase {
 		expected.units = publishUnits
 		expected.publishedAt = clock.millis()
 		expected.exposures = [
-			Exposure(1, "exp_test_ab", "session_id", 12, clock.millis(), true, true, true, false),
-			Exposure(2, "exp_test_abc", "session_id", 13, clock.millis(), true, true, true, false),
-			Exposure(3, "exp_test_not_eligible", "user_id", 11, clock.millis(), true, true, true, false),
-			Exposure(4, "exp_test_fullon", "session_id", 13, clock.millis(), true, true, true, false),
-			Exposure(0, "not_found", nil, 3, clock.millis(), false, true, true, false),
+			Exposure(1, "exp_test_ab", "session_id", 12, clock.millis(), true, true, true, false, false),
+			Exposure(2, "exp_test_abc", "session_id", 13, clock.millis(), true, true, true, false, false),
+			Exposure(3, "exp_test_not_eligible", "user_id", 11, clock.millis(), true, true, true, false, false),
+			Exposure(4, "exp_test_fullon", "session_id", 13, clock.millis(), true, true, true, false, false),
+			Exposure(0, "not_found", nil, 3, clock.millis(), false, true, true, false, false),
 		]
 
 		_ = context.publish().done {
@@ -634,16 +729,17 @@ final class ContextTest: XCTestCase {
 		wait(for: [expectation], timeout: 1.0)
 	}
 
-	func testPublishResetsInternalQueuesAndKeepsAttributesOverrides() throws {
+	func testPublishResetsInternalQueuesAndKeepsAttributesOverridesAndCustomAssignments() throws {
 		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
 		contextConfig.setAttributes(attributes: ["attr1": "value1", "attr2": 2])
 		contextConfig.setOverride(experimentName: "not_found", variant: 3)
+		contextConfig.setCustomAssignment(experimentName: "exp_test_abc", variant: 3)
 		let context = try createContext(config: contextConfig)
 
 		XCTAssertEqual(0, context.getPendingCount())
 
 		XCTAssertEqual(1, context.getTreatment("exp_test_ab"))
-		XCTAssertEqual(2, context.getTreatment("exp_test_abc"))
+		XCTAssertEqual(3, context.getTreatment("exp_test_abc"))
 		XCTAssertEqual(3, context.getTreatment("not_found"))
 		context.track("goal1", properties: ["amount": 125, "hours": 245])
 
@@ -660,9 +756,9 @@ final class ContextTest: XCTestCase {
 			expected.units = publishUnits
 			expected.publishedAt = clock.millis()
 			expected.exposures = [
-				Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false),
-				Exposure(2, "exp_test_abc", "session_id", 2, clock.millis(), true, true, false, false),
-				Exposure(0, "not_found", nil, 3, clock.millis(), false, true, true, false),
+				Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false),
+				Exposure(2, "exp_test_abc", "session_id", 3, clock.millis(), true, true, false, false, true),
+				Exposure(0, "not_found", nil, 3, clock.millis(), false, true, true, false, false),
 			]
 			expected.goals = [
 				GoalAchievement("goal1", achievedAt: clock.millis(), properties: ["amount": 125, "hours": 245])
@@ -695,7 +791,7 @@ final class ContextTest: XCTestCase {
 		XCTAssertEqual(0, context.getPendingCount())
 
 		XCTAssertEqual(1, context.getTreatment("exp_test_ab"))
-		XCTAssertEqual(2, context.getTreatment("exp_test_abc"))
+		XCTAssertEqual(3, context.getTreatment("exp_test_abc"))
 		XCTAssertEqual(3, context.getTreatment("not_found"))
 
 		context.track("goal1", properties: ["amount": 125, "hours": 245])

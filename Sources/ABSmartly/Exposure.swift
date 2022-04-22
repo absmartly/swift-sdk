@@ -10,10 +10,11 @@ class Exposure: Encodable, Equatable {
 	let eligible: Bool
 	let overridden: Bool
 	let fullOn: Bool
+	let custom: Bool
 
 	init(
 		_ id: Int, _ name: String, _ unit: String?, _ variant: Int, _ exposedAt: Int64, _ assigned: Bool,
-		_ eligible: Bool, _ overridden: Bool, _ fullOn: Bool
+		_ eligible: Bool, _ overridden: Bool, _ fullOn: Bool, _ custom: Bool
 	) {
 		self.id = id
 		self.name = name
@@ -24,11 +25,12 @@ class Exposure: Encodable, Equatable {
 		self.eligible = eligible
 		self.overridden = overridden
 		self.fullOn = fullOn
+		self.custom = custom
 	}
 
 	static func == (lhs: Exposure, rhs: Exposure) -> Bool {
 		return lhs.id == rhs.id && lhs.name == rhs.name && lhs.unit == rhs.unit && lhs.variant == rhs.variant
 			&& lhs.exposedAt == rhs.exposedAt && lhs.assigned == rhs.assigned && lhs.eligible == rhs.eligible
-			&& lhs.overridden == rhs.overridden && lhs.fullOn == rhs.fullOn
+			&& lhs.overridden == rhs.overridden && lhs.fullOn == rhs.fullOn && lhs.custom == rhs.custom
 	}
 }

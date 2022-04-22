@@ -4,6 +4,7 @@ public class ContextConfig {
 	private(set) var units: [String: String] = [:]
 	private(set) var attributes: [String: JSON] = [:]
 	private(set) var overrides: [String: Int] = [:]
+	private(set) var cassignments: [String: Int] = [:]
 	public var publishDelay: TimeInterval = 0.1
 
 	public init() {
@@ -31,5 +32,13 @@ public class ContextConfig {
 
 	public func setOverrides(overrides: [String: Int]) {
 		overrides.forEach { setOverride(experimentName: $0.key, variant: $0.value) }
+	}
+
+	public func setCustomAssignment(experimentName: String, variant: Int) {
+		cassignments[experimentName] = variant
+	}
+
+	public func setCustomAssignments(assignments: [String: Int]) {
+		assignments.forEach { setCustomAssignment(experimentName: $0.key, variant: $0.value) }
 	}
 }

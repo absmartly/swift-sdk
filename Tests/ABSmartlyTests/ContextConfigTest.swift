@@ -52,6 +52,21 @@ final class ContextConfigTest: XCTestCase {
 		XCTAssertEqual(config.overrides, overrides)
 	}
 
+	func testSetCustomAssignment() {
+		let config = ContextConfig()
+		config.setCustomAssignment(experimentName: "exp_test", variant: 2)
+
+		XCTAssertEqual(config.cassignments["exp_test"], 2)
+	}
+
+	func testSetCustomAssignments() {
+		let config = ContextConfig()
+		let cassignments = ["exp_test": 2, "exp_test_new": 1]
+
+		config.setCustomAssignments(assignments: cassignments)
+		XCTAssertEqual(config.cassignments, cassignments)
+	}
+
 	func testSetPublishDelay() {
 		let config = ContextConfig()
 		config.publishDelay = 999

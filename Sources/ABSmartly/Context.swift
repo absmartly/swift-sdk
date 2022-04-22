@@ -1,13 +1,9 @@
 import Atomics
 import Foundation
+import MapKit
 import PromiseKit
 
 public final class Context {
-	private let readyLock = NSLock()
-	private let dataLock = NSLock()
-	private let timeoutLock = NSLock()
-	private let eventLock = NSLock()
-
 	private let clock: Clock
 	private let scheduler: Scheduler
 	private let handler: ContextEventHandler
@@ -15,12 +11,6 @@ public final class Context {
 	private let parser: VariableParser
 	private var promise: Promise<ContextData>?
 	private var config: ContextConfig
-
-	private var timeout: ScheduledHandle?
-
-	private var index: [String: ExperimentVariables] = [:]
-	private var indexVariables: [String: ExperimentVariables] = [:]
-	private var data: ContextData?
 
 	private var pendingCount = ManagedAtomic<UInt>(0)
 
@@ -32,12 +22,25 @@ public final class Context {
 	private var refreshPromise: Promise<Void>?
 	private var closePromise: Promise<Void>?
 
-	private var attributes = ThreadSafeArray<Attribute>()
-	private var overrides: ThreadSafeMap<String, Int>
-	private var hashedUnits = ThreadSafeMap<String, [UInt8]>()
-	private var assigners = ThreadSafeMap<String, VariantAssigner>()
-	private var assignmentCache = ThreadSafeMap<String, Assignment>()
+	private let timeoutLock = NSLock()
+	private var timeout: ScheduledHandle?
 
+	private let dataLock = NSLock()
+	private var index: [String: ExperimentVariables] = [:]
+	private var indexVariables: [String: ExperimentVariables] = [:]
+	private var data: ContextData? = nil
+
+	private let assignmentLock = NSRecursiveLock()
+	private var hashedUnits: [String: [UInt8]] = [:]
+	private var assigners: [String: VariantAssigner] = [:]
+	private var assignmentCache: [String: Assignment] = [:]
+
+	private let contextLock = NSLock()
+	private var attributes: [Attribute] = []
+	private var overrides: [String: Int] = [:]
+	private var cassignments: [String: Int] = [:]
+
+	private let eventLock = NSLock()
 	private var exposures: [Exposure] = []
 	private var achievements: [GoalAchievement] = []
 
@@ -53,7 +56,16 @@ public final class Context {
 		self.promise = promise
 		self.config = config
 
-		overrides = ThreadSafeMap<String, Int>(with: config.overrides)
+		self.assigners.reserveCapacity(config.units.count)
+		self.hashedUnits.reserveCapacity(config.units.count)
+
+		self.overrides.reserveCapacity(config.overrides.count)
+		self.overrides.merge(config.overrides, uniquingKeysWith: { (_, new) in new })
+
+		self.cassignments.reserveCapacity(config.cassignments.count)
+		self.cassignments.merge(config.cassignments, uniquingKeysWith: { (_, new) in new })
+
+		self.attributes.reserveCapacity(config.attributes.count)
 		setAttributes(config.attributes)
 
 		if promise.isResolved {
@@ -126,17 +138,30 @@ public final class Context {
 		return data
 	}
 
+	private func putLocked<K, V>(lock: NSLock, dict: inout [K: V], key: K, value: V) -> V? {
+		lock.lock()
+		defer { lock.unlock() }
+		return dict.updateValue(value, forKey: key)
+	}
+
+	private func getLocked<K, V>(lock: NSLock, dict: [K: V], key: K) -> V? {
+		lock.lock()
+		defer { lock.unlock() }
+		return dict[key]
+	}
+
 	public func setOverride(experimentName: String, variant: Int) {
 		checkNotClosed()
 
-		let previous: Int? = overrides[experimentName]
-		overrides[experimentName] = variant
-
+		let previous: Int? = putLocked(lock: contextLock, dict: &overrides, key: experimentName, value: variant)
 		if previous == nil || previous != variant {
+			assignmentLock.lock()
+			defer { assignmentLock.unlock() }
+
 			if let assignment: Assignment = assignmentCache[experimentName] {
 				if !assignment.overridden || assignment.variant != variant {
 					if assignmentCache[experimentName] == assignment {
-						assignmentCache.remove(experimentName)
+						assignmentCache.removeValue(forKey: experimentName)
 					}
 				}
 			}
@@ -144,15 +169,44 @@ public final class Context {
 	}
 
 	public func getOverride(experimentName: String) -> Int? {
-		return overrides[experimentName]
+		return getLocked(lock: contextLock, dict: overrides, key: experimentName)
 	}
 
 	public func setOverrides(_ overrides: [String: Int]) {
 		overrides.forEach { setOverride(experimentName: $0.key, variant: $0.value) }
 	}
 
+	public func setCustomAssignment(experimentName: String, variant: Int) {
+		checkNotClosed()
+
+		let previous: Int? = putLocked(lock: contextLock, dict: &cassignments, key: experimentName, value: variant)
+		if previous == nil || previous != variant {
+			assignmentLock.lock()
+			defer { assignmentLock.unlock() }
+
+			if let assignment: Assignment = assignmentCache[experimentName] {
+				if !assignment.custom || assignment.variant != variant {
+					if assignmentCache[experimentName] == assignment {
+						assignmentCache.removeValue(forKey: experimentName)
+					}
+				}
+			}
+		}
+	}
+
+	public func getCustomAssignment(experimentName: String) -> Int? {
+		return getLocked(lock: contextLock, dict: cassignments, key: experimentName)
+	}
+
+	public func setCustomAssignments(_ assignments: [String: Int]) {
+		assignments.forEach { setCustomAssignment(experimentName: $0.key, variant: $0.value) }
+	}
+
 	public func setAttribute(name: String, value: JSON) {
 		checkNotClosed()
+
+		contextLock.lock()
+		defer { contextLock.unlock() }
 
 		attributes.append(Attribute(name, value: value, setAt: clock.millis()))
 	}
@@ -180,7 +234,7 @@ public final class Context {
 		let exposure = Exposure(
 			assignment.id, assignment.name, assignment.unitType, assignment.variant,
 			clock.millis(), assignment.assigned, assignment.eligible,
-			assignment.overridden, assignment.fullOn)
+			assignment.overridden, assignment.fullOn, assignment.custom)
 
 		do {
 			eventLock.lock()
@@ -201,6 +255,9 @@ public final class Context {
 
 	public func getVariableKeys() -> [String: String] {
 		checkReady(true)
+
+		dataLock.lock()
+		defer { dataLock.unlock() }
 
 		return indexVariables.mapValues { $0.data.name }
 	}
@@ -317,50 +374,58 @@ public final class Context {
 	private func flush() -> Promise<Void> {
 		clearTimeout()
 
-		guard !isFailed() else {
+		if !isFailed() {
+			var eventCount = pendingCount.load(ordering: .relaxed)
+			if eventCount == 0 {
+				return Promise<Void>.value(())
+			}
+
+			var localExposures: [Exposure] = []
+			var localAchievements: [GoalAchievement] = []
+
+			do {
+				eventLock.lock()
+				defer { eventLock.unlock() }
+
+				eventCount = pendingCount.load(ordering: .relaxed)
+				if eventCount > 0 {
+					if !self.exposures.isEmpty {
+						localExposures = self.exposures
+						self.exposures = []
+					}
+
+					if !self.achievements.isEmpty {
+						localAchievements = self.achievements
+						self.achievements = []
+					}
+
+					pendingCount.store(0, ordering: .relaxed)
+				}
+			}
+
+			if eventCount > 0 {
+				let event = PublishEvent(
+					true,
+					config.units.map {
+						Unit(type: $0.key, uid: String(bytes: getUnitHash($0.key, $0.value), encoding: .ascii) ?? "")
+					},
+					clock.millis(),
+					localExposures,
+					localAchievements,
+					attributes)
+
+				return handler.publish(event: event)
+			}
+		} else {
 			eventLock.lock()
 			defer { eventLock.unlock() }
 
 			exposures = []
 			achievements = []
 			pendingCount.store(0, ordering: .relaxed)
-
-			return Promise<Void>.value(())
 		}
 
-		let eventCount = pendingCount.load(ordering: .relaxed)
-		if eventCount == 0 {
-			return Promise<Void>.value(())
-		}
-
-		if !pendingCount.compareExchange(expected: eventCount, desired: 0, ordering: .acquiringAndReleasing).0 {
-			return Promise<Void>.value(())
-		}
-
-		let localExposures: [Exposure]
-		let localAchievements: [GoalAchievement]
-		do {
-			eventLock.lock()
-			defer { eventLock.unlock() }
-
-			localExposures = self.exposures
-			self.exposures = []
-
-			localAchievements = self.achievements
-			self.achievements = []
-		}
-
-		let event = PublishEvent(
-			true,
-			config.units.map {
-				Unit(type: $0.key, uid: String(bytes: getUnitHash($0.key, $0.value), encoding: .ascii) ?? "")
-			},
-			clock.millis(),
-			localExposures,
-			localAchievements,
-			attributes.rawArray)
-
-		return handler.publish(event: event)
+		return Promise<Void>.value(())
 	}
 
 	private func checkReady(_ expectNotClosed: Bool) {
@@ -382,15 +447,13 @@ public final class Context {
 	}
 
 	private func getExperiment(_ experimentName: String) -> ExperimentVariables? {
-		dataLock.lock()
-		defer {
-			dataLock.unlock()
-		}
-
-		return index[experimentName]
+		return getLocked(lock: dataLock, dict: index, key: experimentName)
 	}
 
 	private func getAssignment(_ experimentName: String) -> Assignment {
+		assignmentLock.lock()
+		defer { assignmentLock.unlock() }
+
 		if let assignment = assignmentCache[experimentName] {
 			return assignment
 		}
@@ -430,8 +493,14 @@ public final class Context {
 								experiment.data.trafficSeedLo) == 1
 
 						if eligible {
-							assignment.variant = assigner.assign(
-								experiment.data.split, experiment.data.seedHi, experiment.data.seedLo)
+							let custom = cassignments[experimentName]
+							if custom != nil {
+								assignment.variant = custom!
+								assignment.custom = true
+							} else {
+								assignment.variant = assigner.assign(
+									experiment.data.split, experiment.data.seedHi, experiment.data.seedLo)
+							}
 						} else {
 							assignment.eligible = false
 							assignment.variant = 0
@@ -470,13 +539,13 @@ public final class Context {
 	}
 
 	private func getVariableExperiment(_ experimentName: String) -> ExperimentVariables? {
-		dataLock.lock()
-		defer { dataLock.unlock() }
-
-		return indexVariables[experimentName]
+		return getLocked(lock: dataLock, dict: indexVariables, key: experimentName)
 	}
 
 	private func getUnitHash(_ unitType: String, _ unitUID: String) -> [UInt8] {
+		assignmentLock.lock()
+		defer { assignmentLock.unlock() }
+
 		if let unitHash = hashedUnits[unitType] { return unitHash }
 
 		let hashValue: [UInt8] = Hashing.hash(unitUID)
@@ -485,6 +554,9 @@ public final class Context {
 	}
 
 	private func getVariantAssigner(_ unitType: String, _ unitHash: [UInt8]) -> VariantAssigner {
+		assignmentLock.lock()
+		defer { assignmentLock.unlock() }
+
 		if let variantAssigner = assigners[unitType] {
 			return variantAssigner
 		}
@@ -502,11 +574,13 @@ public final class Context {
 			timeoutLock.lock()
 			defer { timeoutLock.unlock() }
 
-			timeout = scheduler.schedule(
-				after: config.publishDelay,
-				execute: {
-					_ = self.flush()
-				})
+			if timeout == nil {
+				timeout = scheduler.schedule(
+					after: config.publishDelay,
+					execute: {
+						_ = self.flush()
+					})
+			}
 		}
 	}
 
@@ -546,49 +620,32 @@ public final class Context {
 		}
 
 		dataLock.lock()
+		assignmentLock.lock()
 		defer {
+			assignmentLock.lock()
 			dataLock.unlock()
 		}
 
-		var previousAssignments: [String: Assignment] = [:]
-		var assignments = hasNewValues(previousAssignments, assignmentCache.rawHashmap)
-
-		while assignments.count > 0 {
-			for entry in assignments {
-
-				if let experiment = index[entry.key] {
-					if !entry.value.assigned {
-						assignmentCache.remove(entry.key)
-					} else if !experimentMatches(experiment.data, entry.value) {
-						assignmentCache.remove(entry.key)
-					}
-				} else {
-					if entry.value.assigned {
-						assignmentCache.remove(entry.key)
-					}
+		assignmentCache.forEach { experimentName, assignment in
+			if let experiment = index[experimentName] {
+				if !assignment.assigned {
+					// previously not running experiment was started
+					assignmentCache.removeValue(forKey: experimentName)
+				} else if !experimentMatches(experiment.data, assignment) {
+					// other relevant experiment data changed
+					assignmentCache.removeValue(forKey: experimentName)
 				}
-
-				previousAssignments[entry.key] = entry.value
+			} else {
+				if assignment.assigned {
+					// previously running experiment was stopped
+					assignmentCache.removeValue(forKey: experimentName)
+				}
 			}
-
-			assignments = hasNewValues(previousAssignments, assignmentCache.rawHashmap)
 		}
 
 		self.data = data
 		self.index = index
 		self.indexVariables = indexVariables
-	}
-
-	private func hasNewValues(_ lastData: [String: Assignment], _ newData: [String: Assignment]) -> [String: Assignment]
-	{
-		var newValues: [String: Assignment] = [:]
-
-		for item in newData {
-			if lastData.keys.contains(item.key) { continue }
-			newValues[item.key] = item.value
-		}
-
-		return newValues
 	}
 
 	private func setDataFailed(_ error: Error) {
@@ -616,7 +673,8 @@ private class Assignment: Equatable {
 		return lhs.id == rhs.id && lhs.iteration == rhs.iteration && lhs.fullOnVariant == rhs.fullOnVariant
 			&& lhs.name == rhs.name && lhs.unitType == rhs.unitType && lhs.trafficSplit == rhs.trafficSplit
 			&& lhs.variant == rhs.variant && lhs.assigned == rhs.assigned && lhs.overridden == rhs.overridden
-			&& lhs.eligible == rhs.eligible && lhs.fullOn == rhs.fullOn && lhs.variables == rhs.variables
+			&& lhs.eligible == rhs.eligible && lhs.fullOn == rhs.fullOn && lhs.custom == rhs.custom
+			&& lhs.variables == rhs.variables
 	}
 
 	var id: Int = 0
@@ -630,6 +688,7 @@ private class Assignment: Equatable {
 	var overridden: Bool = false
 	var eligible: Bool = false
 	var fullOn: Bool = false
+	var custom: Bool = false
 	var variables: [String: JSON] = [:]
 	var exposed = ManagedAtomic<Bool>(false)
 }

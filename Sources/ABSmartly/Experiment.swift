@@ -13,7 +13,7 @@ public struct Experiment: Codable {
 	public let trafficSplit: [Double]
 	public let fullOnVariant: Int
 	public let applications: [Application]?
-	public let variants: [Variant]
+	public let variants: [ExperimentVariant]
 
 	public init(from decoder: Decoder) throws {
 		guard let container = try? decoder.container(keyedBy: CodingKeys.self) else {
@@ -42,55 +42,8 @@ public struct Experiment: Codable {
 		self.trafficSplit = (try? container.decodeIfPresent([Double].self, forKey: .trafficSplit)) ?? []
 		self.fullOnVariant = (try? container.decodeIfPresent(Int.self, forKey: .fullOnVariant)) ?? 0
 
-		self.applications =
-			(try? container.decode([OptionalDecodableObject<Application>].self, forKey: .applications))?.compactMap {
-				$0.value
-			} ?? []
-		self.variants =
-			(try? container.decode([OptionalDecodableObject<Variant>].self, forKey: .variants))?.compactMap { $0.value }
-			?? []
-	}
-}
-
-extension Experiment {
-	public class Application: Codable, Equatable {
-		public let name: String?
-
-		init(_ name: String) {
-			self.name = name
-		}
-
-		public static func == (lhs: Experiment.Application, rhs: Experiment.Application) -> Bool {
-			return lhs.name == rhs.name
-		}
-	}
-
-	public class Variant: Codable, Equatable {
-		public let name: String?
-		public let config: String?
-
-		init(_ name: String, _ config: String) {
-			self.name = name
-			self.config = config
-		}
-
-		public static func == (lhs: Experiment.Variant, rhs: Experiment.Variant) -> Bool {
-			return lhs.name == rhs.name && lhs.config == rhs.config
-		}
-
-		public func decodeConfig<T>() -> T? {
-			guard let configData = config?.data(using: .utf8) else { return nil }
-
-			do {
-				guard let decodedData = try JSONSerialization.jsonObject(with: configData, options: []) as? T else {
-					return nil
-				}
-
-				return decodedData
-			} catch {
-				return nil
-			}
-		}
+		self.applications = (try? container.decode([Application].self, forKey: .applications)) ?? []
+		self.variants = (try? container.decode([ExperimentVariant].self, forKey: .variants)) ?? []
 	}
 }
 
