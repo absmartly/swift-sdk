@@ -38,8 +38,8 @@ class ViewController: UIViewController {
 		view.addConstraints([horizontalConstraint, verticalConstraint, widthConstraint, heightConstraint])
 
 		let clientConfig = ClientConfig(
-            // The following environment variables should be changed in:
-            // Product -> Scheme -> Edit Scheme -> Run -> Arguments
+			// The following environment variables should be changed in:
+			// Product -> Scheme -> Edit Scheme -> Run -> Arguments
 			apiKey: ProcessInfo.processInfo.environment["ABSMARTLY_API_KEY"] ?? "",
 			application: ProcessInfo.processInfo.environment["ABSMARTLY_APPLICATION"] ?? "",
 			endpoint: ProcessInfo.processInfo.environment["ABSMARTLY_ENDPOINT"] ?? "",

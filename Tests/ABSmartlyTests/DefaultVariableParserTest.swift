@@ -1,31 +1,46 @@
+import Foundation
 import XCTest
 
 @testable import ABSmartly
 
 final class DefaultVariableParserTest: XCTestCase {
-	/* func testParse() {
-        let path = Bundle.module.path(forResource: "variables", ofType: "json", inDirectory: "Resources")!
-        let data = Foundation.String(contentsOf: URL(fileURLWithPath: path), options: .mappedIfSafe)
+	func testParse() throws {
+		let path = Bundle.module.path(forResource: "variables", ofType: "json", inDirectory: "Resources")!
+		let data = try Foundation.Data(contentsOf: URL(fileURLWithPath: path), options: .mappedIfSafe)
+		let config = String(data: data, encoding: .utf8)
 
-        let parser = DefaultVariableParser()
-        let vars = parser.parse(experimentName: "text", config: data)
+		let parser = DefaultVariableParser()
+		let actual = parser.parse(experimentName: "test", config: config!)
 
-        XCTAssertEqual(variables?.count, 6)
+		let expected: [String: JSON] = [
+			"a": 1,
+			"b": "test",
+			"c": [
+				"test": 2,
+				"double": 19.123,
+				"list": ["x", "y", "z"],
+				"point": [
+					"x": -1.0,
+					"y": 0.0,
+					"z": 1.0,
+				],
+			],
+			"d": true,
+			"f": [9_234_567_890, "a", true, false],
+			"g": 9.123,
+		]
 
-        XCTAssertEqual(variables?["a"] as? Int, 1)
-        XCTAssertEqual(variables?["b"] as? String, "test")
-        XCTAssertEqual((variables?["c"] as? [String: AnyObject])?.count, 4)
-        XCTAssertEqual((variables?["c"] as? [String: AnyObject])?["test"] as? Int, 2)
-        XCTAssertEqual((variables?["c"] as? [String: AnyObject])?["double"] as? Double, 19.123)
-        XCTAssertEqual((variables?["c"] as? [String: AnyObject])?["list"] as? [String], ["x", "y", "z"])
-        XCTAssertEqual(
-            (variables?["c"] as? [String: AnyObject])?["point"] as? [String: Double], ["x": -1.0, "y": 0.0, "z": 1.0])
-        XCTAssertEqual(variables?["d"] as? Bool, true)
-        XCTAssertEqual((variables?["f"] as? [Any])?.count, 4)
-        XCTAssertEqual((variables?["f"] as? [Any])?[0] as? Int, 9_234_567_890)
-        XCTAssertEqual((variables?["f"] as? [Any])?[1] as? String, "a")
-        XCTAssertEqual((variables?["f"] as? [Any])?[2] as? Bool, true)
-        XCTAssertEqual((variables?["f"] as? [Any])?[3] as? Bool, false)
-        XCTAssertEqual(variables?["g"] as? Double, 9.123)
-    }*/
+		XCTAssertEqual(expected, actual)
+	}
+
+	func testReturnsNilOnError() throws {
+		let path = Bundle.module.path(forResource: "variables", ofType: "json", inDirectory: "Resources")!
+		let data = try Foundation.Data(contentsOf: URL(fileURLWithPath: path), options: .mappedIfSafe)
+		let config = String(data: data.subdata(in: 0..<6), encoding: .utf8)
+
+		let parser = DefaultVariableParser()
+		let actual = parser.parse(experimentName: "test", config: config!)
+
+		XCTAssertNil(actual)
+	}
 }

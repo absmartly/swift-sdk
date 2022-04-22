@@ -40,7 +40,7 @@ final class ContextTest: XCTestCase {
 		"show-modal": "exp_test_new",
 	]
 
-	let expectedVariables: [String: Any] = [
+	let expectedVariables: [String: JSON] = [
 		"banner.border": 1,
 		"banner.size": "large",
 		"button.color": "red",
@@ -309,13 +309,10 @@ final class ContextTest: XCTestCase {
 				})
 			{
 				let expected = expectedVariables[variableName]
-				if let expected = expected as? Int {
-					XCTAssertEqual(expected, actual as? Int)
-				} else if let expected = expected as? String {
-					XCTAssertEqual(expected, actual as? String)
-				}
+				XCTAssertEqual(expected, actual)
+				XCTAssertEqual(expected, actual)
 			} else {
-				XCTAssertEqual(17, actual as! Int)
+				XCTAssertEqual(17, actual)
 			}
 		}
 
@@ -337,13 +334,10 @@ final class ContextTest: XCTestCase {
 				})
 			{
 				let expected = expectedVariables[variableName]
-				if let expected = expected as? Int {
-					XCTAssertEqual(expected, actual as? Int)
-				} else if let expected = expected as? String {
-					XCTAssertEqual(expected, actual as? String)
-				}
+				XCTAssertEqual(expected, actual)
+				XCTAssertEqual(expected, actual)
 			} else {
-				XCTAssertEqual(17, actual as! Int)
+				XCTAssertEqual(17, actual)
 			}
 		}
 

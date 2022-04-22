@@ -151,13 +151,13 @@ public final class Context {
 		overrides.forEach { setOverride(experimentName: $0.key, variant: $0.value) }
 	}
 
-	public func setAttribute(name: String, value: Any?) {
+	public func setAttribute(name: String, value: JSON) {
 		checkNotClosed()
 
 		attributes.append(Attribute(name, value: value, setAt: clock.millis()))
 	}
 
-	public func setAttributes(_ attributes: [String: Any?]) {
+	public func setAttributes(_ attributes: [String: JSON]) {
 		attributes.forEach { setAttribute(name: $0, value: $1) }
 	}
 
@@ -205,7 +205,7 @@ public final class Context {
 		return indexVariables.mapValues { $0.data.name }
 	}
 
-	public func getVariableValue(key: String, defaultValue: Any? = nil) -> Any? {
+	public func getVariableValue(key: String, defaultValue: JSON? = nil) -> JSON? {
 		checkReady(true)
 
 		if let assignment = getVariableAssignment(key) {
@@ -221,7 +221,7 @@ public final class Context {
 		return defaultValue
 	}
 
-	public func peekVariableValue(key: String, defaultValue: Any? = nil) -> Any? {
+	public func peekVariableValue(key: String, defaultValue: JSON? = nil) -> JSON? {
 		checkReady(true)
 
 		if let assignment = getVariableAssignment(key) {
@@ -233,7 +233,7 @@ public final class Context {
 		return defaultValue
 	}
 
-	public func track(_ goalName: String, properties: [String: Any]? = nil) {
+	public func track(_ goalName: String, properties: [String: JSON]? = nil) {
 		checkNotClosed()
 
 		let achievement: GoalAchievement = GoalAchievement(
@@ -454,7 +454,7 @@ public final class Context {
 		}
 
 		if let experiment = experiment, assignment.variant < experiment.data.variants.count {
-			assignment.variables = experiment.variables[assignment.variant] as [String: Any]
+			assignment.variables = experiment.variables[assignment.variant]
 		}
 
 		assignmentCache[experimentName] = assignment
@@ -533,7 +533,7 @@ public final class Context {
 						for (key, _) in parsed {
 							indexVariables[key] = experimentVariables
 						}
-						experimentVariables.variables.append(parsed as [String: Any?])
+						experimentVariables.variables.append(parsed)
 					} else {
 						experimentVariables.variables.append([:])
 					}
@@ -604,7 +604,7 @@ public final class Context {
 
 private class ExperimentVariables {
 	let data: Experiment
-	var variables: [[String: Any?]] = []
+	var variables: [[String: JSON]] = []
 
 	init(_ experiment: Experiment) {
 		self.data = experiment
@@ -616,7 +616,7 @@ private class Assignment: Equatable {
 		return lhs.id == rhs.id && lhs.iteration == rhs.iteration && lhs.fullOnVariant == rhs.fullOnVariant
 			&& lhs.name == rhs.name && lhs.unitType == rhs.unitType && lhs.trafficSplit == rhs.trafficSplit
 			&& lhs.variant == rhs.variant && lhs.assigned == rhs.assigned && lhs.overridden == rhs.overridden
-			&& lhs.eligible == rhs.eligible && lhs.fullOn == rhs.fullOn && lhs.variables.count == rhs.variables.count
+			&& lhs.eligible == rhs.eligible && lhs.fullOn == rhs.fullOn && lhs.variables == rhs.variables
 	}
 
 	var id: Int = 0
@@ -630,6 +630,6 @@ private class Assignment: Equatable {
 	var overridden: Bool = false
 	var eligible: Bool = false
 	var fullOn: Bool = false
-	var variables: [String: Any?] = [:]
+	var variables: [String: JSON] = [:]
 	var exposed = ManagedAtomic<Bool>(false)
 }

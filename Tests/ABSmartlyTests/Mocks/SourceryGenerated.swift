@@ -1,10 +1,13 @@
-// swiftlint:disable line_length
-// swiftlint:disable variable_name
+// Generated using Sourcery 1.7.0 — https://github.com/krzysztofzablocki/Sourcery
+// DO NOT EDIT
 
 import Foundation
 import PromiseKit
 
 @testable import ABSmartly
+
+// swiftlint:disable line_length
+// swiftlint:disable variable_name
 
 class ClientMock: Client {
 
@@ -331,10 +334,10 @@ class VariableParserMock: VariableParser {
 	}
 	var parseExperimentNameConfigReceivedArguments: (experimentName: String, config: String)?
 	var parseExperimentNameConfigReceivedInvocations: [(experimentName: String, config: String)] = []
-	var parseExperimentNameConfigReturnValue: [String: Any?]?
-	var parseExperimentNameConfigClosure: ((String, String) -> [String: Any?]?)?
+	var parseExperimentNameConfigReturnValue: [String: JSON]?
+	var parseExperimentNameConfigClosure: ((String, String) -> [String: JSON]?)?
 
-	func parse(experimentName: String, config: String) -> [String: Any?]? {
+	func parse(experimentName: String, config: String) -> [String: JSON]? {
 		parseExperimentNameConfigCallsCount += 1
 		parseExperimentNameConfigReceivedArguments = (experimentName: experimentName, config: config)
 		parseExperimentNameConfigReceivedInvocations.append((experimentName: experimentName, config: config))
@@ -344,4 +347,5 @@ class VariableParserMock: VariableParser {
 			return parseExperimentNameConfigReturnValue
 		}
 	}
+
 }
