@@ -1,13 +1,12 @@
 // Generated using Sourcery 1.7.0 — https://github.com/krzysztofzablocki/Sourcery
 // DO NOT EDIT
 
-import Foundation
+// swiftlint:disable line_length
+// swiftlint:disable variable_name
+
 import PromiseKit
 
 @testable import ABSmartly
-
-// swiftlint:disable line_length
-// swiftlint:disable variable_name
 
 class ClientMock: Client {
 
@@ -69,7 +68,15 @@ class ClientMock: Client {
 		}
 	}
 
+	func clearInvocations() {
+		getContextDataCallsCount = 0
+		publishEventCallsCount = 0
+		publishEventReceivedEvent = nil
+		publishEventReceivedInvocations = []
+		closeCallsCount = 0
+	}
 }
+
 class ClockMock: Clock {
 
 	//MARK: - millis
@@ -90,7 +97,11 @@ class ClockMock: Clock {
 		}
 	}
 
+	func clearInvocations() {
+		millisCallsCount = 0
+	}
 }
+
 class ContextDataProviderMock: ContextDataProvider {
 
 	//MARK: - getContextData
@@ -111,7 +122,11 @@ class ContextDataProviderMock: ContextDataProvider {
 		}
 	}
 
+	func clearInvocations() {
+		getContextDataCallsCount = 0
+	}
 }
+
 class ContextEventHandlerMock: ContextEventHandler {
 
 	//MARK: - publish
@@ -136,7 +151,13 @@ class ContextEventHandlerMock: ContextEventHandler {
 		}
 	}
 
+	func clearInvocations() {
+		publishEventCallsCount = 0
+		publishEventReceivedEvent = nil
+		publishEventReceivedInvocations = []
+	}
 }
+
 class HTTPClientMock: HTTPClient {
 
 	//MARK: - get
@@ -228,7 +249,20 @@ class HTTPClientMock: HTTPClient {
 		}
 	}
 
+	func clearInvocations() {
+		getUrlQueryHeadersCallsCount = 0
+		getUrlQueryHeadersReceivedArguments = nil
+		getUrlQueryHeadersReceivedInvocations = []
+		putUrlQueryHeadersBodyCallsCount = 0
+		putUrlQueryHeadersBodyReceivedArguments = nil
+		putUrlQueryHeadersBodyReceivedInvocations = []
+		postUrlQueryHeadersBodyCallsCount = 0
+		postUrlQueryHeadersBodyReceivedArguments = nil
+		postUrlQueryHeadersBodyReceivedInvocations = []
+		closeCallsCount = 0
+	}
 }
+
 class ResponseMock: Response {
 	var status: Int {
 		get { return underlyingStatus }
@@ -251,7 +285,10 @@ class ResponseMock: Response {
 	}
 	var underlyingContent: Data!
 
+	func clearInvocations() {
+	}
 }
+
 class ScheduledHandleMock: ScheduledHandle {
 
 	//MARK: - wait
@@ -298,7 +335,13 @@ class ScheduledHandleMock: ScheduledHandle {
 		}
 	}
 
+	func clearInvocations() {
+		waitCallsCount = 0
+		cancelCallsCount = 0
+		isCancelledCallsCount = 0
+	}
 }
+
 class SchedulerMock: Scheduler {
 
 	//MARK: - schedule
@@ -323,7 +366,13 @@ class SchedulerMock: Scheduler {
 		}
 	}
 
+	func clearInvocations() {
+		scheduleAfterExecuteCallsCount = 0
+		scheduleAfterExecuteReceivedArguments = nil
+		scheduleAfterExecuteReceivedInvocations = []
+	}
 }
+
 class VariableParserMock: VariableParser {
 
 	//MARK: - parse
@@ -348,4 +397,9 @@ class VariableParserMock: VariableParser {
 		}
 	}
 
+	func clearInvocations() {
+		parseExperimentNameConfigCallsCount = 0
+		parseExperimentNameConfigReceivedArguments = nil
+		parseExperimentNameConfigReceivedInvocations = []
+	}
 }
