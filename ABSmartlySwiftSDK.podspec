@@ -1,6 +1,6 @@
 Pod::Spec.new do |spec|
   spec.name = 'ABSmartlySwiftSDK'
-  spec.version = '1.0.2'
+  spec.version = '1.1.0'
   spec.summary = 'A/B Smartly Swift SDK'
   spec.description = 'A/B Smartly SDK for iOS/tvOS/watchOS'
 
