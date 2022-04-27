@@ -5,10 +5,12 @@ public final class ABSmartlySDK {
 	private var client: Client?
 	private let contextDataProvider: ContextDataProvider
 	private let contextEventHandler: ContextEventHandler
+	private let contextEventLogger: ContextEventLogger?
 	private let variableParser: VariableParser
 	private let scheduler: Scheduler
 
 	public init(config: ABSmartlyConfig) throws {
+		contextEventLogger = config.contextEventLogger
 		variableParser = config.variableParser ?? DefaultVariableParser()
 		scheduler = config.scheduler ?? DefaultScheduler()
 		client = config.client
@@ -29,13 +31,15 @@ public final class ABSmartlySDK {
 	public func createContextWithData(config: ContextConfig, contextData: ContextData) -> Context {
 		return Context(
 			config: config, clock: DefaultClock(), scheduler: scheduler, handler: contextEventHandler,
-			provider: contextDataProvider, parser: variableParser, promise: Promise<ContextData>.value(contextData))
+			provider: contextDataProvider, logger: contextEventLogger, parser: variableParser,
+			promise: Promise<ContextData>.value(contextData))
 	}
 
 	public func createContext(config: ContextConfig) -> Context {
 		return Context(
 			config: config, clock: DefaultClock(), scheduler: scheduler, handler: contextEventHandler,
-			provider: contextDataProvider, parser: variableParser, promise: contextDataProvider.getContextData())
+			provider: contextDataProvider, logger: contextEventLogger, parser: variableParser,
+			promise: contextDataProvider.getContextData())
 	}
 
 	public func getContextData() -> Promise<ContextData> {

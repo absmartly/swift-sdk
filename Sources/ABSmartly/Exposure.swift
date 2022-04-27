@@ -1,6 +1,6 @@
 import Foundation
 
-class Exposure: Encodable, Equatable {
+public class Exposure: Encodable, Equatable {
 	let id: Int
 	let name: String
 	let unit: String?
@@ -28,7 +28,7 @@ class Exposure: Encodable, Equatable {
 		self.custom = custom
 	}
 
-	static func == (lhs: Exposure, rhs: Exposure) -> Bool {
+	public static func == (lhs: Exposure, rhs: Exposure) -> Bool {
 		return lhs.id == rhs.id && lhs.name == rhs.name && lhs.unit == rhs.unit && lhs.variant == rhs.variant
 			&& lhs.exposedAt == rhs.exposedAt && lhs.assigned == rhs.assigned && lhs.eligible == rhs.eligible
 			&& lhs.overridden == rhs.overridden && lhs.fullOn == rhs.fullOn && lhs.custom == rhs.custom

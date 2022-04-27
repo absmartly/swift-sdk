@@ -5,6 +5,7 @@ public class ContextConfig {
 	private(set) var attributes: [String: JSON] = [:]
 	private(set) var overrides: [String: Int] = [:]
 	private(set) var cassignments: [String: Int] = [:]
+	public var eventLogger: ContextEventLogger?
 	public var publishDelay: TimeInterval = 0.1
 
 	public init() {

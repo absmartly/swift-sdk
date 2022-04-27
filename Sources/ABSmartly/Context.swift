@@ -8,6 +8,7 @@ public final class Context {
 	private let scheduler: Scheduler
 	private let handler: ContextEventHandler
 	private let provider: ContextDataProvider
+	private let logger: ContextEventLogger?
 	private let parser: VariableParser
 	private var promise: Promise<ContextData>?
 	private var config: ContextConfig
@@ -46,49 +47,58 @@ public final class Context {
 
 	init(
 		config: ContextConfig, clock: Clock, scheduler: Scheduler, handler: ContextEventHandler,
-		provider: ContextDataProvider, parser: VariableParser, promise: Promise<ContextData>
+		provider: ContextDataProvider, logger: ContextEventLogger?, parser: VariableParser,
+		promise: Promise<ContextData>
 	) {
 		self.clock = clock
 		self.scheduler = scheduler
 		self.handler = handler
 		self.provider = provider
+		self.logger = logger
 		self.parser = parser
 		self.promise = promise
 		self.config = config
 
-		self.assigners.reserveCapacity(config.units.count)
-		self.hashedUnits.reserveCapacity(config.units.count)
+		assigners.reserveCapacity(config.units.count)
+		hashedUnits.reserveCapacity(config.units.count)
 
-		self.overrides.reserveCapacity(config.overrides.count)
-		self.overrides.merge(config.overrides, uniquingKeysWith: { (_, new) in new })
+		overrides.reserveCapacity(config.overrides.count)
+		overrides.merge(config.overrides, uniquingKeysWith: { (_, new) in new })
 
-		self.cassignments.reserveCapacity(config.cassignments.count)
-		self.cassignments.merge(config.cassignments, uniquingKeysWith: { (_, new) in new })
+		cassignments.reserveCapacity(config.cassignments.count)
+		cassignments.merge(config.cassignments, uniquingKeysWith: { (_, new) in new })
 
-		self.attributes.reserveCapacity(config.attributes.count)
+		attributes.reserveCapacity(config.attributes.count)
 		setAttributes(config.attributes)
 
 		if promise.isResolved {
 			if let data = promise.value {
-				self.setData(data)
+				setData(data)
+
+				logEvent(event: .ready(data: data))
 			} else if let error = promise.error {
-				self.setDataFailed(error)
+				setDataFailed(error)
+
+				logError(error: error)
 			}
 		} else {
 			readyPromise = Promise<Void> { seal in
-				promise.done { result in
-					self.setData(result)
+				promise.done { [self] data in
+					setData(data)
 					seal.fulfill(())
-					self.readyPromise = nil
-					if self.pendingCount.load(ordering: .relaxed) > 0 {
-						self.setTimeout()
+					readyPromise = nil
+
+					logEvent(event: .ready(data: data))
+
+					if pendingCount.load(ordering: .relaxed) > 0 {
+						setTimeout()
 					}
-				}.catch { error in
-					self.setDataFailed(error)
-					self.readyPromise = nil
+				}.catch { [self] error in
+					setDataFailed(error)
+					readyPromise = nil
 					seal.fulfill(())  // throw no user-visible errors
 
-					Logger.error(error.localizedDescription)
+					logError(error: error)
 				}
 			}
 		}
@@ -244,6 +254,8 @@ public final class Context {
 			pendingCount.wrappingIncrement(by: 1, ordering: .relaxed)
 		}
 
+		logEvent(event: .exposure(exposure: exposure))
+
 		setTimeout()
 	}
 
@@ -262,7 +274,7 @@ public final class Context {
 		return indexVariables.mapValues { $0.data.name }
 	}
 
-	public func getVariableValue(key: String, defaultValue: JSON? = nil) -> JSON? {
+	public func getVariableValue(_ key: String, defaultValue: JSON? = nil) -> JSON? {
 		checkReady(true)
 
 		if let assignment = getVariableAssignment(key) {
@@ -278,7 +290,7 @@ public final class Context {
 		return defaultValue
 	}
 
-	public func peekVariableValue(key: String, defaultValue: JSON? = nil) -> JSON? {
+	public func peekVariableValue(_ key: String, defaultValue: JSON? = nil) -> JSON? {
 		checkReady(true)
 
 		if let assignment = getVariableAssignment(key) {
@@ -304,6 +316,8 @@ public final class Context {
 			pendingCount.wrappingIncrement(by: 1, ordering: .relaxed)
 		}
 
+		logEvent(event: .goal(goal: achievement))
+
 		setTimeout()
 	}
 
@@ -325,13 +339,17 @@ public final class Context {
 		}
 
 		refreshPromise = Promise<Void> { seal in
-			provider.getContextData().done { data in
-				self.setData(data)
-				self.refreshing.store(false, ordering: .relaxed)
+			provider.getContextData().done { [self] data in
+				setData(data)
+				refreshing.store(false, ordering: .relaxed)
 				seal.fulfill(())
-			}.catch { error in
-				self.refreshing.store(false, ordering: .relaxed)
+
+				logEvent(event: .refresh(data: data))
+			}.catch { [self] error in
+				refreshing.store(false, ordering: .relaxed)
 				seal.reject(error)
+
+				logError(error: error)
 			}
 		}
 
@@ -345,22 +363,28 @@ public final class Context {
 			}
 
 			closePromise = Promise<Void> { seal in
-				self.closing.store(true, ordering: .relaxed)
+				closing.store(true, ordering: .relaxed)
 
 				if pendingCount.load(ordering: .relaxed) > 0 {
-					flush().done {
-						self.closed.store(true, ordering: .relaxed)
-						self.closing.store(false, ordering: .relaxed)
+					flush().done { [self] in
+						closed.store(true, ordering: .relaxed)
+						closing.store(false, ordering: .relaxed)
 						seal.fulfill(())
-					}.catch({ error in
-						self.closed.store(true, ordering: .relaxed)
-						self.closing.store(true, ordering: .relaxed)
+
+						logEvent(event: .close)
+					}.catch({ [self] error in
+						closed.store(true, ordering: .relaxed)
+						closing.store(true, ordering: .relaxed)
 						seal.reject(error)
+
+						// event logger gets this error during publish
 					})
 				} else {
-					self.closed.store(true, ordering: .relaxed)
-					self.closing.store(false, ordering: .relaxed)
+					closed.store(true, ordering: .relaxed)
+					closing.store(false, ordering: .relaxed)
 					seal.fulfill(())
+
+					logEvent(event: .close)
 				}
 			}
 		}
@@ -376,45 +400,54 @@ public final class Context {
 
 		if !isFailed() {
 			var eventCount = pendingCount.load(ordering: .relaxed)
-			if eventCount == 0 {
-				return Promise<Void>.value(())
-			}
-
-			var localExposures: [Exposure] = []
-			var localAchievements: [GoalAchievement] = []
-
-			do {
-				eventLock.lock()
-				defer { eventLock.unlock() }
-
-				eventCount = pendingCount.load(ordering: .relaxed)
-				if eventCount > 0 {
-					if !self.exposures.isEmpty {
-						localExposures = self.exposures
-						self.exposures = []
-					}
-
-					if !self.achievements.isEmpty {
-						localAchievements = self.achievements
-						self.achievements = []
-					}
-
-					pendingCount.store(0, ordering: .relaxed)
-				}
-			}
-
 			if eventCount > 0 {
-				let event = PublishEvent(
-					true,
-					config.units.map {
-						Unit(type: $0.key, uid: String(bytes: getUnitHash($0.key, $0.value), encoding: .ascii) ?? "")
-					},
-					clock.millis(),
-					localExposures,
-					localAchievements,
-					attributes)
+				var localExposures: [Exposure] = []
+				var localAchievements: [GoalAchievement] = []
 
-				return handler.publish(event: event)
+				do {
+					eventLock.lock()
+					defer { eventLock.unlock() }
+
+					eventCount = pendingCount.load(ordering: .relaxed)
+					if eventCount > 0 {
+						if !exposures.isEmpty {
+							localExposures = exposures
+							exposures = []
+						}
+
+						if !achievements.isEmpty {
+							localAchievements = achievements
+							achievements = []
+						}
+
+						pendingCount.store(0, ordering: .relaxed)
+					}
+				}
+
+				if eventCount > 0 {
+					let event = PublishEvent(
+						true,
+						config.units.map {
+							Unit(
+								type: $0.key, uid: String(bytes: getUnitHash($0.key, $0.value), encoding: .ascii) ?? "")
+						},
+						clock.millis(),
+						localExposures,
+						localAchievements,
+						attributes)
+
+					return Promise<Void> { [self] seal in
+						_ = handler.publish(event: event).done { [self] in
+							seal.fulfill(())
+
+							logEvent(event: .publish(event: event))
+						}.catch { [self] error in
+							seal.reject(error)
+
+							logError(error: error)
+						}
+					}
+				}
 			}
 		} else {
 			eventLock.lock()
@@ -577,8 +610,8 @@ public final class Context {
 			if timeout == nil {
 				timeout = scheduler.schedule(
 					after: config.publishDelay,
-					execute: {
-						_ = self.flush()
+					execute: { [self] in
+						_ = flush()
 					})
 			}
 		}
@@ -657,6 +690,18 @@ public final class Context {
 		data = nil
 		failed = true
 	}
+
+	private func logEvent(event: ContextEventLoggerEvent) {
+		if let logger = logger {
+			logger.handleEvent(context: self, event: event)
+		}
+	}
+
+	private func logError(error: Error) {
+		if let logger = logger {
+			logger.handleEvent(context: self, event: ContextEventLoggerEvent.error(error: error))
+		}
+	}
 }
 
 private class ExperimentVariables {
@@ -664,7 +709,7 @@ private class ExperimentVariables {
 	var variables: [[String: JSON]] = []
 
 	init(_ experiment: Experiment) {
-		self.data = experiment
+		data = experiment
 	}
 }
 

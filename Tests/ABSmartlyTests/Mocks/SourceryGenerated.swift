@@ -4,6 +4,7 @@
 // swiftlint:disable line_length
 // swiftlint:disable variable_name
 
+import Foundation
 import PromiseKit
 
 @testable import ABSmartly
@@ -155,6 +156,32 @@ class ContextEventHandlerMock: ContextEventHandler {
 		publishEventCallsCount = 0
 		publishEventReceivedEvent = nil
 		publishEventReceivedInvocations = []
+	}
+}
+
+class ContextEventLoggerMock: ContextEventLogger {
+
+	//MARK: - handleEvent
+
+	var handleEventContextEventCallsCount = 0
+	var handleEventContextEventCalled: Bool {
+		return handleEventContextEventCallsCount > 0
+	}
+	var handleEventContextEventReceivedArguments: (context: Context, event: ContextEventLoggerEvent)?
+	var handleEventContextEventReceivedInvocations: [(context: Context, event: ContextEventLoggerEvent)] = []
+	var handleEventContextEventClosure: ((Context, ContextEventLoggerEvent) -> Void)?
+
+	func handleEvent(context: Context, event: ContextEventLoggerEvent) {
+		handleEventContextEventCallsCount += 1
+		handleEventContextEventReceivedArguments = (context: context, event: event)
+		handleEventContextEventReceivedInvocations.append((context: context, event: event))
+		handleEventContextEventClosure?(context, event)
+	}
+
+	func clearInvocations() {
+		handleEventContextEventCallsCount = 0
+		handleEventContextEventReceivedArguments = nil
+		handleEventContextEventReceivedInvocations = []
 	}
 }
 

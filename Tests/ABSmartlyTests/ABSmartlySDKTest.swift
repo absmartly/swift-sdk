@@ -90,7 +90,7 @@ final class ABSmartlySDKTest: XCTestCase {
 		wait(for: [expectation], timeout: 1.0)
 	}
 
-	func testCustomContextDataProvider() {
+	func testCustomContextDataProvider() throws {
 		let contextDataProvider = ContextDataProviderMock()
 		setUpSDK { config in
 			config.contextDataProvider = contextDataProvider
