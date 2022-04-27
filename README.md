@@ -16,7 +16,7 @@ To install the A/B Smartly SDK using Swift Package Manager, following these step
 
 - Enter the A/B Smartly Swift SDK GitHub repository: ```https://github.com/absmartly/swift-sdk```
 
-- Select the SDK version (latest recomended)
+- Select the SDK version (latest recommended)
 
 - Select the ABSmartly library
 
@@ -108,7 +108,7 @@ if treatment == 0 {
 
 #### Selecting a treatment variable
 ```swift
-let variable = context.getVariableValue(key: "my_variable", defaultValue: 10)
+let variable = context.getVariableValue("my_variable", defaultValue: 10)
 ```
 
 #### Tracking a goal achievement
@@ -144,6 +144,55 @@ context.refresh().done {
 })
 ```
 
+
+#### Using a custom Event Logger
+The A/B Smartly SDK can be instantiated with an event logger used for all contexts.
+In addition, an event logger can be specified when creating a particular context, in the `ContextConfig`.
+```swift
+// example implementation
+public class CustomEventLogger : ContextEventLogger {
+    public func handleEvent(context: Context, event: ContextEventLoggerEvent) {
+        switch event {
+        case let .exposure(exposure):
+            print("exposed to experiment: \(exposure.name)")
+        case let .goal(goal):
+            print("goal tracked: \(goal.name)")
+        case let .error(error):
+            print("error: ", error.localizedDescription)
+        case let .publish(event):
+            break
+        case let .ready(data):
+            break
+        case let .refresh(data):
+            break
+        case .close:
+            break
+        }
+    }
+}
+
+// for all contexts, during sdk initialization
+let absmartlyConfig = ABSmartlyConfig()
+absmartlyConfig.contextEventLogger = CustomEventLogger()
+
+// OR, alternatively, during a particular context initialization
+let contextConfig = ContextConfig()
+contextConfig.eventLogger = CustomEventLogger()
+```
+
+The event data depends on the type of event.
+Currently, the SDK logs the following events:
+
+|   event    | when                                                       | data                                                   |
+|:----------:|------------------------------------------------------------|--------------------------------------------------------|
+|  `error`   | `Context` receives an error                                | `Error` object                                         |
+|  `ready`   | `Context` turns ready                                      | `ContextData` used to initialize the context           |
+| `refresh`  | `Context.refresh()` method succeeds                        | `ContextData` used to refresh the context              |
+| `publish`  | `Context.publish()` method succeeds                        | `PublishEvent` sent to the A/B Smartly event collector |
+| `exposure` | `Context.getTreatment()` method succeeds on first exposure | `Exposure` enqueued for publishing                     |
+|   `goal`   | `Context.track()` method succeeds                          | `GoalAchievement` enqueued for publishing              |
+|  `close`   | `Context.close()` method succeeds the first time           | `nil`                                                    |
+
 #### Peek at treatment variants
 Although generally not recommended, it is sometimes necessary to peek at a treatment or variable without triggering an exposure.
 The A/B Smartly SDK provides a `peekTreatment()` method for that.
@@ -160,7 +209,7 @@ if treatment == 0 {
 
 ##### Peeking at variables
 ```swift
-let color = context.peekVariableValue(key: "colorGComponent", defaultValue: 255)
+let color = context.peekVariableValue("colorGComponent", defaultValue: 255)
 ```
 
 #### Overriding treatment variants
@@ -179,4 +228,5 @@ A/B Smartly's real-time analytics helps engineering and product teams ensure tha
 - [Java SDK](https://www.github.com/absmartly/java-sdk)
 - [JavaScript SDK](https://www.github.com/absmartly/javascript-sdk)
 - [PHP SDK](https://www.github.com/absmartly/php-sdk)
+- [Swift SDK](https://www.github.com/absmartly/swift-sdk)
 - [Vue2 SDK](https://www.github.com/absmartly/vue2-sdk)
