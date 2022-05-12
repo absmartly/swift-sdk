@@ -67,7 +67,7 @@ final class ContextTest: XCTestCase {
 		let data = try data ?? Promise<ContextData>.value(try getContextData())
 		return Context(
 			config: config, clock: clock, scheduler: scheduler, handler: handler, provider: provider, logger: logger,
-			parser: parser,
+			parser: parser, matcher: AudienceMatcher(),
 			promise: data)
 	}
 
@@ -483,6 +483,22 @@ final class ContextTest: XCTestCase {
 		XCTAssertEqual(0, context.getPendingCount())
 	}
 
+	func testPeekVariableValueReturnsAssignedVariantOnAudienceMismatchNonStrictMode() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let contextData = try getContextData(source: "audience_context")
+		let context = try createContext(config: contextConfig, data: Promise<ContextData>.value(contextData))
+
+		XCTAssertEqual("large", context.peekVariableValue("banner.size", defaultValue: "small"))
+	}
+
+	func testPeekVariableValueReturnsControlVariantOnAudienceMismatchStrictMode() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let contextData = try getContextData(source: "audience_strict_context")
+		let context = try createContext(config: contextConfig, data: Promise<ContextData>.value(contextData))
+
+		XCTAssertEqual("small", context.peekVariableValue("banner.size", defaultValue: "small"))
+	}
+
 	func testGetVariableValue() throws {
 		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
 		let contextData = try getContextData()
@@ -508,6 +524,127 @@ final class ContextTest: XCTestCase {
 		XCTAssertEqual(UInt(contextData.experiments.count), context.getPendingCount())
 	}
 
+	func testGetVariableValueQueuesExposureWithAudienceMismatchFalseOnAudienceMatch() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let contextData = try getContextData(source: "audience_context")
+		let context = try createContext(config: contextConfig, data: Promise<ContextData>.value(contextData))
+
+		context.setAttribute(name: "age", value: 21)
+
+		XCTAssertEqual("large", context.getVariableValue("banner.size", defaultValue: "small"))
+		XCTAssertEqual(1, context.getPendingCount())
+
+		let expectation = XCTestExpectation()
+
+		let (promise, resolver) = Promise<Void>.pending()
+		handler.publishEventReturnValue = promise
+
+		let expected = PublishEvent()
+		expected.hashed = true
+		expected.units = publishUnits
+		expected.publishedAt = clock.millis()
+		expected.attributes = [
+			Attribute("age", value: 21, setAt: clock.millis())
+		]
+		expected.exposures = [
+			Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false, false)
+		]
+
+		_ = context.publish().done { [self] in
+			XCTAssertEqual(1, handler.publishEventCallsCount)
+
+			// sort so array equality works
+			handler.publishEventReceivedEvent?.units.sort(by: {
+				$0.type != $1.type ? $0.type < $1.type : $0.uid < $0.uid
+			})
+			XCTAssertEqual(expected, handler.publishEventReceivedEvent)
+
+			expectation.fulfill()
+		}
+
+		resolver.fulfill(())
+
+		wait(for: [expectation], timeout: 1.0)
+	}
+
+	func testGetVariableValueQueuesExposureWithAudienceMismatchTrueOnAudienceMismatch() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let contextData = try getContextData(source: "audience_context")
+		let context = try createContext(config: contextConfig, data: Promise<ContextData>.value(contextData))
+
+		XCTAssertEqual("large", context.getVariableValue("banner.size", defaultValue: "small"))
+		XCTAssertEqual(1, context.getPendingCount())
+
+		let expectation = XCTestExpectation()
+
+		let (promise, resolver) = Promise<Void>.pending()
+		handler.publishEventReturnValue = promise
+
+		let expected = PublishEvent()
+		expected.hashed = true
+		expected.units = publishUnits
+		expected.publishedAt = clock.millis()
+		expected.exposures = [
+			Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false, true)
+		]
+
+		_ = context.publish().done { [self] in
+			XCTAssertEqual(1, handler.publishEventCallsCount)
+
+			// sort so array equality works
+			handler.publishEventReceivedEvent?.units.sort(by: {
+				$0.type != $1.type ? $0.type < $1.type : $0.uid < $0.uid
+			})
+			XCTAssertEqual(expected, handler.publishEventReceivedEvent)
+
+			expectation.fulfill()
+		}
+
+		resolver.fulfill(())
+
+		wait(for: [expectation], timeout: 1.0)
+	}
+
+	func testGetVariableValueQueuesExposureWithAudienceMismatchFalseAndControlVariantOnAudienceMismatchInStrictMode()
+		throws
+	{
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let contextData = try getContextData(source: "audience_strict_context")
+		let context = try createContext(config: contextConfig, data: Promise<ContextData>.value(contextData))
+
+		XCTAssertEqual("small", context.getVariableValue("banner.size", defaultValue: "small"))
+		XCTAssertEqual(1, context.getPendingCount())
+
+		let expectation = XCTestExpectation()
+
+		let (promise, resolver) = Promise<Void>.pending()
+		handler.publishEventReturnValue = promise
+
+		let expected = PublishEvent()
+		expected.hashed = true
+		expected.units = publishUnits
+		expected.publishedAt = clock.millis()
+		expected.exposures = [
+			Exposure(1, "exp_test_ab", "session_id", 0, clock.millis(), false, true, false, false, false, true)
+		]
+
+		_ = context.publish().done { [self] in
+			XCTAssertEqual(1, handler.publishEventCallsCount)
+
+			// sort so array equality works
+			handler.publishEventReceivedEvent?.units.sort(by: {
+				$0.type != $1.type ? $0.type < $1.type : $0.uid < $0.uid
+			})
+			XCTAssertEqual(expected, handler.publishEventReceivedEvent)
+
+			expectation.fulfill()
+		}
+
+		resolver.fulfill(())
+
+		wait(for: [expectation], timeout: 1.0)
+	}
+
 	func testGetVariableValueCallsEventLogger() throws {
 		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
 		let context = try createContext(config: contextConfig)
@@ -518,7 +655,7 @@ final class ContextTest: XCTestCase {
 		_ = context.getVariableValue("banner.size")
 
 		let exposures = [
-			Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false)
+			Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false, false)
 		]
 
 		XCTAssertEqual(1, logger.handleEventContextEventCallsCount)
@@ -572,6 +709,22 @@ final class ContextTest: XCTestCase {
 		XCTAssertEqual(0, context.getPendingCount())
 	}
 
+	func testPeekTreatmentReturnsAssignedVariantOnAudienceMismatchNonStrictMode() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let contextData = try getContextData(source: "audience_context")
+		let context = try createContext(config: contextConfig, data: Promise<ContextData>.value(contextData))
+
+		XCTAssertEqual(1, context.peekTreatment("exp_test_ab"))
+	}
+
+	func testPeekTreatmentReturnsControlVariantOnAudienceMismatchStrictMode() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let contextData = try getContextData(source: "audience_strict_context")
+		let context = try createContext(config: contextConfig, data: Promise<ContextData>.value(contextData))
+
+		XCTAssertEqual(0, context.peekTreatment("exp_test_ab"))
+	}
+
 	func testGetTreatment() throws {
 		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
 		let contextData = try getContextData()
@@ -596,11 +749,11 @@ final class ContextTest: XCTestCase {
 		expected.units = publishUnits
 		expected.publishedAt = clock.millis()
 		expected.exposures = [
-			Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false),
-			Exposure(2, "exp_test_abc", "session_id", 2, clock.millis(), true, true, false, false, false),
-			Exposure(3, "exp_test_not_eligible", "user_id", 0, clock.millis(), true, false, false, false, false),
-			Exposure(4, "exp_test_fullon", "session_id", 2, clock.millis(), true, true, false, true, false),
-			Exposure(0, "not_found", nil, 0, clock.millis(), false, true, false, false, false),
+			Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false, false),
+			Exposure(2, "exp_test_abc", "session_id", 2, clock.millis(), true, true, false, false, false, false),
+			Exposure(3, "exp_test_not_eligible", "user_id", 0, clock.millis(), true, false, false, false, false, false),
+			Exposure(4, "exp_test_fullon", "session_id", 2, clock.millis(), true, true, false, true, false, false),
+			Exposure(0, "not_found", nil, 0, clock.millis(), false, true, false, false, false, false),
 		]
 
 		_ = context.publish().done { [self] in
@@ -666,11 +819,11 @@ final class ContextTest: XCTestCase {
 		expected.units = publishUnits
 		expected.publishedAt = clock.millis()
 		expected.exposures = [
-			Exposure(1, "exp_test_ab", "session_id", 12, clock.millis(), true, true, true, false, false),
-			Exposure(2, "exp_test_abc", "session_id", 13, clock.millis(), true, true, true, false, false),
-			Exposure(3, "exp_test_not_eligible", "user_id", 11, clock.millis(), true, true, true, false, false),
-			Exposure(4, "exp_test_fullon", "session_id", 13, clock.millis(), true, true, true, false, false),
-			Exposure(0, "not_found", nil, 3, clock.millis(), false, true, true, false, false),
+			Exposure(1, "exp_test_ab", "session_id", 12, clock.millis(), true, true, true, false, false, false),
+			Exposure(2, "exp_test_abc", "session_id", 13, clock.millis(), true, true, true, false, false, false),
+			Exposure(3, "exp_test_not_eligible", "user_id", 11, clock.millis(), true, true, true, false, false, false),
+			Exposure(4, "exp_test_fullon", "session_id", 13, clock.millis(), true, true, true, false, false, false),
+			Exposure(0, "not_found", nil, 3, clock.millis(), false, true, true, false, false, false),
 		]
 
 		_ = context.publish().done { [self] in
@@ -732,6 +885,128 @@ final class ContextTest: XCTestCase {
 		wait(for: [expectation], timeout: 1.0)
 	}
 
+	func testGetTreatmentQueuesExposureWithAudienceMismatchFalseOnAudienceMatch() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let contextData = try getContextData(source: "audience_context")
+		let context = try createContext(config: contextConfig, data: Promise<ContextData>.value(contextData))
+		context.setAttribute(name: "age", value: 21)
+
+		XCTAssertEqual(1, context.getTreatment("exp_test_ab"))
+		XCTAssertEqual(1, context.getPendingCount())
+
+		let expectation = XCTestExpectation()
+
+		let (promise, resolver) = Promise<Void>.pending()
+		handler.publishEventReturnValue = promise
+
+		let expected = PublishEvent()
+		expected.hashed = true
+		expected.units = publishUnits
+		expected.publishedAt = clock.millis()
+		expected.attributes = [
+			Attribute("age", value: 21, setAt: clock.millis())
+		]
+
+		expected.exposures = [
+			Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false, false)
+		]
+
+		_ = context.publish().done { [self] in
+			XCTAssertEqual(1, handler.publishEventCallsCount)
+
+			// sort so array equality works
+			handler.publishEventReceivedEvent?.units.sort(by: {
+				$0.type != $1.type ? $0.type < $1.type : $0.uid < $0.uid
+			})
+			XCTAssertEqual(expected, handler.publishEventReceivedEvent)
+
+			expectation.fulfill()
+		}
+
+		resolver.fulfill(())
+
+		wait(for: [expectation], timeout: 1.0)
+	}
+
+	func testGetTreatmentQueuesExposureWithAudienceMismatchTrueOnAudienceMismatch() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let contextData = try getContextData(source: "audience_context")
+		let context = try createContext(config: contextConfig, data: Promise<ContextData>.value(contextData))
+
+		XCTAssertEqual(1, context.getTreatment("exp_test_ab"))
+		XCTAssertEqual(1, context.getPendingCount())
+
+		let expectation = XCTestExpectation()
+
+		let (promise, resolver) = Promise<Void>.pending()
+		handler.publishEventReturnValue = promise
+
+		let expected = PublishEvent()
+		expected.hashed = true
+		expected.units = publishUnits
+		expected.publishedAt = clock.millis()
+
+		expected.exposures = [
+			Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false, true)
+		]
+
+		_ = context.publish().done { [self] in
+			XCTAssertEqual(1, handler.publishEventCallsCount)
+
+			// sort so array equality works
+			handler.publishEventReceivedEvent?.units.sort(by: {
+				$0.type != $1.type ? $0.type < $1.type : $0.uid < $0.uid
+			})
+			XCTAssertEqual(expected, handler.publishEventReceivedEvent)
+
+			expectation.fulfill()
+		}
+
+		resolver.fulfill(())
+
+		wait(for: [expectation], timeout: 1.0)
+	}
+
+	func testGetTreatmentQueuesExposureWithAudienceMismatchTrueAndControlVariantOnAudienceMismatchInStrictMode() throws
+	{
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let contextData = try getContextData(source: "audience_strict_context")
+		let context = try createContext(config: contextConfig, data: Promise<ContextData>.value(contextData))
+
+		XCTAssertEqual(0, context.getTreatment("exp_test_ab"))
+		XCTAssertEqual(1, context.getPendingCount())
+
+		let expectation = XCTestExpectation()
+
+		let (promise, resolver) = Promise<Void>.pending()
+		handler.publishEventReturnValue = promise
+
+		let expected = PublishEvent()
+		expected.hashed = true
+		expected.units = publishUnits
+		expected.publishedAt = clock.millis()
+
+		expected.exposures = [
+			Exposure(1, "exp_test_ab", "session_id", 0, clock.millis(), false, true, false, false, false, true)
+		]
+
+		_ = context.publish().done { [self] in
+			XCTAssertEqual(1, handler.publishEventCallsCount)
+
+			// sort so array equality works
+			handler.publishEventReceivedEvent?.units.sort(by: {
+				$0.type != $1.type ? $0.type < $1.type : $0.uid < $0.uid
+			})
+			XCTAssertEqual(expected, handler.publishEventReceivedEvent)
+
+			expectation.fulfill()
+		}
+
+		resolver.fulfill(())
+
+		wait(for: [expectation], timeout: 1.0)
+	}
+
 	func testGetTreatmentCallsEventLogger() throws {
 		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
 		let contextData = try getContextData()
@@ -743,8 +1018,8 @@ final class ContextTest: XCTestCase {
 		_ = context.getTreatment("not_found")
 
 		let exposures = [
-			Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false),
-			Exposure(0, "not_found", nil, 0, clock.millis(), false, true, false, false, false),
+			Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false, false),
+			Exposure(0, "not_found", nil, 0, clock.millis(), false, true, false, false, false, false),
 		]
 
 		XCTAssertEqual(2, logger.handleEventContextEventCallsCount)
@@ -999,9 +1274,9 @@ final class ContextTest: XCTestCase {
 			expected.units = publishUnits
 			expected.publishedAt = clock.millis()
 			expected.exposures = [
-				Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false),
-				Exposure(2, "exp_test_abc", "session_id", 3, clock.millis(), true, true, false, false, true),
-				Exposure(0, "not_found", nil, 3, clock.millis(), false, true, true, false, false),
+				Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false, false),
+				Exposure(2, "exp_test_abc", "session_id", 3, clock.millis(), true, true, false, false, true, false),
+				Exposure(0, "not_found", nil, 3, clock.millis(), false, true, true, false, false, false),
 			]
 			expected.goals = [
 				GoalAchievement("goal1", achievedAt: clock.millis(), properties: ["amount": 125, "hours": 245])

@@ -32,6 +32,7 @@ public final class ABSmartlySDK {
 		return Context(
 			config: config, clock: DefaultClock(), scheduler: scheduler, handler: contextEventHandler,
 			provider: contextDataProvider, logger: contextEventLogger, parser: variableParser,
+			matcher: AudienceMatcher(),
 			promise: Promise<ContextData>.value(contextData))
 	}
 
@@ -39,6 +40,7 @@ public final class ABSmartlySDK {
 		return Context(
 			config: config, clock: DefaultClock(), scheduler: scheduler, handler: contextEventHandler,
 			provider: contextDataProvider, logger: contextEventLogger, parser: variableParser,
+			matcher: AudienceMatcher(),
 			promise: contextDataProvider.getContextData())
 	}
 

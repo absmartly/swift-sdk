@@ -14,6 +14,8 @@ public struct Experiment: Codable {
 	public let fullOnVariant: Int
 	public let applications: [Application]?
 	public let variants: [ExperimentVariant]
+	public let audienceStrict: Bool
+	public let audience: String?
 
 	public init(from decoder: Decoder) throws {
 		guard let container = try? decoder.container(keyedBy: CodingKeys.self) else {
@@ -22,28 +24,30 @@ public struct Experiment: Codable {
 			)
 		}
 
-		self.id = (try? container.decodeIfPresent(Int.self, forKey: .id)) ?? 0
+		id = (try? container.decodeIfPresent(Int.self, forKey: .id)) ?? 0
 
 		do {
-			self.name = try container.decode(String.self, forKey: .name)
+			name = try container.decode(String.self, forKey: .name)
 		} catch {
 			throw error
 		}
 
-		self.unitType = (try? container.decodeIfPresent(String.self, forKey: .unitType)) ?? nil
-		self.iteration = (try? container.decodeIfPresent(Int.self, forKey: .iteration)) ?? 0
-		self.seedHi = (try? container.decodeIfPresent(Int.self, forKey: .seedHi)) ?? 0
-		self.seedLo = (try? container.decodeIfPresent(Int.self, forKey: .seedLo)) ?? 0
+		unitType = (try? container.decodeIfPresent(String.self, forKey: .unitType)) ?? nil
+		iteration = (try? container.decodeIfPresent(Int.self, forKey: .iteration)) ?? 0
+		seedHi = (try? container.decodeIfPresent(Int.self, forKey: .seedHi)) ?? 0
+		seedLo = (try? container.decodeIfPresent(Int.self, forKey: .seedLo)) ?? 0
 
-		self.split = (try? container.decodeIfPresent([Double].self, forKey: .split)) ?? []
-		self.trafficSeedHi = (try? container.decodeIfPresent(Int.self, forKey: .trafficSeedHi)) ?? 0
-		self.trafficSeedLo = (try? container.decodeIfPresent(Int.self, forKey: .trafficSeedLo)) ?? 0
+		split = (try? container.decodeIfPresent([Double].self, forKey: .split)) ?? []
+		trafficSeedHi = (try? container.decodeIfPresent(Int.self, forKey: .trafficSeedHi)) ?? 0
+		trafficSeedLo = (try? container.decodeIfPresent(Int.self, forKey: .trafficSeedLo)) ?? 0
 
-		self.trafficSplit = (try? container.decodeIfPresent([Double].self, forKey: .trafficSplit)) ?? []
-		self.fullOnVariant = (try? container.decodeIfPresent(Int.self, forKey: .fullOnVariant)) ?? 0
+		trafficSplit = (try? container.decodeIfPresent([Double].self, forKey: .trafficSplit)) ?? []
+		fullOnVariant = (try? container.decodeIfPresent(Int.self, forKey: .fullOnVariant)) ?? 0
+		audienceStrict = (try? container.decodeIfPresent(Bool.self, forKey: .audienceStrict)) ?? false
+		audience = (try? container.decodeIfPresent(String.self, forKey: .audience))
 
-		self.applications = (try? container.decode([Application].self, forKey: .applications)) ?? []
-		self.variants = (try? container.decode([ExperimentVariant].self, forKey: .variants)) ?? []
+		applications = (try? container.decode([Application].self, forKey: .applications)) ?? []
+		variants = (try? container.decode([ExperimentVariant].self, forKey: .variants)) ?? []
 	}
 }
 

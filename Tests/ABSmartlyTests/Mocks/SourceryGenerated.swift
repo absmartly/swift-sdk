@@ -185,6 +185,162 @@ class ContextEventLoggerMock: ContextEventLogger {
 	}
 }
 
+class EvaluatorMock: Evaluator {
+
+	//MARK: - evaluate
+
+	var evaluateCallsCount = 0
+	var evaluateCalled: Bool {
+		return evaluateCallsCount > 0
+	}
+	var evaluateReceivedExpr: JSON?
+	var evaluateReceivedInvocations: [JSON] = []
+	var evaluateReturnValue: JSON!
+	var evaluateClosure: ((JSON) -> JSON)?
+
+	func evaluate(_ expr: JSON) -> JSON {
+		evaluateCallsCount += 1
+		evaluateReceivedExpr = expr
+		evaluateReceivedInvocations.append(expr)
+		if let evaluateClosure = evaluateClosure {
+			return evaluateClosure(expr)
+		} else {
+			return evaluateReturnValue
+		}
+	}
+
+	//MARK: - booleanConvert
+
+	var booleanConvertCallsCount = 0
+	var booleanConvertCalled: Bool {
+		return booleanConvertCallsCount > 0
+	}
+	var booleanConvertReceivedX: JSON?
+	var booleanConvertReceivedInvocations: [JSON] = []
+	var booleanConvertReturnValue: JSON!
+	var booleanConvertClosure: ((JSON) -> JSON)?
+
+	func booleanConvert(_ x: JSON) -> JSON {
+		booleanConvertCallsCount += 1
+		booleanConvertReceivedX = x
+		booleanConvertReceivedInvocations.append(x)
+		if let booleanConvertClosure = booleanConvertClosure {
+			return booleanConvertClosure(x)
+		} else {
+			return booleanConvertReturnValue
+		}
+	}
+
+	//MARK: - numberConvert
+
+	var numberConvertCallsCount = 0
+	var numberConvertCalled: Bool {
+		return numberConvertCallsCount > 0
+	}
+	var numberConvertReceivedX: JSON?
+	var numberConvertReceivedInvocations: [JSON] = []
+	var numberConvertReturnValue: JSON!
+	var numberConvertClosure: ((JSON) -> JSON)?
+
+	func numberConvert(_ x: JSON) -> JSON {
+		numberConvertCallsCount += 1
+		numberConvertReceivedX = x
+		numberConvertReceivedInvocations.append(x)
+		if let numberConvertClosure = numberConvertClosure {
+			return numberConvertClosure(x)
+		} else {
+			return numberConvertReturnValue
+		}
+	}
+
+	//MARK: - stringConvert
+
+	var stringConvertCallsCount = 0
+	var stringConvertCalled: Bool {
+		return stringConvertCallsCount > 0
+	}
+	var stringConvertReceivedX: JSON?
+	var stringConvertReceivedInvocations: [JSON] = []
+	var stringConvertReturnValue: JSON!
+	var stringConvertClosure: ((JSON) -> JSON)?
+
+	func stringConvert(_ x: JSON) -> JSON {
+		stringConvertCallsCount += 1
+		stringConvertReceivedX = x
+		stringConvertReceivedInvocations.append(x)
+		if let stringConvertClosure = stringConvertClosure {
+			return stringConvertClosure(x)
+		} else {
+			return stringConvertReturnValue
+		}
+	}
+
+	//MARK: - extractVar
+
+	var extractVarCallsCount = 0
+	var extractVarCalled: Bool {
+		return extractVarCallsCount > 0
+	}
+	var extractVarReceivedPath: String?
+	var extractVarReceivedInvocations: [String] = []
+	var extractVarReturnValue: JSON!
+	var extractVarClosure: ((String) -> JSON)?
+
+	func extractVar(_ path: String) -> JSON {
+		extractVarCallsCount += 1
+		extractVarReceivedPath = path
+		extractVarReceivedInvocations.append(path)
+		if let extractVarClosure = extractVarClosure {
+			return extractVarClosure(path)
+		} else {
+			return extractVarReturnValue
+		}
+	}
+
+	//MARK: - compare
+
+	var compareCallsCount = 0
+	var compareCalled: Bool {
+		return compareCallsCount > 0
+	}
+	var compareReceivedArguments: (lhs: JSON, rhs: JSON)?
+	var compareReceivedInvocations: [(lhs: JSON, rhs: JSON)] = []
+	var compareReturnValue: Int?
+	var compareClosure: ((JSON, JSON) -> Int?)?
+
+	func compare(_ lhs: JSON, _ rhs: JSON) -> Int? {
+		compareCallsCount += 1
+		compareReceivedArguments = (lhs: lhs, rhs: rhs)
+		compareReceivedInvocations.append((lhs: lhs, rhs: rhs))
+		if let compareClosure = compareClosure {
+			return compareClosure(lhs, rhs)
+		} else {
+			return compareReturnValue
+		}
+	}
+
+	func clearInvocations() {
+		evaluateCallsCount = 0
+		evaluateReceivedExpr = nil
+		evaluateReceivedInvocations = []
+		booleanConvertCallsCount = 0
+		booleanConvertReceivedX = nil
+		booleanConvertReceivedInvocations = []
+		numberConvertCallsCount = 0
+		numberConvertReceivedX = nil
+		numberConvertReceivedInvocations = []
+		stringConvertCallsCount = 0
+		stringConvertReceivedX = nil
+		stringConvertReceivedInvocations = []
+		extractVarCallsCount = 0
+		extractVarReceivedPath = nil
+		extractVarReceivedInvocations = []
+		compareCallsCount = 0
+		compareReceivedArguments = nil
+		compareReceivedInvocations = []
+	}
+}
+
 class HTTPClientMock: HTTPClient {
 
 	//MARK: - get
@@ -287,6 +443,37 @@ class HTTPClientMock: HTTPClient {
 		postUrlQueryHeadersBodyReceivedArguments = nil
 		postUrlQueryHeadersBodyReceivedInvocations = []
 		closeCallsCount = 0
+	}
+}
+
+class OperatorMock: Operator {
+
+	//MARK: - evaluate
+
+	var evaluateCallsCount = 0
+	var evaluateCalled: Bool {
+		return evaluateCallsCount > 0
+	}
+	var evaluateReceivedArguments: (evaluator: Evaluator, args: JSON)?
+	var evaluateReceivedInvocations: [(evaluator: Evaluator, args: JSON)] = []
+	var evaluateReturnValue: JSON!
+	var evaluateClosure: ((Evaluator, JSON) -> JSON)?
+
+	func evaluate(_ evaluator: Evaluator, _ args: JSON) -> JSON {
+		evaluateCallsCount += 1
+		evaluateReceivedArguments = (evaluator: evaluator, args: args)
+		evaluateReceivedInvocations.append((evaluator: evaluator, args: args))
+		if let evaluateClosure = evaluateClosure {
+			return evaluateClosure(evaluator, args)
+		} else {
+			return evaluateReturnValue
+		}
+	}
+
+	func clearInvocations() {
+		evaluateCallsCount = 0
+		evaluateReceivedArguments = nil
+		evaluateReceivedInvocations = []
 	}
 }
 

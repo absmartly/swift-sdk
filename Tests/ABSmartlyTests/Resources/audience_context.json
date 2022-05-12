@@ -33,7 +33,7 @@
                     "config":"{\"banner.border\":1,\"banner.size\":\"large\"}"
                 }
             ],
-            "audience": null
+            "audience": "{\"filter\":[{\"gte\":[{\"var\":\"age\"},{\"value\":20}]}]}"
         },
         {
             "id":2,

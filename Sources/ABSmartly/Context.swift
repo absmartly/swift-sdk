@@ -10,6 +10,7 @@ public final class Context {
 	private let provider: ContextDataProvider
 	private let logger: ContextEventLogger?
 	private let parser: VariableParser
+	private let matcher: AudienceMatcher
 	private var promise: Promise<ContextData>?
 	private var config: ContextConfig
 
@@ -48,6 +49,7 @@ public final class Context {
 	init(
 		config: ContextConfig, clock: Clock, scheduler: Scheduler, handler: ContextEventHandler,
 		provider: ContextDataProvider, logger: ContextEventLogger?, parser: VariableParser,
+		matcher: AudienceMatcher,
 		promise: Promise<ContextData>
 	) {
 		self.clock = clock
@@ -56,6 +58,7 @@ public final class Context {
 		self.provider = provider
 		self.logger = logger
 		self.parser = parser
+		self.matcher = matcher
 		self.promise = promise
 		self.config = config
 
@@ -244,7 +247,7 @@ public final class Context {
 		let exposure = Exposure(
 			assignment.id, assignment.name, assignment.unitType, assignment.variant,
 			clock.millis(), assignment.assigned, assignment.eligible,
-			assignment.overridden, assignment.fullOn, assignment.custom)
+			assignment.overridden, assignment.fullOn, assignment.custom, assignment.audienceMismatch)
 
 		do {
 			eventLock.lock()
@@ -515,7 +518,22 @@ public final class Context {
 			if let experiment = experiment {
 				let unitType = experiment.data.unitType
 
-				if experiment.data.fullOnVariant == 0 {
+				if let audience = experiment.data.audience {
+					if audience.count > 0 {
+						var attrs: [String: JSON] = [:]
+						for attr in attributes {
+							attrs[attr.name] = attr.value
+						}
+
+						if let result = matcher.evaluate(audience, attrs) {
+							assignment.audienceMismatch = !result
+						}
+					}
+				}
+
+				if experiment.data.audienceStrict && assignment.audienceMismatch {
+					assignment.variant = 0
+				} else if experiment.data.fullOnVariant == 0 {
 					if let unitType = experiment.data.unitType, let uid = config.units[unitType] {
 						let unitHash: [UInt8] = getUnitHash(unitType, uid)
 						let assigner = getVariantAssigner(unitType, unitHash)
@@ -719,7 +737,7 @@ private class Assignment: Equatable {
 			&& lhs.name == rhs.name && lhs.unitType == rhs.unitType && lhs.trafficSplit == rhs.trafficSplit
 			&& lhs.variant == rhs.variant && lhs.assigned == rhs.assigned && lhs.overridden == rhs.overridden
 			&& lhs.eligible == rhs.eligible && lhs.fullOn == rhs.fullOn && lhs.custom == rhs.custom
-			&& lhs.variables == rhs.variables
+			&& lhs.audienceMismatch == rhs.audienceMismatch && lhs.variables == rhs.variables
 	}
 
 	var id: Int = 0
@@ -734,6 +752,7 @@ private class Assignment: Equatable {
 	var eligible: Bool = false
 	var fullOn: Bool = false
 	var custom: Bool = false
+	var audienceMismatch = false
 	var variables: [String: JSON] = [:]
 	var exposed = ManagedAtomic<Bool>(false)
 }
