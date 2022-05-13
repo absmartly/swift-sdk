@@ -14,7 +14,7 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "CEC30EE728071F74008519D5"
+               BlueprintIdentifier = "D5B6E55A282EA59900D553DF"
                BuildableName = "Example.app"
                BlueprintName = "Example"
                ReferencedContainer = "container:Example.xcodeproj">
@@ -44,7 +44,7 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "CEC30EE728071F74008519D5"
+            BlueprintIdentifier = "D5B6E55A282EA59900D553DF"
             BuildableName = "Example.app"
             BlueprintName = "Example"
             ReferencedContainer = "container:Example.xcodeproj">
@@ -52,23 +52,23 @@
       </BuildableProductRunnable>
       <EnvironmentVariables>
          <EnvironmentVariable
-            key = "ABSMARTLY_APPLICATION"
-            value = "&lt;YOUR_APPLICATION&gt;"
-            isEnabled = "YES">
-         </EnvironmentVariable>
-         <EnvironmentVariable
             key = "ABSMARTLY_ENVIRONMENT"
             value = "&lt;YOUR_ENVIRONMENT&gt;"
             isEnabled = "YES">
          </EnvironmentVariable>
          <EnvironmentVariable
-            key = "ABSMARTLY_API_KEY"
-            value = "&lt;YOUR_API_KEY&gt;"
+            key = "ABSMARTLY_ENDPOINT"
+            value = "&lt;YOUR_ENDPOINT&gt;"
             isEnabled = "YES">
          </EnvironmentVariable>
          <EnvironmentVariable
-            key = "ABSMARTLY_ENDPOINT"
-            value = "&lt;YOUR_ENDPOINT&gt;"
+            key = "ABSMARTLY_APPLICATION"
+            value = "&lt;YOUR_APPLICATION&gt;"
+            isEnabled = "YES">
+         </EnvironmentVariable>
+         <EnvironmentVariable
+            key = "ABSMARTLY_API_KEY"
+            value = "&lt;YOUR_API_KEY&gt;"
             isEnabled = "YES">
          </EnvironmentVariable>
       </EnvironmentVariables>
@@ -83,7 +83,7 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "CEC30EE728071F74008519D5"
+            BlueprintIdentifier = "D5B6E55A282EA59900D553DF"
             BuildableName = "Example.app"
             BlueprintName = "Example"
             ReferencedContainer = "container:Example.xcodeproj">
