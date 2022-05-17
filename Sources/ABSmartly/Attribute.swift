@@ -1,10 +1,10 @@
 import Foundation
 
-class Attribute: Encodable, Equatable {
-	let name: String
+public struct Attribute: Encodable, Equatable {
+	public let name: String
 
-	let value: JSON
-	let setAt: Int64
+	public let value: JSON
+	public let setAt: Int64
 
 	init(_ name: String, value: JSON, setAt: Int64) {
 		self.name = name

@@ -1,17 +1,17 @@
 import Foundation
 
-public class Exposure: Encodable, Equatable {
-	let id: Int
-	let name: String
-	let unit: String?
-	let variant: Int
-	let exposedAt: Int64
-	let assigned: Bool
-	let eligible: Bool
-	let overridden: Bool
-	let fullOn: Bool
-	let custom: Bool
-	let audienceMismatch: Bool
+public struct Exposure: Encodable, Equatable {
+	public let id: Int
+	public let name: String
+	public let unit: String?
+	public let variant: Int
+	public let exposedAt: Int64
+	public let assigned: Bool
+	public let eligible: Bool
+	public let overridden: Bool
+	public let fullOn: Bool
+	public let custom: Bool
+	public let audienceMismatch: Bool
 
 	init(
 		_ id: Int, _ name: String, _ unit: String?, _ variant: Int, _ exposedAt: Int64, _ assigned: Bool,

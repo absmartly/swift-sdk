@@ -1,12 +1,12 @@
 import Foundation
 
 public final class PublishEvent: Encodable, Equatable {
-	var hashed: Bool
-	var units: [Unit]
-	var publishedAt: Int64
-	var exposures: [Exposure]
-	var goals: [GoalAchievement]
-	var attributes: [Attribute]
+	public var hashed: Bool
+	public var units: [Unit]
+	public var publishedAt: Int64
+	public var exposures: [Exposure]
+	public var goals: [GoalAchievement]
+	public var attributes: [Attribute]
 
 	init(
 		_ hashed: Bool = false, _ units: [Unit] = [], _ publishedAt: Int64 = 0, _ exposures: [Exposure] = [],

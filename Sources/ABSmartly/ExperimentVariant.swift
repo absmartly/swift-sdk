@@ -1,6 +1,6 @@
 import Foundation
 
-public class ExperimentVariant: Codable, Equatable {
+public struct ExperimentVariant: Codable, Equatable {
 	public let name: String?
 	public let config: String?
 

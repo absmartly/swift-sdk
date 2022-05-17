@@ -1,9 +1,9 @@
 import Foundation
 
 public struct GoalAchievement: Encodable, Equatable {
-	let name: String
-	let achievedAt: Int64
-	let properties: [String: JSON]?
+	public let name: String
+	public let achievedAt: Int64
+	public let properties: [String: JSON]?
 
 	public init(_ name: String, achievedAt: Int64, properties: [String: JSON]?) {
 		self.name = name

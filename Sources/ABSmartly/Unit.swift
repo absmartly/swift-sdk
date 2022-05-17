@@ -1,6 +1,6 @@
 import Foundation
 
-class Unit: Codable, Equatable {
+public struct Unit: Codable, Equatable {
 	public let type: String
 	public let uid: String
 
@@ -9,7 +9,7 @@ class Unit: Codable, Equatable {
 		self.uid = uid
 	}
 
-	static func == (lhs: Unit, rhs: Unit) -> Bool {
+	static public func == (lhs: Unit, rhs: Unit) -> Bool {
 		return lhs.type == rhs.type && lhs.uid == rhs.uid
 	}
 }
