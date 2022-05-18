@@ -12,7 +12,6 @@ public final class Context {
 	private let parser: VariableParser
 	private let matcher: AudienceMatcher
 	private var promise: Promise<ContextData>?
-	private var config: ContextConfig
 
 	private var pendingCount = ManagedAtomic<UInt>(0)
 
@@ -38,6 +37,7 @@ public final class Context {
 	private var assignmentCache: [String: Assignment] = [:]
 
 	private let contextLock = NSLock()
+	private var units: [String: String] = [:]
 	private var attributes: [Attribute] = []
 	private var overrides: [String: Int] = [:]
 	private var cassignments: [String: Int] = [:]
@@ -45,6 +45,8 @@ public final class Context {
 	private let eventLock = NSLock()
 	private var exposures: [Exposure] = []
 	private var achievements: [GoalAchievement] = []
+
+	private var publishDelay: TimeInterval = 0
 
 	init(
 		config: ContextConfig, clock: Clock, scheduler: Scheduler, handler: ContextEventHandler,
@@ -60,7 +62,8 @@ public final class Context {
 		self.parser = parser
 		self.matcher = matcher
 		self.promise = promise
-		self.config = config
+
+		publishDelay = config.publishDelay
 
 		assigners.reserveCapacity(config.units.count)
 		hashedUnits.reserveCapacity(config.units.count)
@@ -73,6 +76,9 @@ public final class Context {
 
 		attributes.reserveCapacity(config.attributes.count)
 		setAttributes(config.attributes)
+
+		units.reserveCapacity(config.units.count)
+		setUnits(config.units)
 
 		if promise.isResolved {
 			if let data = promise.value {
@@ -213,6 +219,30 @@ public final class Context {
 
 	public func setCustomAssignments(_ assignments: [String: Int]) {
 		assignments.forEach { setCustomAssignment(experimentName: $0.key, variant: $0.value) }
+	}
+
+	public func setUnit(unitType: String, uid: String) {
+		checkNotClosed()
+
+		let trimmed = uid.trimmingCharacters(in: .whitespacesAndNewlines)
+		precondition(!trimmed.isEmpty, "Unit '\(unitType)' UID must not be blank.")
+
+		contextLock.lock()
+		defer { contextLock.unlock() }
+
+		precondition(
+			{
+				if let previous = units[unitType], previous != uid {
+					return false
+				}
+				return true
+			}(), "Unit '\(unitType)' already set.")
+
+		units[unitType] = trimmed
+	}
+
+	public func setUnits(_ units: [String: String]) {
+		units.forEach { setUnit(unitType: $0, uid: $1) }
 	}
 
 	public func setAttribute(name: String, value: JSON) {
@@ -430,7 +460,7 @@ public final class Context {
 				if eventCount > 0 {
 					let event = PublishEvent(
 						true,
-						config.units.map {
+						units.map {
 							Unit(
 								type: $0.key, uid: String(bytes: getUnitHash($0.key, $0.value), encoding: .ascii) ?? "")
 						},
@@ -528,7 +558,7 @@ public final class Context {
 				if experiment.data.audienceStrict && assignment.audienceMismatch {
 					assignment.variant = 0
 				} else if experiment.data.fullOnVariant == 0 {
-					if let unitType = experiment.data.unitType, let uid = config.units[unitType] {
+					if let unitType = experiment.data.unitType, let uid = units[unitType] {
 						let unitHash: [UInt8] = getUnitHash(unitType, uid)
 						let assigner = getVariantAssigner(unitType, unitHash)
 
@@ -621,7 +651,7 @@ public final class Context {
 
 			if timeout == nil {
 				timeout = scheduler.schedule(
-					after: config.publishDelay,
+					after: publishDelay,
 					execute: { [self] in
 						_ = flush()
 					})

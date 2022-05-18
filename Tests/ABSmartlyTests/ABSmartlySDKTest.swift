@@ -33,7 +33,7 @@ final class ABSmartlySDKTest: XCTestCase {
 		}
 	}
 
-	func testCreateContext() {
+	func testCreateContext() throws {
 		setUpSDK()
 
 		guard let sdk = sdk, let client = client else { return }
@@ -57,7 +57,7 @@ final class ABSmartlySDKTest: XCTestCase {
 		wait(for: [expectation], timeout: 1.0)
 	}
 
-	func testCreateContextWithData() {
+	func testCreateContextWithData() throws {
 		setUpSDK()
 
 		guard let sdk = sdk, let client = client else { return }

@@ -51,6 +51,12 @@ final class ContextTest: XCTestCase {
 		"show-modal": true,
 	]
 
+	let units = [
+		"email": "bleh@absmartly.com",
+		"session_id": "e791e240fcd3df7d238cfc285f475e8152fcc0ec",
+		"user_id": "123456789",
+	]
+
 	let publishUnits: [ABSmartly.Unit] = [
 		Unit(type: "email", uid: "IuqYkNRfEx5yClel4j3NbA"),
 		Unit(type: "session_id", uid: "pAE3a1i5Drs5mKRNq56adA"),
@@ -75,9 +81,7 @@ final class ContextTest: XCTestCase {
 		let contextConfig: ContextConfig = ContextConfig()
 
 		if withUnits {
-			contextConfig.setUnit(unitType: "session_id", uid: "e791e240fcd3df7d238cfc285f475e8152fcc0ec")
-			contextConfig.setUnit(unitType: "user_id", uid: "123456789")
-			contextConfig.setUnit(unitType: "email", uid: "bleh@absmartly.com")
+			contextConfig.setUnits(units: units)
 		}
 
 		return contextConfig
@@ -274,6 +278,59 @@ final class ContextTest: XCTestCase {
 
 			expectation.fulfill()
 		}
+
+		wait(for: [expectation], timeout: 1.0)
+	}
+
+	func testSetUnit() {
+		let config = ContextConfig()
+		config.setUnit(unitType: "session_id", uid: "0ab1e23f4eee")
+
+		XCTAssertEqual(config.units["session_id"], "0ab1e23f4eee")
+	}
+
+	func testSetUnitsBeforeReady() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: false)
+		let (promise, resolver) = Promise<ContextData>.pending()
+		let context = try createContext(config: contextConfig, data: promise)
+		XCTAssertFalse(context.isReady())
+
+		let expectation = XCTestExpectation()
+
+		context.setUnits(units)
+
+		resolver.fulfill(try getContextData())
+
+		_ = context.waitUntilReady().done { [self] _ in
+			_ = context.getTreatment("exp_test_ab")
+
+			let (promise, resolver) = Promise<Void>.pending()
+			handler.publishEventReturnValue = promise
+
+			let expected = PublishEvent()
+			expected.hashed = true
+			expected.units = publishUnits
+			expected.publishedAt = clock.millis()
+			expected.exposures = [
+				Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false, false)
+			]
+
+			_ = context.publish().done { [self] in
+				XCTAssertEqual(1, handler.publishEventCallsCount)
+
+				// sort so array equality works
+				handler.publishEventReceivedEvent?.units.sort(by: {
+					$0.type != $1.type ? $0.type < $1.type : $0.uid < $0.uid
+				})
+				XCTAssertEqual(expected, handler.publishEventReceivedEvent)
+
+				expectation.fulfill()
+			}
+
+			resolver.fulfill(())
+		}
+
+		resolver.fulfill(try getContextData())
 
 		wait(for: [expectation], timeout: 1.0)
 	}
