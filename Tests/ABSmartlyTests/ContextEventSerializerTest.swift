@@ -19,7 +19,7 @@ final class ContextEventSerializerTest: XCTestCase {
 		]
 
 		let exposures = [
-			Exposure(1, "exp_test_ab", "session_id", 1, 123470000, true, true, false, false, false, true)
+			Exposure(1, "exp_test_ab", "session_id", 1, 123_470_000, true, true, false, false, false, true)
 		]
 
 		let propertiesMap: [String: JSON] = ["amount": 6, "value": 5.25, "tries": 1]

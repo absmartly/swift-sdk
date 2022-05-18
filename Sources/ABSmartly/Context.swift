@@ -504,12 +504,6 @@ public final class Context {
 			if let experimentVariables = experiment {
 				assignment.id = experimentVariables.data.id
 				assignment.unitType = experimentVariables.data.unitType
-
-				if let unitType = experimentVariables.data.unitType, config.units[unitType] != nil {
-					assignment.assigned = true
-				} else {
-					assignment.assigned = false
-				}
 			}
 
 			assignment.overridden = true

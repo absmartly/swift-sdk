@@ -819,10 +819,10 @@ final class ContextTest: XCTestCase {
 		expected.units = publishUnits
 		expected.publishedAt = clock.millis()
 		expected.exposures = [
-			Exposure(1, "exp_test_ab", "session_id", 12, clock.millis(), true, true, true, false, false, false),
-			Exposure(2, "exp_test_abc", "session_id", 13, clock.millis(), true, true, true, false, false, false),
-			Exposure(3, "exp_test_not_eligible", "user_id", 11, clock.millis(), true, true, true, false, false, false),
-			Exposure(4, "exp_test_fullon", "session_id", 13, clock.millis(), true, true, true, false, false, false),
+			Exposure(1, "exp_test_ab", "session_id", 12, clock.millis(), false, true, true, false, false, false),
+			Exposure(2, "exp_test_abc", "session_id", 13, clock.millis(), false, true, true, false, false, false),
+			Exposure(3, "exp_test_not_eligible", "user_id", 11, clock.millis(), false, true, true, false, false, false),
+			Exposure(4, "exp_test_fullon", "session_id", 13, clock.millis(), false, true, true, false, false, false),
 			Exposure(0, "not_found", nil, 3, clock.millis(), false, true, true, false, false, false),
 		]
 
