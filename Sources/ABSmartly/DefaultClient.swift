@@ -36,11 +36,11 @@ public final class DefaultClient: Client {
 		getQuery = ["application": config.application, "environment": config.environment]
 		putHeaders = [
 			"Content-Type": "application/json; charset=utf-8",
-			"X-Agent": config.agent,
+			"X-Agent": "absmartly-swift-sdk",
 			"X-API-Key": config.apiKey,
 			"X-Environment": config.environment,
 			"X-Application": config.application,
-			"X-Application-Version": String(config.applicationVersion),
+			"X-Application-Version": "0",
 		]
 	}
 
