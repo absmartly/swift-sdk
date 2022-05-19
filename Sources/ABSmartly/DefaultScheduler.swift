@@ -25,7 +25,7 @@ public class DefaultScheduler: Scheduler {
 	public func schedule(after: TimeInterval, execute: @escaping Work) -> ScheduledHandle {
 		let timer = DispatchSource.makeTimerSource(queue: DispatchQueue.main)
 		timer.setEventHandler(qos: .background, handler: execute)
-		timer.schedule(deadline: .now() + after, leeway: .nanoseconds(0))
+		timer.schedule(deadline: .now() + after, leeway: .milliseconds(5))
 		timer.resume()
 
 		return DefaultScheduledHandle(handle: timer)
@@ -35,8 +35,15 @@ public class DefaultScheduler: Scheduler {
 		-> ScheduledHandle
 	{
 		let timer = DispatchSource.makeTimerSource(queue: DispatchQueue.main)
-		timer.setEventHandler(qos: .background, handler: execute)
-		timer.schedule(deadline: .now() + after, repeating: repeating, leeway: .nanoseconds(0))
+		timer.setEventHandler(
+			qos: .background,
+			handler: {
+				timer.suspend()
+				execute()
+				timer.resume()
+			})
+
+		timer.schedule(deadline: .now() + after, repeating: repeating, leeway: .milliseconds(5))
 		timer.resume()
 
 		return DefaultScheduledHandle(handle: timer)
