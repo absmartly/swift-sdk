@@ -7,6 +7,7 @@ public class ContextConfig {
 	private(set) var cassignments: [String: Int] = [:]
 	public var eventLogger: ContextEventLogger?
 	public var publishDelay: TimeInterval = 0.1
+	public var refreshInterval: TimeInterval = 0
 
 	public init() {
 	}

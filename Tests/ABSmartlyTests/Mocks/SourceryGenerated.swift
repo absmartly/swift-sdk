@@ -505,19 +505,6 @@ class ResponseMock: Response {
 
 class ScheduledHandleMock: ScheduledHandle {
 
-	//MARK: - wait
-
-	var waitCallsCount = 0
-	var waitCalled: Bool {
-		return waitCallsCount > 0
-	}
-	var waitClosure: (() -> Void)?
-
-	func wait() {
-		waitCallsCount += 1
-		waitClosure?()
-	}
-
 	//MARK: - cancel
 
 	var cancelCallsCount = 0
@@ -550,7 +537,6 @@ class ScheduledHandleMock: ScheduledHandle {
 	}
 
 	func clearInvocations() {
-		waitCallsCount = 0
 		cancelCallsCount = 0
 		isCancelledCallsCount = 0
 	}
@@ -580,10 +566,43 @@ class SchedulerMock: Scheduler {
 		}
 	}
 
+	//MARK: - scheduleWithFixedDelay
+
+	var scheduleWithFixedDelayAfterRepeatingExecuteCallsCount = 0
+	var scheduleWithFixedDelayAfterRepeatingExecuteCalled: Bool {
+		return scheduleWithFixedDelayAfterRepeatingExecuteCallsCount > 0
+	}
+	var scheduleWithFixedDelayAfterRepeatingExecuteReceivedArguments:
+		(after: TimeInterval, repeating: TimeInterval, execute: Work)?
+	var scheduleWithFixedDelayAfterRepeatingExecuteReceivedInvocations:
+		[(after: TimeInterval, repeating: TimeInterval, execute: Work)] = []
+	var scheduleWithFixedDelayAfterRepeatingExecuteReturnValue: ScheduledHandle!
+	var scheduleWithFixedDelayAfterRepeatingExecuteClosure:
+		((TimeInterval, TimeInterval, @escaping Work) -> ScheduledHandle)?
+
+	func scheduleWithFixedDelay(after: TimeInterval, repeating: TimeInterval, execute: @escaping Work)
+		-> ScheduledHandle
+	{
+		scheduleWithFixedDelayAfterRepeatingExecuteCallsCount += 1
+		scheduleWithFixedDelayAfterRepeatingExecuteReceivedArguments = (
+			after: after, repeating: repeating, execute: execute
+		)
+		scheduleWithFixedDelayAfterRepeatingExecuteReceivedInvocations.append(
+			(after: after, repeating: repeating, execute: execute))
+		if let scheduleWithFixedDelayAfterRepeatingExecuteClosure = scheduleWithFixedDelayAfterRepeatingExecuteClosure {
+			return scheduleWithFixedDelayAfterRepeatingExecuteClosure(after, repeating, execute)
+		} else {
+			return scheduleWithFixedDelayAfterRepeatingExecuteReturnValue
+		}
+	}
+
 	func clearInvocations() {
 		scheduleAfterExecuteCallsCount = 0
 		scheduleAfterExecuteReceivedArguments = nil
 		scheduleAfterExecuteReceivedInvocations = []
+		scheduleWithFixedDelayAfterRepeatingExecuteCallsCount = 0
+		scheduleWithFixedDelayAfterRepeatingExecuteReceivedArguments = nil
+		scheduleWithFixedDelayAfterRepeatingExecuteReceivedInvocations = []
 	}
 }
 

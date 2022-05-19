@@ -56,6 +56,7 @@ class ViewController: UIViewController {
 		}
 
 		let contextConfig = ContextConfig()
+		contextConfig.refreshInterval = 5
 		contextConfig.setUnit(
 			unitType: "anonymous_id", uid: UIDevice.current.identifierForVendor!.uuidString + "1")
 

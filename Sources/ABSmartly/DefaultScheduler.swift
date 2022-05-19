@@ -1,12 +1,6 @@
 import Foundation
 
 public class DefaultScheduledHandle: ScheduledHandle {
-	public func wait() {
-		if handle != nil {
-			handle!.wait()
-		}
-	}
-
 	public func cancel() {
 		if handle != nil {
 			handle!.cancel()
@@ -20,19 +14,31 @@ public class DefaultScheduledHandle: ScheduledHandle {
 		return false
 	}
 
-	public init(handle: DispatchWorkItem) {
+	public init(handle: DispatchSourceTimer) {
 		self.handle = handle
 	}
 
-	private let handle: DispatchWorkItem?
+	private let handle: DispatchSourceTimer?
 }
 
 public class DefaultScheduler: Scheduler {
 	public func schedule(after: TimeInterval, execute: @escaping Work) -> ScheduledHandle {
-		let handle = DispatchWorkItem(block: execute)
+		let timer = DispatchSource.makeTimerSource(queue: DispatchQueue.main)
+		timer.setEventHandler(qos: .background, handler: execute)
+		timer.schedule(deadline: .now() + after, leeway: .nanoseconds(0))
+		timer.resume()
 
-		DispatchQueue.main.asyncAfter(deadline: .now() + after, execute: handle)
+		return DefaultScheduledHandle(handle: timer)
+	}
 
-		return DefaultScheduledHandle(handle: handle)
+	public func scheduleWithFixedDelay(after: TimeInterval, repeating: TimeInterval, execute: @escaping Work)
+		-> ScheduledHandle
+	{
+		let timer = DispatchSource.makeTimerSource(queue: DispatchQueue.main)
+		timer.setEventHandler(qos: .background, handler: execute)
+		timer.schedule(deadline: .now() + after, repeating: repeating, leeway: .nanoseconds(0))
+		timer.resume()
+
+		return DefaultScheduledHandle(handle: timer)
 	}
 }

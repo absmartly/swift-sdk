@@ -84,7 +84,7 @@ Then we can initialize the A/B Smartly context directly with it.
 
 ```swift
 let contextConfig: ContextConfig = ContextConfig()
-contextConfig.setUnit(unitType: "device_id", uid: UIDevice.current.identifierForVendor!.uuidString))
+contextConfig.setUnit(unitType: "device_id", uid: UIDevice.current.identifierForVendor!.uuidString)
 
 let context = sdk.createContextWithData(config: anotherContextConfig, contextData: contextData)
 ```
@@ -149,12 +149,20 @@ context.close().done {
 #### Refreshing the context with fresh experiment data
 For long-running contexts, the context is usually created once when the application is first reached.
 However, any experiments being tracked in your production code, but started after the context was created, will not be triggered.
-To mitigate this, we can use the `refresh()` method. This method pulls updated experiment data from the A/B Smartly collector and will trigger recently started experiments when `getTreatment()` is called again.
+To mitigate this, we can use the `setRefreshInterval()` method on the context config.
+
+```swift
+let contextConfig: ContextConfig = ContextConfig()
+contextConfig.setUnit(unitType: "device_id", uid: UIDevice.current.identifierForVendor!.uuidString)
+contextConfig.refreshInterval = 4 * 3600; // every 4 hours
+```
+
+Alternatively, the `refresh()` method can be called manually.
 
 ```swift
 context.refresh().done {
     print("refreshed")
-})
+}
 ```
 
 
