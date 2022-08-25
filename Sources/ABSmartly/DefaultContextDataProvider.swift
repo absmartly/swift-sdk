@@ -4,7 +4,7 @@ import PromiseKit
 public class DefaultContextDataProvider: ContextDataProvider {
 	private let client: Client
 
-	init(client: Client) {
+	public init(client: Client) {
 		self.client = client
 	}
 

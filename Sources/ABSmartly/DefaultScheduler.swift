@@ -22,6 +22,8 @@ public class DefaultScheduledHandle: ScheduledHandle {
 }
 
 public class DefaultScheduler: Scheduler {
+	public init() {}
+
 	public func schedule(after: TimeInterval, execute: @escaping Work) -> ScheduledHandle {
 		let timer = DispatchSource.makeTimerSource(queue: DispatchQueue.main)
 		timer.setEventHandler(qos: .background, handler: execute)

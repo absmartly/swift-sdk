@@ -2,7 +2,7 @@ import Foundation
 import PromiseKit
 
 public class DefaultHTTPResponse: Response {
-	init(status: Int, statusMessage: String, contentType: String, content: Data) {
+	public init(status: Int, statusMessage: String, contentType: String, content: Data) {
 		self.status = status
 		self.statusMessage = statusMessage
 		self.contentType = contentType

@@ -1,6 +1,8 @@
 import Foundation
 
 public class DefaultVariableParser: VariableParser {
+	public init() {}
+
 	public func parse(experimentName: String, config: String) -> [String: JSON]? {
 		let data = Data(config.utf8)
 		do {
