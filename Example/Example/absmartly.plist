@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>endpoint</key>
+	<string>https://sandbox.absmartly.io/v1</string>
+	<key>apikey</key>
+	<string>R54OsOwR9wwtWYhDXwdtp4iuD3pvtIUoHz4BakCuBl0t3E9kA0R6jzTW6cffQC9O</string>
+	<key>application</key>
+	<string>www</string>
+	<key>environment</key>
+	<string>prod</string>
+</dict>
+</plist>

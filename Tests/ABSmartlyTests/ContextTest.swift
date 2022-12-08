@@ -31,14 +31,14 @@ final class ContextTest: XCTestCase {
 		"exp_test_new": 1,
 	]
 
-	let variableExperiments: [String: String] = [
-		"banner.border": "exp_test_ab",
-		"banner.size": "exp_test_ab",
-		"button.color": "exp_test_abc",
-		"card.width": "exp_test_not_eligible",
-		"submit.color": "exp_test_fullon",
-		"submit.shape": "exp_test_fullon",
-		"show-modal": "exp_test_new",
+	let variableExperiments: [String: [String]] = [
+		"banner.border": ["exp_test_ab"],
+		"banner.size": ["exp_test_ab"],
+		"button.color": ["exp_test_abc"],
+		"card.width": ["exp_test_not_eligible"],
+		"submit.color": ["exp_test_fullon"],
+		"submit.shape": ["exp_test_fullon"],
+		"show-modal": ["exp_test_new"],
 	]
 
 	let expectedVariables: [String: JSON] = [
@@ -570,13 +570,13 @@ final class ContextTest: XCTestCase {
 		let contextData = try getContextData()
 		let context = try createContext(config: contextConfig, data: Promise<ContextData>.value(contextData))
 
-		variableExperiments.forEach { variableName, experimentName in
+		variableExperiments.forEach { variableName, experimentNames in
 			let actual = context.peekVariableValue(variableName, defaultValue: 17)
-			let eligible = experimentName != "exp_test_not_eligible"
+			let eligible = experimentNames[0] != "exp_test_not_eligible"
 
 			if eligible
 				&& contextData.experiments.contains(where: { experiment in
-					experiment.name == experimentName
+					experiment.name == experimentNames[0]
 				})
 			{
 				let expected = expectedVariables[variableName]
@@ -587,6 +587,30 @@ final class ContextTest: XCTestCase {
 			}
 		}
 
+		XCTAssertEqual(0, context.getPendingCount())
+	}
+
+	func testPeekVariableValueConflictingKeyDisjointAudiences() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let contextData = try getContextData(source: "audience_key_conflict_disjoint_context")
+
+		let context = try createContext(config: contextConfig, data: Promise<ContextData>.value(contextData))
+		context.setAttribute(name: "age", value: 20)
+		XCTAssertEqual("arrow", context.peekVariableValue("icon", defaultValue: "square"))
+		XCTAssertEqual(0, context.getPendingCount())
+
+		let context2 = try createContext(config: contextConfig, data: Promise<ContextData>.value(contextData))
+		context2.setAttribute(name: "age", value: 19)
+		XCTAssertEqual("circle", context2.peekVariableValue("icon", defaultValue: "square"))
+		XCTAssertEqual(0, context2.getPendingCount())
+	}
+
+	func testPeekVariableValuePicksLowestExperimentIdOnConflictingKey() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let contextData = try getContextData(source: "audience_key_conflict_context")
+
+		let context = try createContext(config: contextConfig, data: Promise<ContextData>.value(contextData))
+		XCTAssertEqual("circle", context.peekVariableValue("icon", defaultValue: "square"))
 		XCTAssertEqual(0, context.getPendingCount())
 	}
 
@@ -611,13 +635,13 @@ final class ContextTest: XCTestCase {
 		let contextData = try getContextData()
 		let context = try createContext(config: contextConfig, data: Promise<ContextData>.value(contextData))
 
-		variableExperiments.forEach { variableName, experimentName in
+		variableExperiments.forEach { variableName, experimentNames in
 			let actual = context.getVariableValue(variableName, defaultValue: 17)
-			let eligible = experimentName != "exp_test_not_eligible"
+			let eligible = experimentNames[0] != "exp_test_not_eligible"
 
 			if eligible
 				&& contextData.experiments.contains(where: { experiment in
-					experiment.name == experimentName
+					experiment.name == experimentNames[0]
 				})
 			{
 				let expected = expectedVariables[variableName]
@@ -629,6 +653,21 @@ final class ContextTest: XCTestCase {
 		}
 
 		XCTAssertEqual(UInt(contextData.experiments.count), context.getPendingCount())
+	}
+
+	func testGetVariableValueConflictingKeyDisjointAudiences() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let contextData = try getContextData(source: "audience_key_conflict_disjoint_context")
+
+		let context = try createContext(config: contextConfig, data: Promise<ContextData>.value(contextData))
+		context.setAttribute(name: "age", value: 20)
+		XCTAssertEqual("arrow", context.getVariableValue("icon", defaultValue: "square"))
+		XCTAssertEqual(1, context.getPendingCount())
+
+		let context2 = try createContext(config: contextConfig, data: Promise<ContextData>.value(contextData))
+		context2.setAttribute(name: "age", value: 19)
+		XCTAssertEqual("circle", context2.getVariableValue("icon", defaultValue: "square"))
+		XCTAssertEqual(1, context2.getPendingCount())
 	}
 
 	func testGetVariableValueQueuesExposureWithAudienceMismatchFalseOnAudienceMatch() throws {
@@ -712,7 +751,8 @@ final class ContextTest: XCTestCase {
 		wait(for: [expectation], timeout: 1.0)
 	}
 
-	func testGetVariableValueQueuesExposureWithAudienceMismatchFalseAndControlVariantOnAudienceMismatchInStrictMode()
+	func
+		testGetVariableValueDoesNotQueueExposureWithAudienceMismatchFalseAndControlVariantOnAudienceMismatchInStrictMode()
 		throws
 	{
 		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
@@ -720,36 +760,7 @@ final class ContextTest: XCTestCase {
 		let context = try createContext(config: contextConfig, data: Promise<ContextData>.value(contextData))
 
 		XCTAssertEqual("small", context.getVariableValue("banner.size", defaultValue: "small"))
-		XCTAssertEqual(1, context.getPendingCount())
-
-		let expectation = XCTestExpectation()
-
-		let (promise, resolver) = Promise<Void>.pending()
-		handler.publishEventReturnValue = promise
-
-		let expected = PublishEvent()
-		expected.hashed = true
-		expected.units = publishUnits
-		expected.publishedAt = clock.millis()
-		expected.exposures = [
-			Exposure(1, "exp_test_ab", "session_id", 0, clock.millis(), false, true, false, false, false, true)
-		]
-
-		_ = context.publish().done { [self] in
-			XCTAssertEqual(1, handler.publishEventCallsCount)
-
-			// sort so array equality works
-			handler.publishEventReceivedEvent?.units.sort(by: {
-				$0.type != $1.type ? $0.type < $1.type : $0.uid < $0.uid
-			})
-			XCTAssertEqual(expected, handler.publishEventReceivedEvent)
-
-			expectation.fulfill()
-		}
-
-		resolver.fulfill(())
-
-		wait(for: [expectation], timeout: 1.0)
+		XCTAssertEqual(0, context.getPendingCount())
 	}
 
 	func testGetVariableValueCallsEventLogger() throws {

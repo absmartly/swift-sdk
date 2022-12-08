@@ -29,7 +29,7 @@ public final class Context {
 
 	private let dataLock = NSLock()
 	private var index: [String: ExperimentVariables] = [:]
-	private var indexVariables: [String: ExperimentVariables] = [:]
+	private var indexVariables: [String: [ExperimentVariables]] = [:]
 	private var data: ContextData? = nil
 
 	private var hashedUnits: [String: [UInt8]] = [:]
@@ -282,13 +282,13 @@ public final class Context {
 		return getAssignment(experimentName).variant
 	}
 
-	public func getVariableKeys() -> [String: String] {
+	public func getVariableKeys() -> [String: [String]] {
 		checkReady(true)
 
 		dataLock.lock()
 		defer { dataLock.unlock() }
 
-		return indexVariables.mapValues { $0.data.name }
+		return indexVariables.mapValues { $0.map({ $0.data.name }) }
 	}
 
 	public func getVariableValue(_ key: String, defaultValue: JSON? = nil) -> JSON? {
@@ -608,14 +608,21 @@ public final class Context {
 	}
 
 	private func getVariableAssignment(_ key: String) -> Assignment? {
-		guard let experiment = getVariableExperiment(key) else {
+		guard let keyExperimentVariables = getVariableExperiments(key) else {
 			return nil
 		}
 
-		return getAssignment(experiment.data.name)
+		for experimentVariables in keyExperimentVariables {
+			let assignment = getAssignment(experimentVariables.data.name)
+			if assignment.assigned || assignment.overridden {
+				return assignment
+			}
+		}
+
+		return nil
 	}
 
-	private func getVariableExperiment(_ experimentName: String) -> ExperimentVariables? {
+	private func getVariableExperiments(_ experimentName: String) -> [ExperimentVariables]? {
 		return getLocked(lock: dataLock, dict: indexVariables, key: experimentName)
 	}
 
@@ -690,7 +697,7 @@ public final class Context {
 
 	private func setData(_ data: ContextData) {
 		var index: [String: ExperimentVariables] = [:]
-		var indexVariables: [String: ExperimentVariables] = [:]
+		var indexVariables: [String: [ExperimentVariables]] = [:]
 
 		for experiment in data.experiments {
 			let experimentVariables = ExperimentVariables(experiment)
@@ -699,7 +706,10 @@ public final class Context {
 				if let config = variant.config, !config.isEmpty {
 					if let parsed = parser.parse(experimentName: experiment.name, config: config) {
 						for (key, _) in parsed {
-							indexVariables[key] = experimentVariables
+							var keyExperimentVariables = indexVariables[key] ?? []
+							keyExperimentVariables.insertUniqueSorted(
+								experimentVariables, isSorted: { $0.data.id < $1.data.id })
+							indexVariables[key] = keyExperimentVariables
 						}
 						experimentVariables.variables.append(parsed)
 					} else {
