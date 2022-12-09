@@ -205,6 +205,10 @@ public final class Context {
 		assignments.forEach { setCustomAssignment(experimentName: $0.key, variant: $0.value) }
 	}
 
+	public func getUnit(unitType: String) -> String? {
+		return getLocked(lock: contextLock, dict: units, key: unitType)
+	}
+
 	public func setUnit(unitType: String, uid: String) {
 		checkNotClosed()
 
@@ -225,8 +229,28 @@ public final class Context {
 		units[unitType] = trimmed
 	}
 
+	public func getUnits() -> [String: String] {
+		contextLock.lock()
+		defer { contextLock.unlock() }
+
+		return units
+	}
+
 	public func setUnits(_ units: [String: String]) {
 		units.forEach { setUnit(unitType: $0, uid: $1) }
+	}
+
+	public func getAttribute(name: String) -> JSON? {
+		contextLock.lock()
+		defer { contextLock.unlock() }
+
+		for attribute in attributes.reversed() {
+			if attribute.name == name {
+				return attribute.value
+			}
+		}
+
+		return nil
 	}
 
 	public func setAttribute(name: String, value: JSON) {
@@ -236,6 +260,18 @@ public final class Context {
 		defer { contextLock.unlock() }
 
 		attributes.append(Attribute(name, value: value, setAt: clock.millis()))
+	}
+
+	public func getAttributes() -> [String: JSON] {
+		var result: [String:JSON] = [:]
+
+		contextLock.lock()
+		defer { contextLock.unlock() }
+
+		for attribute in attributes {
+			result[attribute.name] = attribute.value
+		}
+		return result;
 	}
 
 	public func setAttributes(_ attributes: [String: JSON]) {

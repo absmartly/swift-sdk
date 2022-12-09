@@ -332,11 +332,16 @@ final class ContextTest: XCTestCase {
 		wait(for: [expectation], timeout: 1.0)
 	}
 
-	func testSetUnit() {
-		let config = ContextConfig()
-		config.setUnit(unitType: "session_id", uid: "0ab1e23f4eee")
+	func testSetUnits() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: false)
+		let context = try createContext(config: contextConfig, data: Promise.value(getContextData()))
 
-		XCTAssertEqual(config.units["session_id"], "0ab1e23f4eee")
+		context.setUnit(unitType: "anonymous_id", uid: "0ab1e-23f4-feee")
+		XCTAssertEqual("0ab1e-23f4-feee", context.getUnit(unitType: "anonymous_id"))
+
+		context.setUnits(["session_id": "0ab1e23f4eee", "user_id": "1234567890"])
+
+		XCTAssertEqual(["session_id": "0ab1e23f4eee", "user_id": "1234567890", "anonymous_id": "0ab1e-23f4-feee"], context.getUnits())
 	}
 
 	func testSetUnitsBeforeReady() throws {
@@ -385,6 +390,18 @@ final class ContextTest: XCTestCase {
 		wait(for: [expectation], timeout: 1.0)
 	}
 
+	func testSetAttributes() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: false)
+		let context = try createContext(config: contextConfig, data: Promise.value(getContextData()))
+
+		context.setAttribute(name: "attr1", value: "value1")
+		XCTAssertEqual("value1", context.getAttribute(name: "attr1"))
+
+		context.setAttributes(["attr2": "value2", "attr3": 3])
+
+		XCTAssertEqual(["attr1": "value1", "attr2": "value2", "attr3": 3], context.getAttributes())
+	}
+
 	func testSetAttributesBeforeReady() throws {
 		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
 		let (promise, resolver) = Promise<ContextData>.pending()
@@ -392,7 +409,9 @@ final class ContextTest: XCTestCase {
 		XCTAssertFalse(context.isReady())
 		XCTAssertFalse(context.isFailed())
 		context.setAttribute(name: "attr1", value: "value1")
-		context.setAttributes(["attr1": "value2"])
+		context.setAttributes(["attr2": "value2"])
+		XCTAssertEqual(["attr1":"value1", "attr2": "value2"], context.getAttributes())
+
 		resolver.fulfill(try getContextData())
 	}
 
