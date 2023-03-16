@@ -16,7 +16,7 @@ public class SqlliteCache : LocalCache {
     public init(){
     }
 
-    public func getConnection() -> Connection! {
+    public func getConnection() -> Connection {
         do {
             if(db == nil){
                 db = try! Connection("\(path.first ?? "")/absmartly.sqlite3")
@@ -25,15 +25,15 @@ public class SqlliteCache : LocalCache {
         } catch {
             print (error)
         }
-        return self.db;
+        return self.db!;
     }
 
     public func setupDatabase() {
         do {
-            var stmt = try db.prepare("create table if not exists  events (id INTEGER PRIMARY KEY AUTOINCREMENT, event text)")
+            var stmt = try getConnection().prepare("create table if not exists  events (id INTEGER PRIMARY KEY AUTOINCREMENT, event text)")
             try stmt.run()
 
-            stmt = try db.prepare("create table if not exists  context (id INTEGER PRIMARY KEY AUTOINCREMENT, context text)")
+            stmt = try getConnection().prepare("create table if not exists  context (id INTEGER PRIMARY KEY AUTOINCREMENT, context text)")
             try stmt.run()
         } catch {
             print (error)

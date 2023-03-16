@@ -10,7 +10,7 @@ public class MemoryCache : SqlliteCache {
     public override init(){
     }
 
-    public override func getConnection() -> Connection! {
+    public override func getConnection() -> Connection {
         do {
             if(db == nil){
                 db = try! Connection(.inMemory)
@@ -19,7 +19,7 @@ public class MemoryCache : SqlliteCache {
         } catch {
             print (error)
         }
-        return self.db;
+        return self.db!;
     }
 
 }
