@@ -40,7 +40,7 @@ public class SqlliteCache : LocalCache {
         }
     }
 
-    public func writeEvent(event: PublishEvent) -> Promise<Void> {
+    public func writeEvent(event: PublishEvent) {
         do {
             let stmt = try self.getConnection().prepare("insert into events (event) values (?)")
             let eventStr = try JSONEncoder().encode(event)
