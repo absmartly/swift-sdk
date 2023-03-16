@@ -1,6 +1,6 @@
 import Foundation
 
-public struct GoalAchievement: Encodable, Equatable {
+public struct GoalAchievement: Encodable, Equatable, Decodable {
 	public let name: String
 	public let achievedAt: Int64
 	public let properties: [String: JSON]?

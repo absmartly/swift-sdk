@@ -7,6 +7,7 @@ public class ABSmartlyConfig {
 	var contextEventLogger: ContextEventLogger?
 	var variableParser: VariableParser?
 	var client: Client?
+	var resilienceConfig: ResilienceConfig?
 
 	public init() {
 	}
