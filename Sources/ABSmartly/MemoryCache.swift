@@ -17,4 +17,7 @@ public class MemoryCache : SqlliteCache {
         set {}
     }
 
+    public override init(){
+    }
+
 }

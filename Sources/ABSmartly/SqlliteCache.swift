@@ -10,6 +10,9 @@ public class SqlliteCache : LocalCache {
 
     public var db = try! Connection("absmartly.sqlite3")
 
+    public init(){
+    }
+
     public func getConnection() -> Connection! {
         do {
             if(db != nil){
