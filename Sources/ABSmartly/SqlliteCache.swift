@@ -41,76 +41,60 @@ public class SqlliteCache : LocalCache {
     }
 
     public func writeEvent(event: PublishEvent) -> Promise<Void> {
-        return Promise<Void> { seal in
-            do {
-                let stmt = try self.getConnection().prepare("insert into events (event) values (?)")
-                let eventStr = try JSONEncoder().encode(event)
-                let binding = String(bytes: eventStr, encoding: .utf8)
-                try stmt.run(binding)
-                seal.fulfill(())
-            } catch {
-                print (error)
-                seal.reject(error)
-            }
+        do {
+            let stmt = try self.getConnection().prepare("insert into events (event) values (?)")
+            let eventStr = try JSONEncoder().encode(event)
+            let binding = String(bytes: eventStr, encoding: .utf8)
+            try stmt.run(binding)
+        } catch {
+            print (error)
         }
     }
 
-    public func retrieveEvents() -> Promise<[PublishEvent]> {
-        return Promise<[PublishEvent]> { seal in
-            do {
-                var events: [PublishEvent] = Array<PublishEvent>()
-                for row in try self.getConnection().prepare("select * from events") {
-                    let dataString = row[1] as? String ?? ""
-                    let data = dataString.data(using: .utf8) ?? Data()
-                    let event = try JSONDecoder().decode(PublishEvent.self, from: data)
-                    events.append(event)
-                }
-                let deleteStm = try self.getConnection().prepare("delete from events")
-                try deleteStm.run()
-                seal.fulfill(events)
-            } catch {
-                print (error)
-                seal.reject(error)
+    public func retrieveEvents() -> [PublishEvent] {
+        var events: [PublishEvent] = Array<PublishEvent>()
+        do {
+            for row in try self.getConnection().prepare("select * from events") {
+                let dataString = row[1] as? String ?? ""
+                let data = dataString.data(using: .utf8) ?? Data()
+                let event = try JSONDecoder().decode(PublishEvent.self, from: data)
+                events.append(event)
             }
+            let deleteStm = try self.getConnection().prepare("delete from events")
+            try deleteStm.run()
+        } catch {
+            print (error)
         }
-
+        return events;
     }
 
-    public func writeContextData(contextData: ContextData) -> Promise<Void> {
-        return Promise<Void> { seal in
-            do {
-                let deleteStm = try self.getConnection().prepare("delete from context")
-                try deleteStm.run()
+    public func writeContextData(contextData: ContextData) {
+        do {
+            let deleteStm = try self.getConnection().prepare("delete from context")
+            try deleteStm.run()
 
-                let stmt = try getConnection().prepare("insert into context (context) values (?)")
-                let data = try JSONEncoder().encode(contextData)
-                let binding = String(data: data, encoding: .utf8)
-                try stmt.run(binding)
-                seal.fulfill(())
-            } catch {
-                print (error)
-                seal.reject(error)
-            }
+            let stmt = try getConnection().prepare("insert into context (context) values (?)")
+            let data = try JSONEncoder().encode(contextData)
+            let binding = String(data: data, encoding: .utf8)
+            try stmt.run(binding)
+        } catch {
+            print (error)
         }
-
     }
 
-    public func getContextData() -> Promise<ContextData?> {
-        return Promise<ContextData?> { seal in
-            do {
-                var contextData: ContextData?
-                for row in try self.getConnection().prepare("select * from context") {
-                    let dataString = row[1] as? String ?? ""
-                    let data = dataString.data(using: .utf8) ?? Data()
-                    let ctx = try JSONDecoder().decode(ContextData.self, from: data)
-                    contextData = ctx
-                }
-                seal.fulfill(contextData)
-            } catch {
-                print (error)
-                seal.reject(error)
+    public func getContextData() -> ContextData? {
+        var contextData: ContextData?
+        do {
+            for row in try self.getConnection().prepare("select * from context") {
+                let dataString = row[1] as? String ?? ""
+                let data = dataString.data(using: .utf8) ?? Data()
+                let ctx = try JSONDecoder().decode(ContextData.self, from: data)
+                contextData = ctx
             }
+        } catch {
+            print (error)
         }
+        return contextData
     }
 
 }

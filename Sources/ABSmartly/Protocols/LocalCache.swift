@@ -6,8 +6,8 @@ import Foundation
 import PromiseKit
 
 public protocol LocalCache {
-    func writeEvent(event: PublishEvent) -> Promise<Void>
-    func retrieveEvents() -> Promise<[PublishEvent]>
-    func writeContextData(contextData: ContextData) -> Promise<Void>
-    func getContextData() -> Promise<ContextData?>
+    func writeEvent(event: PublishEvent)
+    func retrieveEvents() -> [PublishEvent]
+    func writeContextData(contextData: ContextData)
+    func getContextData() -> ContextData?
 }

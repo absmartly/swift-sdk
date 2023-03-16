@@ -137,6 +137,7 @@ public final class Context {
 				seal.fulfill(self)
 			} else if let ready = readyPromise {
 				_ = ready.done {
+					self.handler.flushCache();
 					seal.fulfill(self)
 				}
 			}
