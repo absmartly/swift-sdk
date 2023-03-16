@@ -16,7 +16,7 @@ public class ABSmartlyConfig {
 		print("Hello, world!")
 		self.init(
 			contextDataProvider: nil, contextEventHandler: nil, contextEventLogger: nil, variableParser: nil,
-			scheduler: nil, client: client)
+			scheduler: nil, client: client, resilienceConfig: nil)
 	}
 
 	public convenience init(client: Client, resilienceConfig:ResilienceConfig) {
