@@ -8,14 +8,18 @@ import SQLite
 
 public class SqlliteCache : LocalCache {
 
-    public var db = try! Connection("absmartly2.sqlite3")
+    let path = NSSearchPathForDirectoriesInDomains(
+            .documentDirectory, .userDomainMask, true)
+
+    var db: Connection?
 
     public init(){
     }
 
     public func getConnection() -> Connection! {
         do {
-            if(db != nil){
+            if(db == nil){
+                db = try! Connection("\(path.first ?? "")/absmartly.sqlite3")
                 setupDatabase()
             }
         } catch {

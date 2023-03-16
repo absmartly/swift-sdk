@@ -7,17 +7,19 @@ import PromiseKit
 import SQLite
 
 public class MemoryCache : SqlliteCache {
-
-    public var memorydb = try! Connection(.inMemory)
-
-    override public var db: Connection {
-        get {
-            return memorydb
-        }
-        set {}
+    public override init(){
     }
 
-    public override init(){
+    public override func getConnection() -> Connection! {
+        do {
+            if(db == nil){
+                db = try! Connection(.inMemory)
+                setupDatabase()
+            }
+        } catch {
+            print (error)
+        }
+        return self.db;
     }
 
 }
