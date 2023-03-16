@@ -8,7 +8,7 @@ import SQLite
 
 public class SqlliteCache : LocalCache {
 
-    public var db = try! Connection("absmartly.sqlite3")
+    public var db = try! Connection("absmartly2.sqlite3")
 
     public init(){
     }
