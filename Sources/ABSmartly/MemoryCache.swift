@@ -6,7 +6,7 @@ import Foundation
 import PromiseKit
 import SQLite
 
-class MemoryCache : SqlliteCache {
+public class MemoryCache : SqlliteCache {
 
     public var memorydb = try! Connection(.inMemory)
 

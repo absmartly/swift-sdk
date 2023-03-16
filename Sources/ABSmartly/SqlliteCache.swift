@@ -6,7 +6,7 @@ import Foundation
 import PromiseKit
 import SQLite
 
-class SqlliteCache : LocalCache {
+public class SqlliteCache : LocalCache {
 
     public var db = try! Connection("absmartly.sqlite3")
 
