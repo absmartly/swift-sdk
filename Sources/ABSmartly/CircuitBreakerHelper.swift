@@ -12,7 +12,7 @@ public class CircuitBreakerHelper {
 	private let scheduler: Scheduler = DefaultScheduler()
 	private let timeoutLock = NSLock()
 	private let flushLock = NSLock()
-	private var flushInExecution = false;
+	private var flushInExecution = false
 	private var timeout: ScheduledHandle?
 	private var backoffPeriodInMilliseconds: Int?
 	private var handler: ContextEventHandler?
@@ -42,18 +42,17 @@ public class CircuitBreakerHelper {
 		promise.done { response in
 			//print("helper: promise done")
 			fallBackResolver.fulfill(nil)
-			var state = self.circuitBreaker.breakerState;
+			var state = self.circuitBreaker.breakerState
 			invocation.notifySuccess()
-			if ((state == .halfopen ) && !self.flushInExecution){
-				self.flushInExecution = true;
+			if (state == .halfopen) && !self.flushInExecution {
+				self.flushInExecution = true
 				DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
 					self.timeoutLock.lock()
 					defer { self.timeoutLock.unlock() }
 					self.handler?.flushCache()
-					self.flushInExecution = false;
+					self.flushInExecution = false
 				}
 			}
-
 
 		}.catch { error in
 			var key = ""

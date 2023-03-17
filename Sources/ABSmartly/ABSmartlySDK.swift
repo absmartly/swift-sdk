@@ -21,8 +21,8 @@ public final class ABSmartlySDK {
 				resilienceConfig: config.resilienceConfig!
 			)
 			contextDataProvider = ResilientContextDataProvider(
-					client: client!,
-					localCache: config.resilienceConfig!.localCache
+				client: client!,
+				localCache: config.resilienceConfig!.localCache
 			)
 		} else {
 			if config.contextDataProvider == nil || config.contextEventHandler == nil {

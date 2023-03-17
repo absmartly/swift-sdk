@@ -27,7 +27,6 @@ final class ResilientContextDataProviderTest: XCTestCase {
 		return promiseReturn
 	}
 
-
 	func testResilience() async throws {
 		let expectation = XCTestExpectation()
 
@@ -37,11 +36,11 @@ final class ResilientContextDataProviderTest: XCTestCase {
 		mockClient.getContextDataClosure = getContextDataOK
 		let memoryCache = MemoryCache()
 		let contextProvider = ResilientContextDataProvider(
-				client: mockClient,
-				localCache: memoryCache
+			client: mockClient,
+			localCache: memoryCache
 		)
 
-		var promise1 = contextProvider.getContextData();
+		var promise1 = contextProvider.getContextData()
 		promise1.done { data in
 			XCTAssertEqual(self.contextData!.experiments.count, data.experiments.count)
 		}
@@ -49,10 +48,10 @@ final class ResilientContextDataProviderTest: XCTestCase {
 		let mockClient2 = ClientMock()
 		mockClient2.getContextDataClosure = getContextDataError
 		let contextProvider2 = ResilientContextDataProvider(
-				client: mockClient2,
-				localCache: memoryCache
+			client: mockClient2,
+			localCache: memoryCache
 		)
-		var promise2 = contextProvider2.getContextData();
+		var promise2 = contextProvider2.getContextData()
 		promise2.done { data in
 			expectation.fulfill()
 			XCTAssertEqual(self.contextData!.experiments.count, data.experiments.count)
