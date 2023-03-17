@@ -7,11 +7,11 @@ public class ResilienceConfig {
 	public var localCache: LocalCache
 
 	public init(localCache: LocalCache) {
-		self.localCache = localCache;
+		self.localCache = localCache
 	}
 
 	public init(
-			failureRateThreshold: Int, backoffPeriodInMilliseconds: Int, timeoutInMilliseconds: Int, localCache: LocalCache
+		failureRateThreshold: Int, backoffPeriodInMilliseconds: Int, timeoutInMilliseconds: Int, localCache: LocalCache
 	) {
 		self.failureRateThreshold = failureRateThreshold
 		self.backoffPeriodInMilliseconds = backoffPeriodInMilliseconds
@@ -27,13 +27,12 @@ public class ResilienceConfig {
 	public convenience init(from dict: [String: String]) {
 		var localCacheImpl: LocalCache = NSClassFromString(dict["localCacheImplClass"] ?? "SqlliteCache") as! LocalCache
 
-
 		if let localCacheImplClass = localCacheImpl as? LocalCache.Type {
 			self.init(
-					failureRateThreshold: dict["failureRateThreshold"] as!Int,
-					backoffPeriodInMilliseconds: dict["backoffPeriodInMilliseconds"] as!Int,
-					timeoutInMilliseconds: dict["timeoutInMilliseconds"] as!Int,
-					localCache: localCacheImpl)
+				failureRateThreshold: dict["failureRateThreshold"] as! Int,
+				backoffPeriodInMilliseconds: dict["backoffPeriodInMilliseconds"] as! Int,
+				timeoutInMilliseconds: dict["timeoutInMilliseconds"] as! Int,
+				localCache: localCacheImpl)
 		} else {
 			fatalError("LocalCache is not a LocalCache subtype")
 		}

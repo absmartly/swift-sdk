@@ -15,10 +15,10 @@ public final class ABSmartlySDK {
 		scheduler = config.scheduler ?? DefaultScheduler()
 		client = config.client
 
-		if(config.resilienceConfig != nil) {
+		if config.resilienceConfig != nil {
 			contextEventHandler = ResilientContextEventHandler(
-					client: client!,
-					resilienceConfig: config.resilienceConfig!
+				client: client!,
+				resilienceConfig: config.resilienceConfig!
 			)
 			contextDataProvider = config.contextDataProvider ?? DefaultContextDataProvider(client: client!)
 		} else {

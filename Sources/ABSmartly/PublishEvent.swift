@@ -55,7 +55,8 @@ public final class PublishEvent: Encodable, Equatable, Decodable {
 	public init(from decoder: Decoder) throws {
 		guard let container = try? decoder.container(keyedBy: CodingKeys.self) else {
 			throw DecodingError.dataCorrupted(
-					DecodingError.Context(codingPath: [], debugDescription: "PublishEvent couldn't be decoded from this data")
+				DecodingError.Context(
+					codingPath: [], debugDescription: "PublishEvent couldn't be decoded from this data")
 			)
 		}
 

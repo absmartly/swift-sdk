@@ -19,11 +19,11 @@ public class ABSmartlyConfig {
 			scheduler: nil, client: client, resilienceConfig: nil)
 	}
 
-	public convenience init(client: Client, resilienceConfig:ResilienceConfig) {
+	public convenience init(client: Client, resilienceConfig: ResilienceConfig) {
 		print("Hello, world!")
 		self.init(
-				contextDataProvider: nil, contextEventHandler: nil, contextEventLogger: nil, variableParser: nil,
-				scheduler: nil, client: client, resilienceConfig: resilienceConfig)
+			contextDataProvider: nil, contextEventHandler: nil, contextEventLogger: nil, variableParser: nil,
+			scheduler: nil, client: client, resilienceConfig: resilienceConfig)
 	}
 
 	public init(

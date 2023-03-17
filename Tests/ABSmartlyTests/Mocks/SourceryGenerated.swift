@@ -1,4 +1,4 @@
-// Generated using Sourcery 1.7.0 — https://github.com/krzysztofzablocki/Sourcery
+// Generated using Sourcery 2.0.1 — https://github.com/krzysztofzablocki/Sourcery
 // DO NOT EDIT
 
 // swiftlint:disable line_length
@@ -152,10 +152,24 @@ class ContextEventHandlerMock: ContextEventHandler {
 		}
 	}
 
+	//MARK: - flushCache
+
+	var flushCacheCallsCount = 0
+	var flushCacheCalled: Bool {
+		return flushCacheCallsCount > 0
+	}
+	var flushCacheClosure: (() -> Void)?
+
+	func flushCache() {
+		flushCacheCallsCount += 1
+		flushCacheClosure?()
+	}
+
 	func clearInvocations() {
 		publishEventCallsCount = 0
 		publishEventReceivedEvent = nil
 		publishEventReceivedInvocations = []
+		flushCacheCallsCount = 0
 	}
 }
 

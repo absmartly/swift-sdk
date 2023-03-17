@@ -1,6 +1,6 @@
+import CircuitBreaker
 import Foundation
 import PromiseKit
-import CircuitBreaker
 
 public class ResilientContextEventHandler: ContextEventHandler {
 	private let client: Client
@@ -17,17 +17,18 @@ public class ResilientContextEventHandler: ContextEventHandler {
 	public func flushCache() {
 		var events = localCache.retrieveEvents()
 		print("Sending events in cache: \(events.count)")
-        for event in events {
-			event.publishedAt = clock.millis();
-            self.publish(event: event)
-        }
+		for event in events {
+			event.publishedAt = clock.millis()
+			self.publish(event: event)
+		}
 	}
 
 	public func publish(event: PublishEvent) -> Promise<Void> {
 		let (fallbackPromise, fallBackResolver) = Promise<BreakerError?>.pending()
 
 		fallbackPromise.done { err in
-			if(err != nil){
+			print(err)
+			if err != nil {
 				self.localCache.writeEvent(event: event)
 			}
 		}

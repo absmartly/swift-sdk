@@ -43,21 +43,18 @@ final class SqlliteCacheTest: XCTestCase {
 
 		let event = PublishEvent(true, units, 123_456_789, exposures, goals, attributes)
 
-		let result = localCache.writeEvent(event: event)
-
-		result.done { data in
+		do {
+			let result = localCache.writeEvent(event: event)
 			expectation.fulfill()
-		}.catch { error in
+		} catch {
 			XCTFail(error.localizedDescription)
 		}
 
-		let events = localCache.retrieveEvents();
-
-		events.done {
-					data in
-					XCTAssertTrue(data.count == 1)
-					expectation2.fulfill()
-		}.catch { error in
+		do {
+			let events = localCache.retrieveEvents()
+			XCTAssertTrue(events.count == 1)
+			expectation2.fulfill()
+		} catch {
 			XCTFail(error.localizedDescription)
 		}
 
@@ -71,25 +68,23 @@ final class SqlliteCacheTest: XCTestCase {
 
 		guard let localCache = localCache else { return }
 
-		let contextData = ContextData(experiments: Array<Experiment>())
+		let contextData = ContextData(experiments: [Experiment]())
 
-		let writeResult = localCache.writeContextData(contextData: contextData)
-
-		writeResult.done { data in
+		do {
+			let writeResult = localCache.writeContextData(contextData: contextData)
 			expectation.fulfill()
-		}.catch { error in
+		} catch {
 			XCTFail(error.localizedDescription)
 		}
 
-		let contextDateSaved = localCache.getContextData();
-
-		contextDateSaved.done {
-			data in
-			XCTAssertEqual(contextData, data)
+		do {
+			let contextDateSaved = localCache.getContextData()
+			XCTAssertEqual(contextData, contextDateSaved)
 			expectation2.fulfill()
-		}.catch { error in
+		} catch {
 			XCTFail(error.localizedDescription)
 		}
+
 		wait(for: [expectation, expectation2], timeout: 5.0)
 	}
 

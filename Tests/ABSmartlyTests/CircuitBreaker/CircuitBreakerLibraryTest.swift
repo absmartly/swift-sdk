@@ -1,7 +1,7 @@
+import CircuitBreaker
 import Foundation
 import PromiseKit
 import XCTest
-import CircuitBreaker
 
 @testable import ABSmartly
 
@@ -12,7 +12,7 @@ extension BreakerError {
 }
 
 final class CircuitBreakerLibraryTest: XCTestCase {
-	private let scheduler: Scheduler = DefaultScheduler();
+	private let scheduler: Scheduler = DefaultScheduler()
 	private let timeoutLock = NSLock()
 	private var timeout: ScheduledHandle?
 	private var errorInOpenState: Int = 0
@@ -24,7 +24,6 @@ final class CircuitBreakerLibraryTest: XCTestCase {
 		breaker = CircuitBreaker(name: "Circuit1", command: myContextFunction, fallback: myFallback)
 
 		let requestParam: String = "myRequestParams"
-
 
 		for (index) in 1...300 {
 			let randomInt = Int.random(in: 0..<200)
@@ -50,7 +49,7 @@ final class CircuitBreakerLibraryTest: XCTestCase {
 		// Create HTTP request
 		let ms = 1000
 		usleep(useconds_t(randomInt * ms))
-		if(requestParam > 100 && requestParam < 200){
+		if requestParam > 100 && requestParam < 200 {
 			invocation.notifyFailure(error: .encodingURLError)
 		} else {
 			successCount = successCount + 1
@@ -76,26 +75,26 @@ final class CircuitBreakerLibraryTest: XCTestCase {
 			if timeout == nil {
 				print("setTimeout")
 				timeout = scheduler.schedule(
-						after: 4,
-						execute: { [self] in
-							clearTimeout();
-							if(breaker.breakerState != State.closed){
-								print("Entering in half open")
-								breaker.forceHalfOpen()
-							}
+					after: 4,
+					execute: { [self] in
+						clearTimeout()
+						if breaker.breakerState != State.closed {
+							print("Entering in half open")
+							breaker.forceHalfOpen()
+						}
 
-						})
+					})
 			}
 		}
 	}
 
 	func myFallback(err: BreakerError, msg: String) {
-		if(err == .fastFail){
+		if err == .fastFail {
 			let randomInt = Int.random(in: 0..<200)
 			let ms = 1000
 			usleep(useconds_t(randomInt * ms))
 			errorInOpenState = errorInOpenState + 1
-			setTimeout();
+			setTimeout()
 		} else {
 			errorInCall = errorInCall + 1
 			print("Error: \(err.reason)")
