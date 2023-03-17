@@ -79,7 +79,7 @@ final class CircuitBreakerLibraryTest: XCTestCase {
 					execute: { [self] in
 						clearTimeout()
 						if breaker.breakerState != State.closed {
-							print("Entering in half open")
+							print("Resilience entering entering in half open state")
 							breaker.forceHalfOpen()
 						}
 

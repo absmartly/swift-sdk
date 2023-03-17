@@ -111,7 +111,6 @@ func retry<T>(times: UInt, delay: TimeInterval, body: @escaping (UInt) -> Promis
 	var tryCounter: UInt = 0
 	func attempt() -> Promise<T> {
 		tryCounter += 1
-		print("counter retry \(tryCounter)")
 		return body(tryCounter).recover(policy: CatchPolicy.allErrorsExceptCancellation) { error -> Promise<T> in
 			guard tryCounter <= times else {
 				throw error

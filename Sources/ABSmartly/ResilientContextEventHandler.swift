@@ -5,13 +5,13 @@ import PromiseKit
 public class ResilientContextEventHandler: ContextEventHandler {
 	private let client: Client
 	private let localCache: LocalCache
-	private let circuitBreaker: CircuitBreakerHelper
+	private var circuitBreaker: CircuitBreakerHelper!
 	private let clock: DefaultClock = DefaultClock()
 
 	public init(client: Client, resilienceConfig: ResilienceConfig) {
 		self.client = client
 		self.localCache = resilienceConfig.localCache
-		self.circuitBreaker = CircuitBreakerHelper(resilienceConfig: resilienceConfig)
+		self.circuitBreaker = CircuitBreakerHelper(resilienceConfig: resilienceConfig, handler: self)
 	}
 
 	public func flushCache() {
@@ -27,7 +27,6 @@ public class ResilientContextEventHandler: ContextEventHandler {
 		let (fallbackPromise, fallBackResolver) = Promise<BreakerError?>.pending()
 
 		fallbackPromise.done { err in
-			print(err)
 			if err != nil {
 				self.localCache.writeEvent(event: event)
 			}

@@ -56,7 +56,9 @@ final class CircuitBreakerHandlerTest: XCTestCase {
 		var resilienceConfig = ResilienceConfig(localCache: MemoryCache())
 		resilienceConfig.timeoutInMilliseconds = 1000
 
-		helper = CircuitBreakerHelper(resilienceConfig: resilienceConfig)
+		var mockHandler = ContextEventHandlerMock()
+
+		helper = CircuitBreakerHelper(resilienceConfig: resilienceConfig, handler: mockHandler)
 		print("Linha 1")
 		let (promise, resolver) = Promise<Void>.pending()
 
@@ -88,7 +90,9 @@ final class CircuitBreakerHandlerTest: XCTestCase {
 
 		var resilienceConfig = ResilienceConfig(localCache: MemoryCache())
 
-		helper = CircuitBreakerHelper(resilienceConfig: resilienceConfig)
+		var mockHandler = ContextEventHandlerMock()
+
+		helper = CircuitBreakerHelper(resilienceConfig: resilienceConfig, handler: mockHandler)
 		print("Linha 1")
 		let (promise, resolver) = Promise<Void>.pending()
 
@@ -123,7 +127,9 @@ final class CircuitBreakerHandlerTest: XCTestCase {
 		var resilienceConfig = ResilienceConfig(localCache: MemoryCache())
 		resilienceConfig.backoffPeriodInMilliseconds = 1000
 
-		helper = CircuitBreakerHelper(resilienceConfig: resilienceConfig)
+		var mockHandler = ContextEventHandlerMock()
+
+		helper = CircuitBreakerHelper(resilienceConfig: resilienceConfig, handler: mockHandler)
 
 		var errorInOpenState: Int = 0
 		var errorInCall: Int = 0
@@ -165,6 +171,7 @@ final class CircuitBreakerHandlerTest: XCTestCase {
 		print("errorInOpenState: \(errorInOpenState)")
 		print("errorInCall: \(errorInCall)")
 		print("successCount: \(successCount)")
+		XCTAssertEqual(1, mockHandler.flushCacheCallsCount)
 		XCTAssertTrue(errorInOpenState > 0)
 		XCTAssertTrue(errorInCall > 0)
 		XCTAssertTrue(successCount > 0)

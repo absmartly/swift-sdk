@@ -11,10 +11,13 @@ public class CircuitBreakerHelper {
 	private var circuitBreaker: CircuitBreaker<Promise<Void>, Resolver<BreakerError?>>!
 	private let scheduler: Scheduler = DefaultScheduler()
 	private let timeoutLock = NSLock()
+	private let flushLock = NSLock()
+	private var flushInExecution = false;
 	private var timeout: ScheduledHandle?
 	private var backoffPeriodInMilliseconds: Int?
+	private var handler: ContextEventHandler?
 
-	public init(resilienceConfig: ResilienceConfig) {
+	public init(resilienceConfig: ResilienceConfig, handler: ContextEventHandler) {
 		self.backoffPeriodInMilliseconds = resilienceConfig.backoffPeriodInMilliseconds
 		self.circuitBreaker = CircuitBreaker(
 			name: "Circuit1",
@@ -22,6 +25,7 @@ public class CircuitBreakerHelper {
 			maxFailures: resilienceConfig.failureRateThreshold,
 			command: callFunction,
 			fallback: fallback)
+		self.handler = handler
 	}
 
 	public func decorate(promise: Promise<Void>, fallBackResolver: Resolver<BreakerError?>) -> Promise<Void> {
@@ -38,7 +42,18 @@ public class CircuitBreakerHelper {
 		promise.done { response in
 			//print("helper: promise done")
 			fallBackResolver.fulfill(nil)
+			var state = self.circuitBreaker.breakerState;
 			invocation.notifySuccess()
+			if ((state == .halfopen ) && !self.flushInExecution){
+				self.flushInExecution = true;
+				DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+					self.timeoutLock.lock()
+					defer { self.timeoutLock.unlock() }
+					self.handler?.flushCache()
+					self.flushInExecution = false;
+				}
+			}
+
 
 		}.catch { error in
 			var key = ""
@@ -53,7 +68,7 @@ public class CircuitBreakerHelper {
 				nsError.code
 				message = error.localizedDescription
 			}
-			//print("helper: promise error: " + message)
+
 			invocation.notifyFailure(
 				error: BreakerError(
 					key: key,
@@ -93,7 +108,7 @@ public class CircuitBreakerHelper {
 					execute: { [self] in
 						clearTimeout()
 						if circuitBreaker.breakerState != State.closed {
-							print("Entering in half open")
+							print("Resilience entering in half open state")
 							circuitBreaker.forceHalfOpen()
 						}
 

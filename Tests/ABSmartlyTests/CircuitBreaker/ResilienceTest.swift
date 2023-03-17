@@ -11,15 +11,14 @@ final class FullTest: XCTestCase {
 	func testCircuitBreaker() async {
 		let expectation = XCTestExpectation()
 		setupSDK()
-		for (index) in 1...1 {
-			print(index)
+		for (index) in 1...2000 {
 			usleep(useconds_t(50 * 1000))
 			var promise = Promise<Void> { seal in
 				context.track("payment", properties: ["amount": 2235, "revenue": 235])
 				seal.fulfill(())
 			}
 			promise.done { data in
-				print(data)
+
 			}
 		}
 		wait(for: [expectation], timeout: 200.0)
@@ -32,9 +31,9 @@ final class FullTest: XCTestCase {
 				// The following environment variables should be changed in:
 				// Product -> Scheme -> Edit Scheme -> Run -> Arguments
 				apiKey: ProcessInfo.processInfo.environment["ABSMARTLY_API_KEY"]
-					?? "API_KEY",
+					?? "DKX3JTs6JCDaKnlpkS5Po5MQ1d5wC6ZSDLnjYtGNaFxyyKkU1PDArcEfkaDH_XLF",
 				application: ProcessInfo.processInfo.environment["ABSMARTLY_APPLICATION"] ?? "web",
-				endpoint: ProcessInfo.processInfo.environment["ABSMARTLY_ENDPOINT"] ?? "ENV_URL",
+				endpoint: ProcessInfo.processInfo.environment["ABSMARTLY_ENDPOINT"] ?? "https://dev-1.absmartly.io/v1",
 				environment: ProcessInfo.processInfo.environment["ABSMARTLY_ENVIRONMENT"] ?? "prod")
 
 			let client = try DefaultClient(config: clientConfig)
