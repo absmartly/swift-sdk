@@ -23,7 +23,7 @@ public class SqlliteCache: LocalCache {
 				setupDatabase()
 			}
 		} catch {
-			print(error)
+			Logger.error(error.localizedDescription)
 		}
 		return self.db!
 	}
@@ -38,7 +38,7 @@ public class SqlliteCache: LocalCache {
 				"create table if not exists  context (id INTEGER PRIMARY KEY AUTOINCREMENT, context text)")
 			try stmt.run()
 		} catch {
-			print(error)
+			Logger.error(error.localizedDescription)
 		}
 	}
 
@@ -49,7 +49,7 @@ public class SqlliteCache: LocalCache {
 			let binding = String(bytes: eventStr, encoding: .utf8)
 			try stmt.run(binding)
 		} catch {
-			print(error)
+			Logger.error(error.localizedDescription)
 		}
 	}
 
@@ -65,7 +65,7 @@ public class SqlliteCache: LocalCache {
 			let deleteStm = try self.getConnection().prepare("delete from events")
 			try deleteStm.run()
 		} catch {
-			print(error)
+			Logger.error(error.localizedDescription)
 		}
 		return events
 	}
@@ -80,7 +80,7 @@ public class SqlliteCache: LocalCache {
 			let binding = String(data: data, encoding: .utf8)
 			try stmt.run(binding)
 		} catch {
-			print(error)
+			Logger.error(error.localizedDescription)
 		}
 	}
 
@@ -94,7 +94,7 @@ public class SqlliteCache: LocalCache {
 				contextData = ctx
 			}
 		} catch {
-			print(error)
+			Logger.error(error.localizedDescription)
 		}
 		return contextData
 	}

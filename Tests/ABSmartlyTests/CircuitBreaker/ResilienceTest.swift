@@ -5,10 +5,10 @@ import XCTest
 
 @testable import ABSmartly
 
-final class FullTest: XCTestCase {
+final class ResilienceTest: XCTestCase {
 	private var sdk: ABSmartlySDK!
 	private var context: Context!
-	func testCircuitBreaker() async {
+	func fullExecution() async {
 		let expectation = XCTestExpectation()
 		setupSDK()
 		for (index) in 1...2000 {
@@ -31,9 +31,9 @@ final class FullTest: XCTestCase {
 				// The following environment variables should be changed in:
 				// Product -> Scheme -> Edit Scheme -> Run -> Arguments
 				apiKey: ProcessInfo.processInfo.environment["ABSMARTLY_API_KEY"]
-					?? "DKX3JTs6JCDaKnlpkS5Po5MQ1d5wC6ZSDLnjYtGNaFxyyKkU1PDArcEfkaDH_XLF",
+					?? "API_KEY",
 				application: ProcessInfo.processInfo.environment["ABSMARTLY_APPLICATION"] ?? "web",
-				endpoint: ProcessInfo.processInfo.environment["ABSMARTLY_ENDPOINT"] ?? "https://dev-1.absmartly.io/v1",
+				endpoint: ProcessInfo.processInfo.environment["ABSMARTLY_ENDPOINT"] ?? "ENDPOINT",
 				environment: ProcessInfo.processInfo.environment["ABSMARTLY_ENVIRONMENT"] ?? "prod")
 
 			let client = try DefaultClient(config: clientConfig)

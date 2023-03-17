@@ -40,7 +40,6 @@ public class CircuitBreakerHelper {
 		let fallBackResolver = invocation.fallbackArgs
 
 		promise.done { response in
-			//print("helper: promise done")
 			fallBackResolver.fulfill(nil)
 			var state = self.circuitBreaker.breakerState
 			invocation.notifySuccess()
@@ -78,7 +77,6 @@ public class CircuitBreakerHelper {
 	}
 
 	private func fallback(err: BreakerError, fallBackPromise: Resolver<BreakerError?>) {
-		//print("helper: fallback")
 		fallBackPromise.fulfill(err)
 		if err == .fastFail {
 			setTimeout()
