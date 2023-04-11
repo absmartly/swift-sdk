@@ -1,12 +1,12 @@
 import Foundation
 
 public class ABSmartlyConfig {
-	var scheduler: Scheduler?
-	var contextDataProvider: ContextDataProvider?
-	var contextEventHandler: ContextEventHandler?
-	var contextEventLogger: ContextEventLogger?
-	var variableParser: VariableParser?
-	var client: Client?
+	private(set) var scheduler: Scheduler?
+	private(set) var contextDataProvider: ContextDataProvider?
+	private(set) var contextEventHandler: ContextEventHandler?
+	private(set) var contextEventLogger: ContextEventLogger?
+	private(set) var variableParser: VariableParser?
+	private(set) var client: Client?
 
 	public init() {
 	}
