@@ -31,7 +31,7 @@ public final class ABSmartlySDK {
 	public func createContextWithData(config: ContextConfig, contextData: ContextData) -> Context {
 		return Context(
 			config: config, clock: DefaultClock(), scheduler: scheduler, handler: contextEventHandler,
-			provider: contextDataProvider, logger: contextEventLogger, parser: variableParser,
+			provider: contextDataProvider, logger: config.eventLogger, parser: variableParser,
 			matcher: AudienceMatcher(),
 			promise: Promise<ContextData>.value(contextData))
 	}
@@ -39,7 +39,7 @@ public final class ABSmartlySDK {
 	public func createContext(config: ContextConfig) -> Context {
 		return Context(
 			config: config, clock: DefaultClock(), scheduler: scheduler, handler: contextEventHandler,
-			provider: contextDataProvider, logger: contextEventLogger, parser: variableParser,
+			provider: contextDataProvider, logger: config.eventLogger, parser: variableParser,
 			matcher: AudienceMatcher(),
 			promise: contextDataProvider.getContextData())
 	}
