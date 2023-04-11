@@ -42,7 +42,7 @@ public class SqlliteCache: LocalCache {
 		}
 	}
 
-	public func writeEvent(event: PublishEvent) {
+	public func writePublishEvent(event: PublishEvent) {
 		do {
 			let stmt = try self.getConnection().prepare("insert into events (event) values (?)")
 			let eventStr = try JSONEncoder().encode(event)
@@ -53,7 +53,7 @@ public class SqlliteCache: LocalCache {
 		}
 	}
 
-	public func retrieveEvents() -> [PublishEvent] {
+	public func retrievePublishEvents() -> [PublishEvent] {
 		var events: [PublishEvent] = [PublishEvent]()
 		do {
 			for row in try self.getConnection().prepare("select * from events") {

@@ -44,14 +44,14 @@ final class SqlliteCacheTest: XCTestCase {
 		let event = PublishEvent(true, units, 123_456_789, exposures, goals, attributes)
 
 		do {
-			let result = localCache.writeEvent(event: event)
+			let result = localCache.writePublishEvent(event: event)
 			expectation.fulfill()
 		} catch {
 			XCTFail(error.localizedDescription)
 		}
 
 		do {
-			let events = localCache.retrieveEvents()
+			let events = localCache.retrievePublishEvents()
 			XCTAssertTrue(events.count == 1)
 			expectation2.fulfill()
 		} catch {

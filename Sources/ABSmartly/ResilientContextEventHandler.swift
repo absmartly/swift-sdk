@@ -15,7 +15,7 @@ public class ResilientContextEventHandler: ContextEventHandler {
 	}
 
 	public func flushCache() {
-		var events = localCache.retrieveEvents()
+		var events = localCache.retrievePublishEvents()
 		print("Sending events in cache: \(events.count)")
 		for event in events {
 			event.publishedAt = clock.millis()
@@ -28,7 +28,7 @@ public class ResilientContextEventHandler: ContextEventHandler {
 
 		fallbackPromise.done { err in
 			if err != nil {
-				self.localCache.writeEvent(event: event)
+				self.localCache.writePublishEvent(event: event)
 			}
 		}
 
