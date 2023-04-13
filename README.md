@@ -193,8 +193,13 @@ public class CustomEventLogger : ContextEventLogger {
 }
 
 // for all contexts, during sdk initialization
-let absmartlyConfig = ABSmartlyConfig()
-absmartlyConfig.contextEventLogger = CustomEventLogger()
+let absmartlyConfig = ABSmartlyConfig(
+        contextDataProvider: nil,
+        contextEventHandler: nil,
+        contextEventLogger: CustomEventLogger(),
+        variableParser: nil,
+        scheduler: nil,
+        client: client)
 
 // OR, alternatively, during a particular context initialization
 let contextConfig = ContextConfig()
