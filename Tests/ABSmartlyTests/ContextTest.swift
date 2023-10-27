@@ -2049,4 +2049,44 @@ final class ContextTest: XCTestCase {
 
 		XCTAssertEqual(3, context.getPendingCount())  // newly eligible experiment triggered a new exposure
 	}
+
+	func testGetCustomFieldKeys() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let contextData = try getContextData()
+		let context = try createContext(config: contextConfig, data: Promise<ContextData>.value(contextData))
+		XCTAssertTrue(context.isReady())
+		XCTAssertEqual(["country", "languages", "overrides"], context.getCustomFieldKeys())
+	}
+
+	func testGetCustomFieldValues() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let contextData = try getContextData()
+		let context = try createContext(config: contextConfig, data: Promise<ContextData>.value(contextData))
+		XCTAssertTrue(context.isReady())
+		XCTAssertNil(context.getCustomFieldValue(experimentName: "not_found", key: "not_found"))
+		XCTAssertNil(context.getCustomFieldValue(experimentName: "exp_test_ab", key: "not_found"))
+		XCTAssertEqual("US,PT,ES,DE,FR", context.getCustomFieldValue(experimentName: "exp_test_ab", key: "country") as! String)
+		XCTAssertEqual("string", context.getCustomFieldValueType(experimentName: "exp_test_ab", key: "country") as! String)
+
+		let data: [String: JSON] = ["123":  1, "456": 0]
+		XCTAssertEqual(data, context.getCustomFieldValue(experimentName: "exp_test_ab", key: "overrides") as! [String: JSON]);
+		XCTAssertEqual("json", context.getCustomFieldValueType(experimentName: "exp_test_ab", key: "overrides") as! String);
+
+		XCTAssertNil(context.getCustomFieldValue(experimentName: "exp_test_ab", key: "languages"));
+		XCTAssertNil(context.getCustomFieldValueType(experimentName: "exp_test_ab", key: "languages"));
+
+		XCTAssertEqual("US,PT,ES", context.getCustomFieldValue(experimentName: "exp_test_abc", key: "country") as! String);
+		XCTAssertEqual("string", context.getCustomFieldValueType(experimentName: "exp_test_abc", key: "country") as! String);
+		XCTAssertNil(context.getCustomFieldValue(experimentName: "exp_test_abc", key: "overrides"));
+		XCTAssertNil(context.getCustomFieldValueType(experimentName: "exp_test_abc", key: "overrides"));
+		XCTAssertEqual("en-US,en-GB,pt-PT,pt-BR,es-ES,es-MX", context.getCustomFieldValue(experimentName: "exp_test_abc", key: "languages") as! String);
+		XCTAssertEqual("string", context.getCustomFieldValueType(experimentName: "exp_test_abc", key: "languages") as! String);
+
+		XCTAssertNil(context.getCustomFieldValue(experimentName: "exp_test_no_custom_fields", key: "country"));
+		XCTAssertNil(context.getCustomFieldValueType(experimentName: "exp_test_no_custom_fields", key: "country"));
+		XCTAssertNil(context.getCustomFieldValue(experimentName: "exp_test_no_custom_fields", key: "overrides"));
+		XCTAssertNil(context.getCustomFieldValueType(experimentName: "exp_test_no_custom_fields", key: "overrides"));
+		XCTAssertNil(context.getCustomFieldValue(experimentName: "exp_test_no_custom_fields", key: "languages"));
+		XCTAssertNil(context.getCustomFieldValueType(experimentName: "exp_test_no_custom_fields", key: "languages"));
+	}
 }
