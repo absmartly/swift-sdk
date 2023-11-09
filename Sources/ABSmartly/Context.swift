@@ -30,6 +30,7 @@ public final class Context {
 	private let dataLock = NSLock()
 	private var index: [String: ExperimentVariables] = [:]
 	private var indexVariables: [String: [ExperimentVariables]] = [:]
+	private var customFieldValues: [String: [String: ContextCustomFieldValue]] = [:]
 	private var data: ContextData? = nil
 
 	private var hashedUnits: [String: [UInt8]] = [:]
@@ -149,6 +150,58 @@ public final class Context {
 		dataLock.lock()
 		defer { dataLock.unlock() }
 		return data?.experiments.map { $0.name } ?? []
+	}
+
+	public func getCustomFieldKeys() -> Set<String> {
+		var keys: Set<String> = []
+
+		dataLock.lock()
+		defer { dataLock.unlock() }
+
+		for experiment in data!.experiments {
+			let customFieldValues = experiment.customFieldValues
+			if (customFieldValues != nil) {
+				for customFieldValue in customFieldValues! {
+					keys.insert(customFieldValue.name!);
+				}
+			}
+		}
+
+		return keys
+	}
+
+	public func getCustomFieldValue(experimentName: String, key: String) -> Any? {
+		var keys: [String] = []
+
+		dataLock.lock()
+		defer { dataLock.unlock() }
+
+		var experimentCustomFieldValues = customFieldValues[experimentName]
+
+		if (experimentCustomFieldValues != nil) {
+			var field = experimentCustomFieldValues?[key]
+			if (field != nil) {
+				return field?.value;
+			}
+		}
+		return nil;
+	}
+
+	public func getCustomFieldValueType(experimentName: String, key: String) -> String? {
+		var keys: [String] = []
+
+		dataLock.lock()
+		defer { dataLock.unlock() }
+
+		var experimentCustomFieldValues = customFieldValues[experimentName]
+
+		if (experimentCustomFieldValues != nil) {
+			var field = experimentCustomFieldValues?[key]
+			if (field != nil) {
+				return field?.type;
+			}
+		}
+		return nil;
 	}
 
 	public func getContextData() -> ContextData? {
@@ -734,9 +787,11 @@ public final class Context {
 	private func setData(_ data: ContextData) {
 		var index: [String: ExperimentVariables] = [:]
 		var indexVariables: [String: [ExperimentVariables]] = [:]
+		var customFieldValues: [String: [String: ContextCustomFieldValue]] = [:]
 
 		for experiment in data.experiments {
 			let experimentVariables = ExperimentVariables(experiment)
+			var experimentCustomFieldValues: [String: ContextCustomFieldValue] = [:]
 
 			for variant in experiment.variants {
 				if let config = variant.config, !config.isEmpty {
@@ -756,8 +811,33 @@ public final class Context {
 				}
 			}
 
+			if (experiment.customFieldValues != nil) {
+				for customFieldValue in experiment.customFieldValues! {
+					var value = ContextCustomFieldValue()
+					value.type = customFieldValue.type!;
+
+					if (customFieldValue.value != nil) {
+						var customValue = customFieldValue.value;
+						if ((customFieldValue.type!.starts(with: "json"))) {
+							value.value = parser.parse(experimentName: experiment.name, config: customValue!)
+						} else if ((customFieldValue.type!.starts(with: "boolean"))) {
+							value.value = Bool(customValue!)
+						} else if ((customFieldValue.type!.starts(with: "number"))) {
+							value.value = Double(customValue!)
+						} else {
+							value.value = customFieldValue.value;
+						}
+					}
+
+					experimentCustomFieldValues[customFieldValue.name!] = value;
+				}
+			}
+
 			index[experiment.name] = experimentVariables
+			customFieldValues[experiment.name] = experimentCustomFieldValues
 		}
+
+
 
 		dataLock.lock()
 		defer {
@@ -767,6 +847,7 @@ public final class Context {
 		self.data = data
 		self.index = index
 		self.indexVariables = indexVariables
+		self.customFieldValues = customFieldValues
 
 		setRefreshTimer()
 	}
@@ -801,6 +882,11 @@ private class ExperimentVariables {
 	init(_ experiment: Experiment) {
 		data = experiment
 	}
+}
+
+private class ContextCustomFieldValue {
+	var type: String?
+	var value: Any?
 }
 
 private class Assignment: Equatable {

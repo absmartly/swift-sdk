@@ -16,6 +16,7 @@ public struct Experiment: Codable {
 	public let variants: [ExperimentVariant]
 	public let audienceStrict: Bool
 	public let audience: String?
+	public let customFieldValues: [CustomFieldValue]?
 
 	public init(from decoder: Decoder) throws {
 		guard let container = try? decoder.container(keyedBy: CodingKeys.self) else {
@@ -48,6 +49,7 @@ public struct Experiment: Codable {
 
 		applications = (try? container.decode([Application].self, forKey: .applications)) ?? []
 		variants = (try? container.decode([ExperimentVariant].self, forKey: .variants)) ?? []
+		customFieldValues = (try? container.decode([CustomFieldValue].self, forKey: .customFieldValues)) ?? []
 	}
 }
 
@@ -58,6 +60,6 @@ extension Experiment: Equatable {
 			&& lhs.split == rhs.split && lhs.trafficSeedHi == rhs.trafficSeedHi
 			&& lhs.trafficSeedLo == rhs.trafficSeedLo && lhs.trafficSplit == rhs.trafficSplit
 			&& lhs.fullOnVariant == rhs.fullOnVariant && lhs.applications == rhs.applications
-			&& lhs.variants == rhs.variants
+			&& lhs.variants == rhs.variants && lhs.customFieldValues == rhs.customFieldValues
 	}
 }
