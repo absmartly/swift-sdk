@@ -1,6 +1,6 @@
 import Foundation
 
-public final class PublishEvent: Encodable, Equatable {
+public final class PublishEvent: Encodable, Equatable, Decodable {
 	public var hashed: Bool
 	public var units: [Unit]
 	public var publishedAt: Int64
@@ -50,6 +50,22 @@ public final class PublishEvent: Encodable, Equatable {
 		if attributes.count > 0 {
 			try container.encode(attributes, forKey: .attributes)
 		}
+	}
+
+	public init(from decoder: Decoder) throws {
+		guard let container = try? decoder.container(keyedBy: CodingKeys.self) else {
+			throw DecodingError.dataCorrupted(
+				DecodingError.Context(
+					codingPath: [], debugDescription: "PublishEvent couldn't be decoded from this data")
+			)
+		}
+
+		units = (try? container.decode([Unit].self, forKey: .units)) ?? []
+		exposures = (try? container.decode([Exposure].self, forKey: .exposures)) ?? []
+		goals = (try? container.decode([GoalAchievement].self, forKey: .goals)) ?? []
+		attributes = (try? container.decode([Attribute].self, forKey: .attributes)) ?? []
+		hashed = (try? container.decodeIfPresent(Bool.self, forKey: .hashed)) ?? false
+		publishedAt = (try? container.decodeIfPresent(Int64.self, forKey: .publishedAt)) ?? 0
 	}
 
 	public static func == (lhs: PublishEvent, rhs: PublishEvent) -> Bool {

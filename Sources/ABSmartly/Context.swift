@@ -138,6 +138,7 @@ public final class Context {
 				seal.fulfill(self)
 			} else if let ready = readyPromise {
 				_ = ready.done {
+					self.handler.flushCache()
 					seal.fulfill(self)
 				}
 			}
@@ -316,7 +317,7 @@ public final class Context {
 	}
 
 	public func getAttributes() -> [String: JSON] {
-		var result: [String:JSON] = [:]
+		var result: [String: JSON] = [:]
 
 		contextLock.lock()
 		defer { contextLock.unlock() }
@@ -324,7 +325,7 @@ public final class Context {
 		for attribute in attributes {
 			result[attribute.name] = attribute.value
 		}
-		return result;
+		return result
 	}
 
 	public func setAttributes(_ attributes: [String: JSON]) {

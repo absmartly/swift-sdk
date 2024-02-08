@@ -341,7 +341,9 @@ final class ContextTest: XCTestCase {
 
 		context.setUnits(["session_id": "0ab1e23f4eee", "user_id": "1234567890"])
 
-		XCTAssertEqual(["session_id": "0ab1e23f4eee", "user_id": "1234567890", "anonymous_id": "0ab1e-23f4-feee"], context.getUnits())
+		XCTAssertEqual(
+			["session_id": "0ab1e23f4eee", "user_id": "1234567890", "anonymous_id": "0ab1e-23f4-feee"],
+			context.getUnits())
 	}
 
 	func testSetUnitsBeforeReady() throws {
@@ -410,7 +412,7 @@ final class ContextTest: XCTestCase {
 		XCTAssertFalse(context.isFailed())
 		context.setAttribute(name: "attr1", value: "value1")
 		context.setAttributes(["attr2": "value2"])
-		XCTAssertEqual(["attr1":"value1", "attr2": "value2"], context.getAttributes())
+		XCTAssertEqual(["attr1": "value1", "attr2": "value2"], context.getAttributes())
 
 		resolver.fulfill(try getContextData())
 	}

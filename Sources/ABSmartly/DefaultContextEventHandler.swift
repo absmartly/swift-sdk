@@ -11,4 +11,8 @@ public class DefaultContextEventHandler: ContextEventHandler {
 	public func publish(event: PublishEvent) -> Promise<Void> {
 		return client.publish(event: event)
 	}
+
+	public func flushCache() {
+
+	}
 }

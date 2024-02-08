@@ -15,6 +15,8 @@ let package = Package(
             targets: ["ABSmartly"])
     ],
     dependencies: [
+        .package(url: "https://github.com/stephencelis/SQLite.swift.git", .upToNextMajor(from: "0.14.1")),
+        .package(url: "https://github.com/Kitura/CircuitBreaker.git", .upToNextMajor(from: "5.0.3")),
         .package(url: "https://github.com/apple/swift-atomics.git", .upToNextMajor(from: "1.0.2")),
         .package(url: "https://github.com/mxcl/PromiseKit.git", .upToNextMajor(from: "6.8.4")),
         .package(url: "https://github.com/SwiftyJSON/SwiftyJSON.git", .upToNextMajor(from: "5.0.0"))
@@ -22,7 +24,7 @@ let package = Package(
     targets: [
         .target(
             name: "ABSmartly",
-            dependencies: [.product(name: "Atomics", package: "swift-atomics"), "PromiseKit", "SwiftyJSON"],
+            dependencies: [.product(name: "Atomics", package: "swift-atomics"), "PromiseKit", "SwiftyJSON", "CircuitBreaker", .product(name: "SQLite", package: "SQLite.swift")],
             path: "Sources/ABSmartly"),
         .testTarget(
             name: "ABSmartlyTests",

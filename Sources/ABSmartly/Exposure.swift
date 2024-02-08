@@ -1,6 +1,6 @@
 import Foundation
 
-public struct Exposure: Encodable, Equatable {
+public struct Exposure: Encodable, Equatable, Decodable {
 	public let id: Int
 	public let name: String
 	public let unit: String?

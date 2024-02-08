@@ -15,17 +15,29 @@ public final class ABSmartlySDK {
 		scheduler = config.scheduler ?? DefaultScheduler()
 		client = config.client
 
-		if config.contextDataProvider == nil || config.contextEventHandler == nil {
-			if client == nil {
-				throw ABSmartlyError("Missing Client instance")
-			}
-
-			contextDataProvider = config.contextDataProvider ?? DefaultContextDataProvider(client: client!)
-			contextEventHandler = config.contextEventHandler ?? DefaultContextEventHandler(client: client!)
+		if config.resilienceConfig != nil {
+			contextEventHandler = ResilientContextEventHandler(
+				client: client!,
+				resilienceConfig: config.resilienceConfig!
+			)
+			contextDataProvider = ResilientContextDataProvider(
+				client: client!,
+				localCache: config.resilienceConfig!.localCache
+			)
 		} else {
-			contextDataProvider = config.contextDataProvider!
-			contextEventHandler = config.contextEventHandler!
+			if config.contextDataProvider == nil || config.contextEventHandler == nil {
+				if client == nil {
+					throw ABSmartlyError("Missing Client instance")
+				}
+
+				contextDataProvider = config.contextDataProvider ?? DefaultContextDataProvider(client: client!)
+				contextEventHandler = config.contextEventHandler ?? DefaultContextEventHandler(client: client!)
+			} else {
+				contextDataProvider = config.contextDataProvider!
+				contextEventHandler = config.contextEventHandler!
+			}
 		}
+
 	}
 
 	public func createContextWithData(config: ContextConfig, contextData: ContextData) -> Context {

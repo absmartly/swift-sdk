@@ -1,6 +1,6 @@
 import Foundation
 
-public struct Attribute: Encodable, Equatable {
+public struct Attribute: Encodable, Equatable, Decodable {
 	public let name: String
 
 	public let value: JSON

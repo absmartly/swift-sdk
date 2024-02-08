@@ -2,6 +2,24 @@
   "object": {
     "pins": [
       {
+        "package": "CircuitBreaker",
+        "repositoryURL": "https://github.com/Kitura/CircuitBreaker.git",
+        "state": {
+          "branch": null,
+          "revision": "bd4255762e48cc3748a448d197f1297a4ba705f7",
+          "version": "5.1.0"
+        }
+      },
+      {
+        "package": "LoggerAPI",
+        "repositoryURL": "https://github.com/Kitura/LoggerAPI.git",
+        "state": {
+          "branch": null,
+          "revision": "e82d34eab3f0b05391082b11ea07d3b70d2f65bb",
+          "version": "1.9.200"
+        }
+      },
+      {
         "package": "PromiseKit",
         "repositoryURL": "https://github.com/mxcl/PromiseKit.git",
         "state": {
@@ -11,12 +29,30 @@
         }
       },
       {
+        "package": "SQLite.swift",
+        "repositoryURL": "https://github.com/stephencelis/SQLite.swift.git",
+        "state": {
+          "branch": null,
+          "revision": "7a2e3cd27de56f6d396e84f63beefd0267b55ccb",
+          "version": "0.14.1"
+        }
+      },
+      {
         "package": "swift-atomics",
         "repositoryURL": "https://github.com/apple/swift-atomics.git",
         "state": {
           "branch": null,
           "revision": "919eb1d83e02121cdb434c7bfc1f0c66ef17febe",
           "version": "1.0.2"
+        }
+      },
+      {
+        "package": "swift-log",
+        "repositoryURL": "https://github.com/apple/swift-log.git",
+        "state": {
+          "branch": null,
+          "revision": "32e8d724467f8fe623624570367e3d50c5638e46",
+          "version": "1.5.2"
         }
       },
       {
