@@ -1,6 +1,8 @@
 import Atomics
 import Foundation
+#if canImport(MapKit)
 import MapKit
+#endif
 import PromiseKit
 
 public final class Context {
@@ -8,6 +10,11 @@ public final class Context {
 	private let scheduler: Scheduler
 	private let handler: ContextEventHandler
 	private let provider: ContextDataProvider
+
+	deinit {
+		clearRefreshTimer()
+		clearTimeout()
+	}
 	private let logger: ContextEventLogger?
 	private let parser: VariableParser
 	private let matcher: AudienceMatcher
@@ -40,12 +47,15 @@ public final class Context {
 	private let contextLock = NSRecursiveLock()
 	private var units: [String: String] = [:]
 	private var attributes: [Attribute] = []
+	private let maxAttributes = 500
 	private var overrides: [String: Int] = [:]
 	private var cassignments: [String: Int] = [:]
 
 	private let eventLock = NSLock()
 	private var exposures: [Exposure] = []
 	private var achievements: [GoalAchievement] = []
+	private let maxExposures = 500
+	private let maxAchievements = 500
 
 	private var publishDelay: TimeInterval = 0
 	private var refreshInterval: TimeInterval = 0
@@ -94,23 +104,30 @@ public final class Context {
 				logError(error: error)
 			}
 		} else {
-			readyPromise = Promise<Void> { seal in
-				promise.done { [self] data in
-					setData(data)
+			readyPromise = Promise<Void> { [weak self] seal in
+				guard let self = self else {
 					seal.fulfill(())
-					readyPromise = nil
+					return
+				}
 
-					logEvent(event: .ready(data: data))
+				promise.done { [weak self] data in
+					guard let self = self else { return }
+					self.setData(data)
+					seal.fulfill(())
+					self.readyPromise = nil
 
-					if pendingCount.load(ordering: .relaxed) > 0 {
-						setTimeout()
+					self.logEvent(event: .ready(data: data))
+
+					if self.pendingCount.load(ordering: .acquiring) > 0 {
+						self.setTimeout()
 					}
-				}.catch { [self] error in
-					setDataFailed(error)
-					readyPromise = nil
+				}.catch { [weak self] error in
+					guard let self = self else { return }
+					self.setDataFailed(error)
+					self.readyPromise = nil
 					seal.fulfill(())  // throw no user-visible errors
 
-					logError(error: error)
+					self.logError(error: error)
 				}
 			}
 		}
@@ -125,19 +142,24 @@ public final class Context {
 	}
 
 	public func isClosing() -> Bool {
-		return !closed.load(ordering: .relaxed) && closing.load(ordering: .relaxed)
+		return !closed.load(ordering: .acquiring) && closing.load(ordering: .acquiring)
 	}
 
 	public func isClosed() -> Bool {
-		return closed.load(ordering: .relaxed)
+		return closed.load(ordering: .acquiring)
 	}
 
 	public func waitUntilReady() -> Promise<Context> {
-		return Promise<Context> { seal in
-			if isReady() || readyPromise == nil {
+		return Promise<Context> { [weak self] seal in
+			guard let self = self else {
+				seal.reject(ABSmartlyError("Context was deallocated"))
+				return
+			}
+			if self.isReady() || self.readyPromise == nil {
 				seal.fulfill(self)
-			} else if let ready = readyPromise {
-				_ = ready.done {
+			} else if let ready = self.readyPromise {
+				_ = ready.done { [weak self] in
+					guard let self = self else { return }
 					seal.fulfill(self)
 				}
 			}
@@ -171,37 +193,33 @@ public final class Context {
 	}
 
 	public func getCustomFieldValue(experimentName: String, key: String) -> Any? {
-		var keys: [String] = []
-
 		dataLock.lock()
 		defer { dataLock.unlock() }
 
-		var experimentCustomFieldValues = customFieldValues[experimentName]
+		let experimentCustomFieldValues = customFieldValues[experimentName]
 
-		if (experimentCustomFieldValues != nil) {
-			var field = experimentCustomFieldValues?[key]
-			if (field != nil) {
-				return field?.value;
+		if experimentCustomFieldValues != nil {
+			let field = experimentCustomFieldValues?[key]
+			if field != nil {
+				return field?.value
 			}
 		}
-		return nil;
+		return nil
 	}
 
 	public func getCustomFieldValueType(experimentName: String, key: String) -> String? {
-		var keys: [String] = []
-
 		dataLock.lock()
 		defer { dataLock.unlock() }
 
-		var experimentCustomFieldValues = customFieldValues[experimentName]
+		let experimentCustomFieldValues = customFieldValues[experimentName]
 
-		if (experimentCustomFieldValues != nil) {
-			var field = experimentCustomFieldValues?[key]
-			if (field != nil) {
-				return field?.type;
+		if experimentCustomFieldValues != nil {
+			let field = experimentCustomFieldValues?[key]
+			if field != nil {
+				return field?.type
 			}
 		}
-		return nil;
+		return nil
 	}
 
 	public func getContextData() -> ContextData? {
@@ -263,21 +281,21 @@ public final class Context {
 	}
 
 	public func setUnit(unitType: String, uid: String) {
-		checkNotClosed()
+		guard !isClosed() && !isClosing() else { return }
 
 		let trimmed = uid.trimmingCharacters(in: .whitespacesAndNewlines)
-		precondition(!trimmed.isEmpty, "Unit '\(unitType)' UID must not be blank.")
+		guard !trimmed.isEmpty else {
+			Logger.error("Unit '\(unitType)' UID must not be blank.")
+			return
+		}
 
 		contextLock.lock()
 		defer { contextLock.unlock() }
 
-		precondition(
-			{
-				if let previous = units[unitType], previous != uid {
-					return false
-				}
-				return true
-			}(), "Unit '\(unitType)' already set.")
+		if let previous = units[unitType], previous != uid {
+			Logger.error("Unit '\(unitType)' already set to different value.")
+			return
+		}
 
 		units[unitType] = trimmed
 	}
@@ -312,6 +330,10 @@ public final class Context {
 		contextLock.lock()
 		defer { contextLock.unlock() }
 
+		if attributes.count >= maxAttributes {
+			attributes.removeFirst(maxAttributes / 4)
+		}
+
 		attributes.append(Attribute(name, value: value, setAt: clock.millis()))
 	}
 
@@ -335,7 +357,7 @@ public final class Context {
 		checkReady(true)
 
 		let assignment = getAssignment(experimentName)
-		if !assignment.exposed.load(ordering: .relaxed) {
+		if !assignment.exposed.load(ordering: .acquiring) {
 			queueExposure(assignment)
 		}
 
@@ -356,8 +378,14 @@ public final class Context {
 			eventLock.lock()
 			defer { eventLock.unlock() }
 
+			if exposures.count >= maxExposures {
+				let removeCount = maxExposures / 4
+				exposures.removeFirst(removeCount)
+				pendingCount.wrappingDecrement(by: UInt(removeCount), ordering: .releasing)
+			}
+
 			exposures.append(exposure)
-			pendingCount.wrappingIncrement(by: 1, ordering: .relaxed)
+			pendingCount.wrappingIncrement(by: 1, ordering: .releasing)
 		}
 
 		logEvent(event: .exposure(exposure: exposure))
@@ -384,7 +412,7 @@ public final class Context {
 		checkReady(true)
 
 		if let assignment = getVariableAssignment(key) {
-			if !assignment.exposed.load(ordering: .relaxed) {
+			if !assignment.exposed.load(ordering: .acquiring) {
 				queueExposure(assignment)
 			}
 
@@ -418,8 +446,14 @@ public final class Context {
 			eventLock.lock()
 			defer { eventLock.unlock() }
 
+			if achievements.count >= maxAchievements {
+				let removeCount = maxAchievements / 4
+				achievements.removeFirst(removeCount)
+				pendingCount.wrappingDecrement(by: UInt(removeCount), ordering: .releasing)
+			}
+
 			achievements.append(achievement)
-			pendingCount.wrappingIncrement(by: 1, ordering: .relaxed)
+			pendingCount.wrappingIncrement(by: 1, ordering: .releasing)
 		}
 
 		logEvent(event: .goal(goal: achievement))
@@ -428,7 +462,7 @@ public final class Context {
 	}
 
 	public func getPendingCount() -> UInt {
-		return pendingCount.load(ordering: .relaxed)
+		return pendingCount.load(ordering: .acquiring)
 	}
 
 	public func publish() -> Promise<Void> {
@@ -441,21 +475,31 @@ public final class Context {
 		checkNotClosed()
 
 		if !refreshing.compareExchange(expected: false, desired: true, ordering: .acquiringAndReleasing).0 {
-			return refreshPromise!
+			if let existingPromise = refreshPromise {
+				return existingPromise
+			}
+			return Promise<Void>.value(())
 		}
 
-		refreshPromise = Promise<Void> { seal in
-			provider.getContextData().done { [self] data in
-				setData(data)
-				refreshing.store(false, ordering: .relaxed)
+		refreshPromise = Promise<Void> { [weak self] seal in
+			guard let self = self else {
+				seal.fulfill(())
+				return
+			}
+
+			self.provider.getContextData().done { [weak self] data in
+				guard let self = self else { return }
+				self.setData(data)
+				self.refreshing.store(false, ordering: .releasing)
 				seal.fulfill(())
 
-				logEvent(event: .refresh(data: data))
-			}.catch { [self] error in
-				refreshing.store(false, ordering: .relaxed)
+				self.logEvent(event: .refresh(data: data))
+			}.catch { [weak self] error in
+				guard let self = self else { return }
+				self.refreshing.store(false, ordering: .releasing)
 				seal.reject(error)
 
-				logError(error: error)
+				self.logError(error: error)
 			}
 		}
 
@@ -463,34 +507,44 @@ public final class Context {
 	}
 
 	public func close() -> Promise<Void> {
-		if !closed.load(ordering: .relaxed) {
-			if !closing.compareExchange(expected: false, desired: true, ordering: .relaxed).0 {
-				return closePromise!
+		if !closed.load(ordering: .acquiring) {
+			if !closing.compareExchange(expected: false, desired: true, ordering: .acquiringAndReleasing).0 {
+				if let existingPromise = closePromise {
+					return existingPromise
+				}
+				return Promise<Void>.value(())
 			}
 
-			closePromise = Promise<Void> { seal in
-				clearRefreshTimer()
+			closePromise = Promise<Void> { [weak self] seal in
+				guard let self = self else {
+					seal.fulfill(())
+					return
+				}
 
-				if pendingCount.load(ordering: .relaxed) > 0 {
-					flush().done { [self] in
-						closed.store(true, ordering: .relaxed)
-						closing.store(false, ordering: .relaxed)
+				self.clearRefreshTimer()
+
+				if self.pendingCount.load(ordering: .acquiring) > 0 {
+					self.flush().done { [weak self] in
+						guard let self = self else { return }
+						self.closed.store(true, ordering: .releasing)
+						self.closing.store(false, ordering: .releasing)
 						seal.fulfill(())
 
-						logEvent(event: .close)
-					}.catch({ [self] error in
-						closed.store(true, ordering: .relaxed)
-						closing.store(true, ordering: .relaxed)
+						self.logEvent(event: .close)
+					}.catch({ [weak self] error in
+						guard let self = self else { return }
+						self.closed.store(true, ordering: .releasing)
+						self.closing.store(true, ordering: .releasing)
 						seal.reject(error)
 
 						// event logger gets this error during publish
 					})
 				} else {
-					closed.store(true, ordering: .relaxed)
-					closing.store(false, ordering: .relaxed)
+					self.closed.store(true, ordering: .releasing)
+					self.closing.store(false, ordering: .releasing)
 					seal.fulfill(())
 
-					logEvent(event: .close)
+					self.logEvent(event: .close)
 				}
 			}
 		}
@@ -505,16 +559,18 @@ public final class Context {
 		clearTimeout()
 
 		if !isFailed() {
-			var eventCount = pendingCount.load(ordering: .relaxed)
+			var eventCount = pendingCount.load(ordering: .acquiring)
 			if eventCount > 0 {
 				var localExposures: [Exposure] = []
 				var localAchievements: [GoalAchievement] = []
+				var localUnits: [Unit] = []
+				var localAttributes: [Attribute] = []
 
 				do {
 					eventLock.lock()
 					defer { eventLock.unlock() }
 
-					eventCount = pendingCount.load(ordering: .relaxed)
+					eventCount = pendingCount.load(ordering: .acquiring)
 					if eventCount > 0 {
 						if !exposures.isEmpty {
 							localExposures = exposures
@@ -526,31 +582,43 @@ public final class Context {
 							achievements = []
 						}
 
-						pendingCount.store(0, ordering: .relaxed)
+						pendingCount.store(0, ordering: .releasing)
 					}
 				}
 
 				if eventCount > 0 {
+					contextLock.lock()
+					localUnits = units.map {
+						Unit(
+							type: $0.key, uid: String(bytes: getUnitHash($0.key, $0.value), encoding: .ascii) ?? "")
+					}
+					localAttributes = attributes
+					contextLock.unlock()
+
 					let event = PublishEvent(
 						true,
-						units.map {
-							Unit(
-								type: $0.key, uid: String(bytes: getUnitHash($0.key, $0.value), encoding: .ascii) ?? "")
-						},
+						localUnits,
 						clock.millis(),
 						localExposures,
 						localAchievements,
-						attributes)
+						localAttributes)
 
-					return Promise<Void> { [self] seal in
-						_ = handler.publish(event: event).done { [self] in
+					return Promise<Void> { [weak self] seal in
+						guard let self = self else {
+							seal.fulfill(())
+							return
+						}
+
+						_ = self.handler.publish(event: event).done { [weak self] in
+							guard let self = self else { return }
 							seal.fulfill(())
 
-							logEvent(event: .publish(event: event))
-						}.catch { [self] error in
+							self.logEvent(event: .publish(event: event))
+						}.catch { [weak self] error in
+							guard let self = self else { return }
 							seal.reject(error)
 
-							logError(error: error)
+							self.logError(error: error)
 						}
 					}
 				}
@@ -561,22 +629,28 @@ public final class Context {
 
 			exposures = []
 			achievements = []
-			pendingCount.store(0, ordering: .relaxed)
+			pendingCount.store(0, ordering: .releasing)
 		}
 
 		return Promise<Void>.value(())
 	}
 
 	private func checkReady(_ expectNotClosed: Bool) {
-		precondition(isReady(), "ABSmartly Context is not yet ready.")
+		if !isReady() {
+			Logger.error("ABSmartly Context is not yet ready.")
+		}
 		if expectNotClosed {
 			checkNotClosed()
 		}
 	}
 
 	private func checkNotClosed() {
-		precondition(!isClosed(), "ABSmartly Context is closed.")
-		precondition(!isClosing(), "ABSmartly Context is closing.")
+		if isClosed() {
+			Logger.error("ABSmartly Context is closed.")
+		}
+		if isClosing() {
+			Logger.error("ABSmartly Context is closing.")
+		}
 	}
 
 	private func experimentMatches(_ experiment: Experiment, _ assignment: Assignment) -> Bool {
@@ -688,7 +762,7 @@ public final class Context {
 			}
 		}
 
-		if let experiment = experiment, assignment.variant < experiment.data.variants.count {
+		if let experiment = experiment, assignment.variant >= 0, assignment.variant < experiment.variables.count {
 			assignment.variables = experiment.variables[assignment.variant]
 		}
 
@@ -742,6 +816,7 @@ public final class Context {
 
 	private func setTimeout() {
 		guard isReady() else { return }
+		guard publishDelay >= 0 else { return }
 
 		if timeout == nil {
 			timeoutLock.lock()
@@ -750,38 +825,34 @@ public final class Context {
 			if timeout == nil {
 				timeout = scheduler.schedule(
 					after: publishDelay,
-					execute: { [self] in
-						_ = flush()
+					execute: { [weak self] in
+						_ = self?.flush()
 					})
 			}
 		}
 	}
 
 	private func clearTimeout() {
-		if timeout != nil {
-			timeoutLock.lock()
-			defer { timeoutLock.unlock() }
+		timeoutLock.lock()
+		defer { timeoutLock.unlock() }
 
-			timeout?.cancel()
-			timeout = nil
-		}
+		timeout?.cancel()
+		timeout = nil
 	}
 
 	private func setRefreshTimer() {
 		if refreshInterval > 0 && refreshTimer == nil {
 			refreshTimer = scheduler.scheduleWithFixedDelay(
 				after: refreshInterval, repeating: refreshInterval,
-				execute: { [self] in
-					_ = refresh().done {}
+				execute: { [weak self] in
+					_ = self?.refresh().done {}
 				})
 		}
 	}
 
 	private func clearRefreshTimer() {
-		if refreshTimer != nil {
-			refreshTimer!.cancel()
-			refreshTimer = nil
-		}
+		refreshTimer?.cancel()
+		refreshTimer = nil
 	}
 
 	private func setData(_ data: ContextData) {
@@ -813,12 +884,12 @@ public final class Context {
 
 			if (experiment.customFieldValues != nil) {
 				for customFieldValue in experiment.customFieldValues! {
-					var value = ContextCustomFieldValue()
-					value.type = customFieldValue.type!;
+					let value = ContextCustomFieldValue()
+					value.type = customFieldValue.type!
 
 					if (customFieldValue.value != nil) {
-						var customValue = customFieldValue.value;
-						if ((customFieldValue.type!.starts(with: "json"))) {
+						let customValue = customFieldValue.value
+						if customFieldValue.type!.starts(with: "json") {
 							value.value = parser.parse(experimentName: experiment.name, config: customValue!)
 						} else if ((customFieldValue.type!.starts(with: "boolean"))) {
 							value.value = Bool(customValue!)

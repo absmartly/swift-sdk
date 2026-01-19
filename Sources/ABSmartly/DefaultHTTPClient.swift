@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 import PromiseKit
 
 public class DefaultHTTPResponse: Response {
@@ -17,14 +20,23 @@ public class DefaultHTTPResponse: Response {
 
 public class DefaultHTTPClient: HTTPClient {
 	private var config: DefaultHTTPClientConfig = DefaultHTTPClientConfig()
-	private var session: URLSession
+	private var session: URLSession?
+	private let sessionLock = NSLock()
 
 	public init(config: DefaultHTTPClientConfig) {
 		self.config = config
 		let sessionConfig = URLSessionConfiguration.ephemeral
 		sessionConfig.timeoutIntervalForRequest = config.connectionRequestTimeout
 		sessionConfig.timeoutIntervalForResource = config.connectionResourceTimeout
+		sessionConfig.httpMaximumConnectionsPerHost = 4
 		self.session = URLSession(configuration: sessionConfig)
+	}
+
+	deinit {
+		sessionLock.lock()
+		session?.invalidateAndCancel()
+		session = nil
+		sessionLock.unlock()
 	}
 
 	public func get(url: String, query: [String: String]?, headers: [String: String]?) -> Promise<Response> {
@@ -47,10 +59,24 @@ public class DefaultHTTPClient: HTTPClient {
 	{
 		return retry(
 			times: config.retries, delay: config.retryInterval,
-			body: { attempt in
+			body: { [weak self] attempt in
 				return Promise<Response> { seal in
+					guard let self = self else {
+						seal.reject(URLError(.cancelled))
+						return
+					}
+
+					self.sessionLock.lock()
+					guard let session = self.session else {
+						self.sessionLock.unlock()
+						seal.reject(URLError(.cancelled))
+						return
+					}
+					self.sessionLock.unlock()
+
 					guard var components = URLComponents(string: url) else {
-						throw URLError(.badURL)
+						seal.reject(URLError(.badURL))
+						return
 					}
 
 					if query != nil {
@@ -71,7 +97,7 @@ public class DefaultHTTPClient: HTTPClient {
 						request.httpBody = body
 					}
 
-					self.session.dataTask(
+					session.dataTask(
 						with: request,
 						completionHandler: { data, rsp, error in
 							if let data = data, let rsp = rsp as? HTTPURLResponse {
@@ -103,6 +129,10 @@ public class DefaultHTTPClient: HTTPClient {
 	}
 
 	public func close() -> Promise<Void> {
+		sessionLock.lock()
+		session?.finishTasksAndInvalidate()
+		session = nil
+		sessionLock.unlock()
 		return Promise<Void>.value(())
 	}
 }

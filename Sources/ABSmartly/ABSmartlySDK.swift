@@ -49,21 +49,10 @@ public final class ABSmartlySDK {
 	}
 
 	public func close() -> Promise<Void> {
-		if client == nil {
+		guard let clientToClose = client else {
 			return Promise<Void>.value(())
 		}
-
-		return Promise<Void> { seal in
-			if client != nil {
-				client!.close().done {
-					seal.fulfill(())
-				}.catch { error in
-					seal.reject(error)
-				}
-				client = nil
-			} else {
-				seal.fulfill(())
-			}
-		}
+		client = nil
+		return clientToClose.close()
 	}
 }

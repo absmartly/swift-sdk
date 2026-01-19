@@ -17,12 +17,18 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/apple/swift-atomics.git", .upToNextMajor(from: "1.0.2")),
         .package(url: "https://github.com/mxcl/PromiseKit.git", .upToNextMajor(from: "6.8.4")),
-        .package(url: "https://github.com/SwiftyJSON/SwiftyJSON.git", .upToNextMajor(from: "5.0.0"))
+        .package(url: "https://github.com/SwiftyJSON/SwiftyJSON.git", .upToNextMajor(from: "5.0.0")),
+        .package(url: "https://github.com/apple/swift-crypto.git", .upToNextMajor(from: "3.0.0"))
     ],
     targets: [
         .target(
             name: "ABSmartly",
-            dependencies: [.product(name: "Atomics", package: "swift-atomics"), "PromiseKit", "SwiftyJSON"],
+            dependencies: [
+                .product(name: "Atomics", package: "swift-atomics"),
+                "PromiseKit",
+                "SwiftyJSON",
+                .product(name: "Crypto", package: "swift-crypto")
+            ],
             path: "Sources/ABSmartly"),
         .testTarget(
             name: "ABSmartlyTests",

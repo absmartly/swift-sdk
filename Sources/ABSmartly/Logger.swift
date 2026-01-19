@@ -1,8 +1,11 @@
 import Foundation
+#if canImport(OSLog)
 import OSLog
+#endif
 
 class Logger {
 	static func error(_ error: String) {
+		#if canImport(OSLog)
 		if #available(macOS 11.0, iOS 14.0, tvOS 14.0, watchOS 7.0, *) {
 			let customLog = os.Logger(subsystem: "ABSmartly", category: "")
 			customLog.error("\(error)")
@@ -12,9 +15,13 @@ class Logger {
 		} else {
 			print("ABSmartly Error: " + error)
 		}
+		#else
+		print("ABSmartly Error: " + error)
+		#endif
 	}
 
 	static func notice(_ note: String) {
+		#if canImport(OSLog)
 		if #available(macOS 11.0, iOS 14.0, tvOS 14.0, watchOS 7.0, *) {
 			let customLog = os.Logger(subsystem: "ABSmartly", category: "")
 			customLog.notice("\(note)")
@@ -24,5 +31,8 @@ class Logger {
 		} else {
 			print("ABSmartly Note: " + note)
 		}
+		#else
+		print("ABSmartly Note: " + note)
+		#endif
 	}
 }

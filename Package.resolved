@@ -11,12 +11,30 @@
         }
       },
       {
+        "package": "swift-asn1",
+        "repositoryURL": "https://github.com/apple/swift-asn1.git",
+        "state": {
+          "branch": null,
+          "revision": "810496cf121e525d660cd0ea89a758740476b85f",
+          "version": "1.5.1"
+        }
+      },
+      {
         "package": "swift-atomics",
         "repositoryURL": "https://github.com/apple/swift-atomics.git",
         "state": {
           "branch": null,
           "revision": "919eb1d83e02121cdb434c7bfc1f0c66ef17febe",
           "version": "1.0.2"
+        }
+      },
+      {
+        "package": "swift-crypto",
+        "repositoryURL": "https://github.com/apple/swift-crypto.git",
+        "state": {
+          "branch": null,
+          "revision": "95ba0316a9b733e92bb6b071255ff46263bbe7dc",
+          "version": "3.15.1"
         }
       },
       {
