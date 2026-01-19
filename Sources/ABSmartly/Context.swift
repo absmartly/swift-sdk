@@ -59,6 +59,7 @@ public final class Context {
 
 	private var publishDelay: TimeInterval = 0
 	private var refreshInterval: TimeInterval = 0
+	private var attrsSeq: Int = 0
 
 	init(
 		config: ContextConfig, clock: Clock, scheduler: Scheduler, handler: ContextEventHandler,
@@ -110,7 +111,7 @@ public final class Context {
 					return
 				}
 
-				promise.done { [weak self] data in
+				promise.done(on: DispatchQueue.global()) { [weak self] data in
 					guard let self = self else { return }
 					self.setData(data)
 					seal.fulfill(())
@@ -121,7 +122,7 @@ public final class Context {
 					if self.pendingCount.load(ordering: .acquiring) > 0 {
 						self.setTimeout()
 					}
-				}.catch { [weak self] error in
+				}.catch(on: DispatchQueue.global()) { [weak self] error in
 					guard let self = self else { return }
 					self.setDataFailed(error)
 					self.readyPromise = nil
@@ -158,7 +159,7 @@ public final class Context {
 			if self.isReady() || self.readyPromise == nil {
 				seal.fulfill(self)
 			} else if let ready = self.readyPromise {
-				_ = ready.done { [weak self] in
+				_ = ready.done(on: DispatchQueue.global()) { [weak self] in
 					guard let self = self else { return }
 					seal.fulfill(self)
 				}
@@ -182,14 +183,25 @@ public final class Context {
 
 		for experiment in data!.experiments {
 			let customFieldValues = experiment.customFieldValues
-			if (customFieldValues != nil) {
+			if customFieldValues != nil {
 				for customFieldValue in customFieldValues! {
-					keys.insert(customFieldValue.name!);
+					keys.insert(customFieldValue.name!)
 				}
 			}
 		}
 
 		return keys
+	}
+
+	public func getCustomFieldKeys(experimentName: String) -> [String] {
+		dataLock.lock()
+		defer { dataLock.unlock() }
+
+		guard let experimentCustomFields = customFieldValues[experimentName] else {
+			return []
+		}
+
+		return Array(experimentCustomFields.keys)
 	}
 
 	public func getCustomFieldValue(experimentName: String, key: String) -> Any? {
@@ -335,6 +347,7 @@ public final class Context {
 		}
 
 		attributes.append(Attribute(name, value: value, setAt: clock.millis()))
+		attrsSeq += 1
 	}
 
 	public func getAttributes() -> [String: JSON] {
@@ -411,12 +424,12 @@ public final class Context {
 	public func getVariableValue(_ key: String, defaultValue: JSON? = nil) -> JSON? {
 		checkReady(true)
 
-		if let assignment = getVariableAssignment(key) {
+		if let assignment = getVariableAssignment(key), let variables = assignment.variables {
 			if !assignment.exposed.load(ordering: .acquiring) {
 				queueExposure(assignment)
 			}
 
-			if let object = assignment.variables[key] {
+			if let object = variables[key] {
 				return object
 			}
 		}
@@ -427,8 +440,8 @@ public final class Context {
 	public func peekVariableValue(_ key: String, defaultValue: JSON? = nil) -> JSON? {
 		checkReady(true)
 
-		if let assignment = getVariableAssignment(key) {
-			if let object = assignment.variables[key] {
+		if let assignment = getVariableAssignment(key), let variables = assignment.variables {
+			if let object = variables[key] {
 				return object
 			}
 		}
@@ -487,14 +500,14 @@ public final class Context {
 				return
 			}
 
-			self.provider.getContextData().done { [weak self] data in
+			self.provider.getContextData().done(on: DispatchQueue.global()) { [weak self] data in
 				guard let self = self else { return }
 				self.setData(data)
 				self.refreshing.store(false, ordering: .releasing)
 				seal.fulfill(())
 
 				self.logEvent(event: .refresh(data: data))
-			}.catch { [weak self] error in
+			}.catch(on: DispatchQueue.global()) { [weak self] error in
 				guard let self = self else { return }
 				self.refreshing.store(false, ordering: .releasing)
 				seal.reject(error)
@@ -524,27 +537,23 @@ public final class Context {
 				self.clearRefreshTimer()
 
 				if self.pendingCount.load(ordering: .acquiring) > 0 {
-					self.flush().done { [weak self] in
+					self.flush().done(on: DispatchQueue.global()) { [weak self] in
 						guard let self = self else { return }
 						self.closed.store(true, ordering: .releasing)
 						self.closing.store(false, ordering: .releasing)
-						seal.fulfill(())
-
 						self.logEvent(event: .close)
-					}.catch({ [weak self] error in
+						seal.fulfill(())
+					}.catch(on: DispatchQueue.global()) { [weak self] error in
 						guard let self = self else { return }
 						self.closed.store(true, ordering: .releasing)
 						self.closing.store(true, ordering: .releasing)
 						seal.reject(error)
-
-						// event logger gets this error during publish
-					})
+					}
 				} else {
 					self.closed.store(true, ordering: .releasing)
 					self.closing.store(false, ordering: .releasing)
-					seal.fulfill(())
-
 					self.logEvent(event: .close)
+					seal.fulfill(())
 				}
 			}
 		}
@@ -603,23 +612,13 @@ public final class Context {
 						localAchievements,
 						localAttributes)
 
-					return Promise<Void> { [weak self] seal in
-						guard let self = self else {
-							seal.fulfill(())
-							return
-						}
-
-						_ = self.handler.publish(event: event).done { [weak self] in
-							guard let self = self else { return }
-							seal.fulfill(())
-
-							self.logEvent(event: .publish(event: event))
-						}.catch { [weak self] error in
-							guard let self = self else { return }
-							seal.reject(error)
-
-							self.logError(error: error)
-						}
+					return handler.publish(event: event).done(on: DispatchQueue.global()) { [weak self] in
+						guard let self = self else { return }
+						self.logEvent(event: .publish(event: event))
+					}.recover { [weak self] error -> Promise<Void> in
+						guard let self = self else { return Promise.value(()) }
+						self.logError(error: error)
+						throw error
 					}
 				}
 			}
@@ -659,6 +658,27 @@ public final class Context {
 			&& experiment.trafficSplit == assignment.trafficSplit
 	}
 
+	private func audienceMatches(_ experiment: Experiment, _ assignment: Assignment) -> Bool {
+		if let audience = experiment.audience, audience.count > 0 {
+			if attrsSeq > assignment.attrsSeq {
+				var attrs: [String: JSON] = [:]
+				for attr in attributes {
+					attrs[attr.name] = attr.value
+				}
+
+				let result = matcher.evaluate(audience, attrs)
+				let newAudienceMismatch = result != nil ? !result! : false
+
+				if newAudienceMismatch != assignment.audienceMismatch {
+					return false
+				}
+
+				assignment.attrsSeq = attrsSeq
+			}
+		}
+		return true
+	}
+
 	private func getExperiment(_ experimentName: String) -> ExperimentVariables? {
 		return getLocked(lock: dataLock, dict: index, key: experimentName)
 	}
@@ -683,7 +703,7 @@ public final class Context {
 			} else {
 				let custom = cassignments[experimentName]
 				if custom == nil || custom! == assignment.variant {
-					if experimentMatches(experiment!.data, assignment) {
+					if experimentMatches(experiment!.data, assignment) && audienceMatches(experiment!.data, assignment) {
 						// assignment up-to-date
 						return assignment
 					}
@@ -759,6 +779,7 @@ public final class Context {
 				assignment.iteration = experiment.data.iteration
 				assignment.trafficSplit = experiment.data.trafficSplit
 				assignment.fullOnVariant = experiment.data.fullOnVariant
+				assignment.attrsSeq = attrsSeq
 			}
 		}
 
@@ -845,7 +866,7 @@ public final class Context {
 			refreshTimer = scheduler.scheduleWithFixedDelay(
 				after: refreshInterval, repeating: refreshInterval,
 				execute: { [weak self] in
-					_ = self?.refresh().done {}
+					_ = self?.refresh().done(on: DispatchQueue.global()) {}
 				})
 		}
 	}
@@ -855,7 +876,7 @@ public final class Context {
 		refreshTimer = nil
 	}
 
-	private func setData(_ data: ContextData) {
+	public func setData(_ data: ContextData) {
 		var index: [String: ExperimentVariables] = [:]
 		var indexVariables: [String: [ExperimentVariables]] = [:]
 		var customFieldValues: [String: [String: ContextCustomFieldValue]] = [:]
@@ -882,25 +903,40 @@ public final class Context {
 				}
 			}
 
-			if (experiment.customFieldValues != nil) {
+			if experiment.customFieldValues != nil {
 				for customFieldValue in experiment.customFieldValues! {
 					let value = ContextCustomFieldValue()
 					value.type = customFieldValue.type!
 
-					if (customFieldValue.value != nil) {
-						let customValue = customFieldValue.value
+					if customFieldValue.value != nil {
+						let customValue = customFieldValue.value!
 						if customFieldValue.type!.starts(with: "json") {
-							value.value = parser.parse(experimentName: experiment.name, config: customValue!)
-						} else if ((customFieldValue.type!.starts(with: "boolean"))) {
-							value.value = Bool(customValue!)
-						} else if ((customFieldValue.type!.starts(with: "number"))) {
-							value.value = Double(customValue!)
+							let data = Data(customValue.utf8)
+							do {
+								let jsonObject = try JSONSerialization.jsonObject(with: data, options: .fragmentsAllowed)
+								let nativeValue = jsonObjectToNative(jsonObject)
+								value.value = nativeValue
+							} catch {
+								Logger.error("Failed to parse JSON custom field: \(error.localizedDescription)")
+								value.value = nil
+							}
+						} else if customFieldValue.type!.starts(with: "boolean") {
+							let lowercased = customValue.lowercased()
+							value.value = lowercased == "true" || lowercased == "1"
+						} else if customFieldValue.type!.starts(with: "number") {
+							if let intVal = Int(customValue) {
+								value.value = intVal
+							} else if let doubleVal = Double(customValue) {
+								value.value = doubleVal
+							} else {
+								value.value = nil
+							}
 						} else {
-							value.value = customFieldValue.value;
+							value.value = customFieldValue.value
 						}
 					}
 
-					experimentCustomFieldValues[customFieldValue.name!] = value;
+					experimentCustomFieldValues[customFieldValue.name!] = value
 				}
 			}
 
@@ -911,14 +947,15 @@ public final class Context {
 
 
 		dataLock.lock()
-		defer {
-			dataLock.unlock()
-		}
-
 		self.data = data
 		self.index = index
 		self.indexVariables = indexVariables
 		self.customFieldValues = customFieldValues
+		dataLock.unlock()
+
+		contextLock.lock()
+		assignmentCache = [:]
+		contextLock.unlock()
 
 		setRefreshTimer()
 	}
@@ -931,6 +968,52 @@ public final class Context {
 		indexVariables = [:]
 		data = nil
 		failed = true
+	}
+
+	private func jsonToNative(_ json: JSON) -> Any? {
+		if let dict = json.dictionary {
+			var result: [String: Any] = [:]
+			for (key, value) in dict {
+				if let nativeValue = jsonToNative(value) {
+					result[key] = nativeValue
+				}
+			}
+			return result
+		} else if let array = json.array {
+			return array.compactMap { jsonToNative($0) }
+		} else if let string = json.string {
+			return string
+		} else if let number = json.number {
+			return number
+		} else if let bool = json.bool {
+			return bool
+		} else if json.null != nil {
+			return nil
+		}
+		return nil
+	}
+
+	private func jsonObjectToNative(_ jsonObject: Any) -> Any? {
+		if jsonObject is NSNull {
+			return nil
+		} else if let dict = jsonObject as? [String: Any] {
+			var result: [String: Any] = [:]
+			for (key, value) in dict {
+				if let nativeValue = jsonObjectToNative(value) {
+					result[key] = nativeValue
+				}
+			}
+			return result
+		} else if let array = jsonObject as? [Any] {
+			return array.compactMap { jsonObjectToNative($0) }
+		} else if let string = jsonObject as? String {
+			return string
+		} else if let bool = jsonObject as? Bool {
+			return bool
+		} else if let number = jsonObject as? NSNumber {
+			return number
+		}
+		return jsonObject
 	}
 
 	private func logEvent(event: ContextEventLoggerEvent) {
@@ -982,6 +1065,7 @@ private class Assignment: Equatable {
 	var fullOn: Bool = false
 	var custom: Bool = false
 	var audienceMismatch = false
-	var variables: [String: JSON] = [:]
+	var variables: [String: JSON]?
 	var exposed = ManagedAtomic<Bool>(false)
+	var attrsSeq: Int = 0
 }

@@ -46,14 +46,14 @@ public final class DefaultClient: Client {
 
 	public func getContextData() -> Promise<ContextData> {
 		return Promise<ContextData> { seal in
-			httpClient.get(url: url, query: getQuery, headers: nil).done { response in
+			httpClient.get(url: url, query: getQuery, headers: nil).done(on: DispatchQueue.global()) { response in
 				do {
 					let result = try JSONDecoder().decode(ContextData.self, from: response.content)
 					seal.fulfill(result)
 				} catch {
 					seal.reject(error)
 				}
-			}.catch { error in
+			}.catch(on: DispatchQueue.global()) { error in
 				seal.reject(error)
 			}
 		}
@@ -63,9 +63,9 @@ public final class DefaultClient: Client {
 		return Promise<Void> { seal in
 			do {
 				let data = try JSONEncoder().encode(event)
-				httpClient.put(url: url, query: nil, headers: putHeaders, body: data).done { response in
+				httpClient.put(url: url, query: nil, headers: putHeaders, body: data).done(on: DispatchQueue.global()) { response in
 					seal.fulfill(())
-				}.catch { error in
+				}.catch(on: DispatchQueue.global()) { error in
 					seal.reject(error)
 				}
 			} catch {
