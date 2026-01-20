@@ -3,6 +3,7 @@ import Foundation
 public class ClientConfig {
 	public var apiKey: String = ""
 	public var application: String = ""
+	public var applicationVersion: String = "0"
 	public var endpoint: String = ""
 	public var environment: String = ""
 
@@ -10,10 +11,15 @@ public class ClientConfig {
 	}
 
 	public init(
-		apiKey: String, application: String, endpoint: String, environment: String
+		apiKey: String,
+		application: String,
+		endpoint: String,
+		environment: String,
+		applicationVersion: String = "0"
 	) {
 		self.apiKey = apiKey
 		self.application = application
+		self.applicationVersion = applicationVersion
 		self.endpoint = endpoint
 		self.environment = environment
 	}
@@ -25,7 +31,11 @@ public class ClientConfig {
 
 	public convenience init(from dict: [String: String]) {
 		self.init(
-			apiKey: dict["apikey"] ?? "", application: dict["application"] ?? "", endpoint: dict["endpoint"] ?? "",
-			environment: dict["environment"] ?? "")
+			apiKey: dict["apikey"] ?? "",
+			application: dict["application"] ?? "",
+			endpoint: dict["endpoint"] ?? "",
+			environment: dict["environment"] ?? "",
+			applicationVersion: dict["applicationVersion"] ?? "0"
+		)
 	}
 }

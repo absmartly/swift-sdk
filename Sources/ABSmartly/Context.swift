@@ -22,7 +22,7 @@ public final class Context {
 
 	private var pendingCount = ManagedAtomic<UInt>(0)
 
-	private var failed: Bool = false
+	private var failed = ManagedAtomic<Bool>(false)
 	private var closed = ManagedAtomic<Bool>(false)
 	private var closing = ManagedAtomic<Bool>(false)
 	private var refreshing = ManagedAtomic<Bool>(false)
@@ -135,11 +135,11 @@ public final class Context {
 	}
 
 	public func isReady() -> Bool {
-		return failed || data != nil
+		return failed.load(ordering: .acquiring) || data != nil
 	}
 
 	public func isFailed() -> Bool {
-		return failed
+		return failed.load(ordering: .acquiring)
 	}
 
 	public func isClosing() -> Bool {
@@ -181,12 +181,13 @@ public final class Context {
 		dataLock.lock()
 		defer { dataLock.unlock() }
 
-		for experiment in data!.experiments {
-			let customFieldValues = experiment.customFieldValues
-			if customFieldValues != nil {
-				for customFieldValue in customFieldValues! {
-					keys.insert(customFieldValue.name!)
-				}
+		guard let data = data else { return keys }
+
+		for experiment in data.experiments {
+			guard let customFieldValues = experiment.customFieldValues else { continue }
+			for customFieldValue in customFieldValues {
+				guard let name = customFieldValue.name else { continue }
+				keys.insert(name)
 			}
 		}
 
@@ -208,30 +209,14 @@ public final class Context {
 		dataLock.lock()
 		defer { dataLock.unlock() }
 
-		let experimentCustomFieldValues = customFieldValues[experimentName]
-
-		if experimentCustomFieldValues != nil {
-			let field = experimentCustomFieldValues?[key]
-			if field != nil {
-				return field?.value
-			}
-		}
-		return nil
+		return customFieldValues[experimentName]?[key]?.value
 	}
 
 	public func getCustomFieldValueType(experimentName: String, key: String) -> String? {
 		dataLock.lock()
 		defer { dataLock.unlock() }
 
-		let experimentCustomFieldValues = customFieldValues[experimentName]
-
-		if experimentCustomFieldValues != nil {
-			let field = experimentCustomFieldValues?[key]
-			if field != nil {
-				return field?.type
-			}
-		}
-		return nil
+		return customFieldValues[experimentName]?[key]?.type
 	}
 
 	public func getContextData() -> ContextData? {
@@ -271,7 +256,9 @@ public final class Context {
 	}
 
 	public func setOverrides(_ overrides: [String: Int]) {
-		overrides.forEach { setOverride(experimentName: $0.key, variant: $0.value) }
+		for (key, value) in overrides {
+			setOverride(experimentName: key, variant: value)
+		}
 	}
 
 	public func setCustomAssignment(experimentName: String, variant: Int) {
@@ -285,12 +272,16 @@ public final class Context {
 	}
 
 	public func setCustomAssignments(_ assignments: [String: Int]) {
-		assignments.forEach { setCustomAssignment(experimentName: $0.key, variant: $0.value) }
+		for (key, value) in assignments {
+			setCustomAssignment(experimentName: key, variant: value)
+		}
 	}
 
 	public func getUnit(unitType: String) -> String? {
 		return getLocked(lock: contextLock, dict: units, key: unitType)
 	}
+
+	private static let maxUnitUIDLength = 256
 
 	public func setUnit(unitType: String, uid: String) {
 		guard !isClosed() && !isClosing() else { return }
@@ -298,6 +289,11 @@ public final class Context {
 		let trimmed = uid.trimmingCharacters(in: .whitespacesAndNewlines)
 		guard !trimmed.isEmpty else {
 			Logger.error("Unit '\(unitType)' UID must not be blank.")
+			return
+		}
+
+		guard trimmed.count <= Self.maxUnitUIDLength else {
+			Logger.error("Unit '\(unitType)' UID exceeds maximum length of \(Self.maxUnitUIDLength) characters.")
 			return
 		}
 
@@ -320,7 +316,9 @@ public final class Context {
 	}
 
 	public func setUnits(_ units: [String: String]) {
-		units.forEach { setUnit(unitType: $0, uid: $1) }
+		for (unitType, uid) in units {
+			setUnit(unitType: unitType, uid: uid)
+		}
 	}
 
 	public func getAttribute(name: String) -> JSON? {
@@ -363,7 +361,9 @@ public final class Context {
 	}
 
 	public func setAttributes(_ attributes: [String: JSON]) {
-		attributes.forEach { setAttribute(name: $0, value: $1) }
+		for (name, value) in attributes {
+			setAttribute(name: name, value: value)
+		}
 	}
 
 	public func getTreatment(_ experimentName: String) -> Int {
@@ -494,7 +494,7 @@ public final class Context {
 			return Promise<Void>.value(())
 		}
 
-		refreshPromise = Promise<Void> { [weak self] seal in
+		let promise = Promise<Void> { [weak self] seal in
 			guard let self = self else {
 				seal.fulfill(())
 				return
@@ -516,7 +516,8 @@ public final class Context {
 			}
 		}
 
-		return refreshPromise!
+		refreshPromise = promise
+		return promise
 	}
 
 	public func close() -> Promise<Void> {
@@ -903,14 +904,16 @@ public final class Context {
 				}
 			}
 
-			if experiment.customFieldValues != nil {
-				for customFieldValue in experiment.customFieldValues! {
-					let value = ContextCustomFieldValue()
-					value.type = customFieldValue.type!
+			if let fieldValues = experiment.customFieldValues {
+				for customFieldValue in fieldValues {
+					guard let fieldType = customFieldValue.type,
+						  let fieldName = customFieldValue.name else { continue }
 
-					if customFieldValue.value != nil {
-						let customValue = customFieldValue.value!
-						if customFieldValue.type!.starts(with: "json") {
+					let value = ContextCustomFieldValue()
+					value.type = fieldType
+
+					if let customValue = customFieldValue.value {
+						if fieldType.starts(with: "json") {
 							let data = Data(customValue.utf8)
 							do {
 								let jsonObject = try JSONSerialization.jsonObject(with: data, options: .fragmentsAllowed)
@@ -920,10 +923,10 @@ public final class Context {
 								Logger.error("Failed to parse JSON custom field: \(error.localizedDescription)")
 								value.value = nil
 							}
-						} else if customFieldValue.type!.starts(with: "boolean") {
+						} else if fieldType.starts(with: "boolean") {
 							let lowercased = customValue.lowercased()
 							value.value = lowercased == "true" || lowercased == "1"
-						} else if customFieldValue.type!.starts(with: "number") {
+						} else if fieldType.starts(with: "number") {
 							if let intVal = Int(customValue) {
 								value.value = intVal
 							} else if let doubleVal = Double(customValue) {
@@ -936,7 +939,7 @@ public final class Context {
 						}
 					}
 
-					experimentCustomFieldValues[customFieldValue.name!] = value
+					experimentCustomFieldValues[fieldName] = value
 				}
 			}
 
@@ -944,18 +947,16 @@ public final class Context {
 			customFieldValues[experiment.name] = experimentCustomFieldValues
 		}
 
-
-
 		dataLock.lock()
+		defer { dataLock.unlock() }
 		self.data = data
 		self.index = index
 		self.indexVariables = indexVariables
 		self.customFieldValues = customFieldValues
-		dataLock.unlock()
 
 		contextLock.lock()
+		defer { contextLock.unlock() }
 		assignmentCache = [:]
-		contextLock.unlock()
 
 		setRefreshTimer()
 	}
@@ -967,7 +968,7 @@ public final class Context {
 		index = [:]
 		indexVariables = [:]
 		data = nil
-		failed = true
+		failed.store(true, ordering: .releasing)
 	}
 
 	private func jsonToNative(_ json: JSON) -> Any? {

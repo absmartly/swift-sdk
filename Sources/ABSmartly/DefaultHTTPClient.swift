@@ -79,21 +79,26 @@ public class DefaultHTTPClient: HTTPClient {
 						return
 					}
 
-					if query != nil {
-						components.queryItems = query!.compactMap { (key, value) in
+					if let query = query {
+						components.queryItems = query.compactMap { (key, value) in
 							URLQueryItem(name: key, value: value)
 						}
 					}
 
-					var request = URLRequest(url: components.url!)
+					guard let requestURL = components.url else {
+						seal.reject(URLError(.badURL))
+						return
+					}
+
+					var request = URLRequest(url: requestURL)
 					request.httpMethod = method
 					request.timeoutInterval = self.config.connectionResourceTimeout
 
-					if headers != nil {
+					if let headers = headers {
 						request.allHTTPHeaderFields = headers
 					}
 
-					if method != "GET" && body != nil {
+					if method != "GET", let body = body {
 						request.httpBody = body
 					}
 

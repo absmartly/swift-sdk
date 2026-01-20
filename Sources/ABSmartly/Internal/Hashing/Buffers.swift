@@ -48,7 +48,7 @@ class Buffers {
 	static func encodeUTF8(_ buf: inout [UInt8], _ offset: Int, _ value: String) -> Int {
 		let stringUTF8: [UInt8] = Array(value.utf8)
 
-		for i in 0...stringUTF8.count {
+		for i in 0..<stringUTF8.count {
 			buf[offset + i] = stringUTF8[i]
 		}
 

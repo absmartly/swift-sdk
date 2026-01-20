@@ -5,6 +5,10 @@ import CommonCrypto
 import Crypto
 #endif
 
+// NOTE: MD5 is used here for non-cryptographic purposes only.
+// It provides a fast, deterministic hash for unit ID bucketing in A/B test assignment.
+// Security properties (collision resistance, pre-image resistance) are not required
+// for this use case. The hash is used to consistently assign users to experiment variants.
 class Hashing {
 
 	private static func MD5Base64Url(_ string: String) -> String {
