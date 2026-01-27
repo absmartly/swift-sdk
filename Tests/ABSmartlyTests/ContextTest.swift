@@ -2089,4 +2089,304 @@ final class ContextTest: XCTestCase {
 		XCTAssertNil(context.getCustomFieldValue(experimentName: "exp_test_no_custom_fields", key: "languages"));
 		XCTAssertNil(context.getCustomFieldValueType(experimentName: "exp_test_no_custom_fields", key: "languages"));
 	}
+
+	func testRecoveryAfterPublishFailure() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let context = try createContext(config: contextConfig)
+
+		context.track("goal1", properties: ["amount": 125])
+
+		XCTAssertEqual(1, context.getPendingCount())
+
+		let failExpectation = XCTestExpectation(description: "Publish fails")
+
+		let (failPromise, failResolver) = Promise<Void>.pending()
+		handler.publishEventReturnValue = failPromise
+
+		_ = context.publish().catch { error in
+			XCTAssertTrue(error is ABSmartlyError)
+			failExpectation.fulfill()
+		}
+
+		failResolver.reject(ABSmartlyError("test publish failure"))
+
+		wait(for: [failExpectation], timeout: 1.0)
+
+		XCTAssertTrue(context.isReady())
+		XCTAssertFalse(context.isClosed())
+		XCTAssertFalse(context.isFailed())
+
+		context.track("goal2", properties: ["value": 200])
+		XCTAssertEqual(1, context.getPendingCount())
+
+		let treatment = context.getTreatment("exp_test_ab")
+		XCTAssertEqual(1, treatment)
+		XCTAssertEqual(2, context.getPendingCount())
+
+		let successExpectation = XCTestExpectation(description: "Publish succeeds")
+
+		handler.publishEventReturnValue = Promise.value(())
+
+		_ = context.publish().done {
+			successExpectation.fulfill()
+		}
+
+		wait(for: [successExpectation], timeout: 1.0)
+
+		XCTAssertEqual(0, context.getPendingCount())
+	}
+
+	func testRecoveryAfterRefreshFailure() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let context = try createContext(config: contextConfig)
+		XCTAssertTrue(context.isReady())
+
+		let failExpectation = XCTestExpectation(description: "Refresh fails")
+
+		let (failPromise, failResolver) = Promise<ContextData>.pending()
+		provider.getContextDataReturnValue = failPromise
+
+		_ = context.refresh().catch { error in
+			XCTAssertTrue(error is ABSmartlyError)
+			failExpectation.fulfill()
+		}
+
+		failResolver.reject(ABSmartlyError("test refresh failure"))
+
+		wait(for: [failExpectation], timeout: 1.0)
+
+		XCTAssertTrue(context.isReady())
+		XCTAssertFalse(context.isFailed())
+		XCTAssertFalse(context.isClosed())
+
+		let treatment = context.getTreatment("exp_test_ab")
+		XCTAssertEqual(1, treatment)
+
+		context.track("goal_after_refresh_failure", properties: nil)
+		XCTAssertEqual(2, context.getPendingCount())
+
+		let successExpectation = XCTestExpectation(description: "Refresh succeeds")
+
+		let refreshedContextData = try getContextData(source: "refreshed")
+		provider.getContextDataReturnValue = Promise.value(refreshedContextData)
+
+		_ = context.refresh().done {
+			successExpectation.fulfill()
+		}
+
+		wait(for: [successExpectation], timeout: 1.0)
+
+		XCTAssertTrue(context.isReady())
+		XCTAssertEqual(refreshedContextData.experiments.map { $0.name }, context.getExperiments())
+	}
+
+	func testGracefulDegradationNoNetwork() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let (promise, resolver) = Promise<ContextData>.pending()
+		let context = try createContext(config: contextConfig, data: promise)
+		XCTAssertFalse(context.isReady())
+
+		let expectation = XCTestExpectation(description: "Context handles network failure")
+
+		resolver.reject(ABSmartlyError("Network connection failed"))
+
+		_ = context.waitUntilReady().done { ctx in
+			XCTAssertTrue(ctx.isReady())
+			XCTAssertTrue(ctx.isFailed())
+
+			let treatment = ctx.getTreatment("exp_test_ab")
+			XCTAssertEqual(0, treatment)
+
+			ctx.track("goal_offline", properties: nil)
+			XCTAssertEqual(2, ctx.getPendingCount())
+
+			ctx.setOverride(experimentName: "exp_test_ab", variant: 5)
+			XCTAssertEqual(5, ctx.getTreatment("exp_test_ab"))
+
+			expectation.fulfill()
+		}
+
+		wait(for: [expectation], timeout: 1.0)
+
+		let publishExpectation = XCTestExpectation(description: "Publish completes without calling handler")
+
+		_ = context.publish().done { [self] in
+			XCTAssertEqual(0, handler.publishEventCallsCount)
+			publishExpectation.fulfill()
+		}
+
+		wait(for: [publishExpectation], timeout: 1.0)
+	}
+
+	func testRetryMechanismActivation() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let context = try createContext(config: contextConfig)
+
+		context.track("goal1", properties: nil)
+
+		var publishAttempts = 0
+		let maxAttempts = 3
+
+		let expectation = XCTestExpectation(description: "Retry mechanism test")
+
+		handler.publishEventClosure = { _ in
+			publishAttempts += 1
+			if publishAttempts < maxAttempts {
+				return Promise(error: ABSmartlyError("Transient failure \(publishAttempts)"))
+			} else {
+				return Promise.value(())
+			}
+		}
+
+		_ = context.publish().done {
+			expectation.fulfill()
+		}.catch { _ in
+			expectation.fulfill()
+		}
+
+		wait(for: [expectation], timeout: 5.0)
+
+		XCTAssertGreaterThanOrEqual(publishAttempts, 1)
+	}
+
+	func testFailedToReadyTransition() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let context = try createContext(
+			config: contextConfig, data: Promise<ContextData>.init(error: ABSmartlyError("initial failure")))
+
+		XCTAssertTrue(context.isReady())
+		XCTAssertTrue(context.isFailed())
+
+		let treatment = context.getTreatment("exp_test_ab")
+		XCTAssertEqual(0, treatment)
+
+		context.track("goal_while_failed", properties: nil)
+		XCTAssertEqual(2, context.getPendingCount())
+
+		XCTAssertEqual(0, handler.publishEventCallsCount)
+	}
+
+	func testRapidCloseReopenCycle() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let context = try createContext(config: contextConfig)
+
+		context.track("goal1", properties: nil)
+
+		handler.publishEventReturnValue = Promise.value(())
+
+		let closeExpectation = XCTestExpectation(description: "Close completes")
+
+		_ = context.close().done {
+			closeExpectation.fulfill()
+		}
+
+		wait(for: [closeExpectation], timeout: 1.0)
+
+		XCTAssertTrue(context.isClosed())
+
+		let context2 = try createContext(config: contextConfig)
+		XCTAssertTrue(context2.isReady())
+		XCTAssertFalse(context2.isClosed())
+
+		let treatment = context2.getTreatment("exp_test_ab")
+		XCTAssertEqual(1, treatment)
+	}
+
+	func testAllStateTransitionPaths() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let (promise, resolver) = Promise<ContextData>.pending()
+		let context = try createContext(config: contextConfig, data: promise)
+
+		XCTAssertFalse(context.isReady())
+		XCTAssertFalse(context.isFailed())
+		XCTAssertFalse(context.isClosing())
+		XCTAssertFalse(context.isClosed())
+
+		let readyExpectation = XCTestExpectation(description: "Ready state reached")
+
+		resolver.fulfill(try getContextData())
+
+		_ = context.waitUntilReady().done { ctx in
+			XCTAssertTrue(ctx.isReady())
+			XCTAssertFalse(ctx.isFailed())
+			XCTAssertFalse(ctx.isClosing())
+			XCTAssertFalse(ctx.isClosed())
+			readyExpectation.fulfill()
+		}
+
+		wait(for: [readyExpectation], timeout: 1.0)
+
+		context.track("goal1", properties: nil)
+
+		let (publishPromise, publishResolver) = Promise<Void>.pending()
+		handler.publishEventReturnValue = publishPromise
+
+		let closePromise = context.close()
+
+		XCTAssertTrue(context.isClosing())
+		XCTAssertFalse(context.isClosed())
+
+		let closeExpectation = XCTestExpectation(description: "Close state reached")
+
+		_ = closePromise.done {
+			closeExpectation.fulfill()
+		}
+
+		publishResolver.fulfill(())
+
+		wait(for: [closeExpectation], timeout: 1.0)
+
+		XCTAssertTrue(context.isClosed())
+		XCTAssertFalse(context.isClosing())
+	}
+
+	func testCustomFieldValueAllTypes() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let contextData = try getContextData()
+		let context = try createContext(config: contextConfig, data: Promise<ContextData>.value(contextData))
+		XCTAssertTrue(context.isReady())
+
+		let stringValue = context.getCustomFieldValue(experimentName: "exp_test_ab", key: "country")
+		XCTAssertNotNil(stringValue)
+		XCTAssertTrue(stringValue is String)
+		XCTAssertEqual("string", context.getCustomFieldValueType(experimentName: "exp_test_ab", key: "country"))
+
+		let jsonValue = context.getCustomFieldValue(experimentName: "exp_test_ab", key: "overrides")
+		XCTAssertNotNil(jsonValue)
+		XCTAssertEqual("json", context.getCustomFieldValueType(experimentName: "exp_test_ab", key: "overrides"))
+	}
+
+	func testCustomFieldNullHandling() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let contextData = try getContextData()
+		let context = try createContext(config: contextConfig, data: Promise<ContextData>.value(contextData))
+		XCTAssertTrue(context.isReady())
+
+		let missingExperimentValue = context.getCustomFieldValue(experimentName: "non_existent_experiment", key: "any_key")
+		XCTAssertNil(missingExperimentValue)
+		XCTAssertNil(context.getCustomFieldValueType(experimentName: "non_existent_experiment", key: "any_key"))
+
+		let missingKeyValue = context.getCustomFieldValue(experimentName: "exp_test_ab", key: "non_existent_key")
+		XCTAssertNil(missingKeyValue)
+		XCTAssertNil(context.getCustomFieldValueType(experimentName: "exp_test_ab", key: "non_existent_key"))
+
+		let existingValue = context.getCustomFieldValue(experimentName: "exp_test_ab", key: "languages")
+		XCTAssertNil(existingValue)
+	}
+
+	func testCustomFieldTypeCoercion() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let contextData = try getContextData()
+		let context = try createContext(config: contextConfig, data: Promise<ContextData>.value(contextData))
+		XCTAssertTrue(context.isReady())
+
+		let keys = context.getCustomFieldKeys()
+		XCTAssertTrue(keys.contains("country"))
+		XCTAssertTrue(keys.contains("languages"))
+		XCTAssertTrue(keys.contains("overrides"))
+
+		let experimentKeys = context.getCustomFieldKeys(experimentName: "exp_test_ab")
+		XCTAssertTrue(experimentKeys.contains("country"))
+		XCTAssertTrue(experimentKeys.contains("overrides"))
+	}
 }
