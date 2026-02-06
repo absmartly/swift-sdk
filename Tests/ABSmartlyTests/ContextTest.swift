@@ -2050,6 +2050,41 @@ final class ContextTest: XCTestCase {
 		XCTAssertEqual(3, context.getPendingCount())  // newly eligible experiment triggered a new exposure
 	}
 
+	func testRefreshClearsAssignmentCacheForIterationChange() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let contextData = try getContextData()
+		let context = try createContext(config: contextConfig, data: Promise<ContextData>.value(contextData))
+		XCTAssertTrue(context.isReady())
+
+		let experimentName = "exp_test_abc"
+		XCTAssertEqual(2, context.getTreatment(experimentName))
+		XCTAssertEqual(0, context.getTreatment("not_found"))
+
+		XCTAssertEqual(2, context.getPendingCount())
+
+		let refreshedContextData = try getContextData(source: "refreshed_iteration")
+		let (promise, resolver) = Promise<ContextData>.pending()
+		provider.getContextDataReturnValue = promise
+
+		let expectation = XCTestExpectation()
+
+		_ = context.refresh().done { [self] in
+			XCTAssertEqual(1, provider.getContextDataCallsCount)
+			XCTAssertEqual(refreshedContextData.experiments.map { $0.name }, context.getExperiments())
+
+			expectation.fulfill()
+		}
+
+		resolver.fulfill(refreshedContextData)
+
+		wait(for: [expectation], timeout: 1.0)
+
+		XCTAssertEqual(2, context.getTreatment(experimentName))
+		XCTAssertEqual(0, context.getTreatment("not_found"))
+
+		XCTAssertEqual(3, context.getPendingCount())
+	}
+
 	func testGetCustomFieldKeys() throws {
 		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
 		let contextData = try getContextData()
