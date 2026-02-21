@@ -1,6 +1,6 @@
 import Foundation
 
-public class ABSmartlyConfig {
+public class ABsmartlyConfig {
 	public var scheduler: Scheduler?
 	public var contextDataProvider: ContextDataProvider?
 	public var contextEventHandler: ContextEventHandler?
@@ -30,3 +30,9 @@ public class ABSmartlyConfig {
 		self.client = client
 	}
 }
+
+@available(*, deprecated, message: "Use ABsmartlyConfig instead")
+public typealias AbsmartlyConfig = ABsmartlyConfig
+
+@available(*, deprecated, message: "Use ABsmartlyConfig instead")
+public typealias ABSmartlyConfig = ABsmartlyConfig

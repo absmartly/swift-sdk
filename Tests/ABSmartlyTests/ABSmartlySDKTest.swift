@@ -4,31 +4,31 @@ import XCTest
 
 @testable import ABSmartly
 
-final class ABSmartlySDKTest: XCTestCase {
-	var sdk: ABSmartlySDK?
+final class ABsmartlySDKTest: XCTestCase {
+	var sdk: ABsmartlySDK?
 	var client: ClientMock?
 	var contextConfig = ContextConfig()
 
-	func setUpSDK(block: ((ABSmartlyConfig) -> Void)? = nil) {
+	func setUpSDK(block: ((ABsmartlyConfig) -> Void)? = nil) {
 		contextConfig = ContextConfig()
 		contextConfig.setUnit(unitType: "session_id", uid: "123456789")
 
 		client = ClientMock()
 		do {
-			let sdkConfig = ABSmartlyConfig(client: client!)
+			let sdkConfig = ABsmartlyConfig(client: client!)
 			if let block = block {
 				block(sdkConfig)
 			}
-			sdk = try ABSmartlySDK(config: sdkConfig)
+			sdk = try ABsmartlySDK(config: sdkConfig)
 		} catch {
 			XCTFail(error.localizedDescription)
 		}
 	}
 
 	func testThrowsWithInvalidConfig() {
-		let config = ABSmartlyConfig()
+		let config = ABsmartlyConfig()
 
-		XCTAssertThrowsError(try ABSmartlySDK(config: config)) { error in
+		XCTAssertThrowsError(try ABsmartlySDK(config: config)) { error in
 			XCTAssertEqual(error.localizedDescription, "Missing Client instance")
 		}
 	}
@@ -158,5 +158,126 @@ final class ABSmartlySDKTest: XCTestCase {
 		resolver.fulfill(())
 
 		wait(for: [expectation], timeout: 1.0)
+	}
+
+	func testNamedParameterInitialization() throws {
+		let sdk = try ABsmartlySDK(
+			endpoint: "https://test.absmartly.io/v1",
+			apiKey: "test-api-key",
+			application: "test-app",
+			environment: "test"
+		)
+
+		XCTAssertNotNil(sdk)
+
+		let contextConfig = ContextConfig()
+		contextConfig.setUnit(unitType: "session_id", uid: "test123")
+		let context = sdk.createContext(config: contextConfig)
+		XCTAssertNotNil(context)
+	}
+
+	func testNamedParameterInitializationWithOptionalParameters() throws {
+		let sdk = try ABsmartlySDK(
+			endpoint: "https://test.absmartly.io/v1",
+			apiKey: "test-api-key",
+			application: "test-app",
+			environment: "production",
+			applicationVersion: "1.2.3",
+			timeout: 5.0,
+			retries: 3
+		)
+
+		XCTAssertNotNil(sdk)
+
+		let contextConfig = ContextConfig()
+		contextConfig.setUnit(unitType: "user_id", uid: "user456")
+		let context = sdk.createContext(config: contextConfig)
+		XCTAssertNotNil(context)
+	}
+
+	func testNamedParameterInitializationThrowsWithEmptyEndpoint() {
+		XCTAssertThrowsError(
+			try ABsmartlySDK(
+				endpoint: "",
+				apiKey: "test-api-key",
+				application: "test-app",
+				environment: "test"
+			)
+		) { error in
+			XCTAssertEqual(error.localizedDescription, "Missing Endpoint configuration")
+		}
+	}
+
+	func testNamedParameterInitializationThrowsWithEmptyApiKey() {
+		XCTAssertThrowsError(
+			try ABsmartlySDK(
+				endpoint: "https://test.absmartly.io/v1",
+				apiKey: "",
+				application: "test-app",
+				environment: "test"
+			)
+		) { error in
+			XCTAssertEqual(error.localizedDescription, "Missing APIKey configuration")
+		}
+	}
+
+	func testNamedParameterInitializationThrowsWithEmptyApplication() {
+		XCTAssertThrowsError(
+			try ABsmartlySDK(
+				endpoint: "https://test.absmartly.io/v1",
+				apiKey: "test-api-key",
+				application: "",
+				environment: "test"
+			)
+		) { error in
+			XCTAssertEqual(error.localizedDescription, "Missing Application configuration")
+		}
+	}
+
+	func testNamedParameterInitializationThrowsWithEmptyEnvironment() {
+		XCTAssertThrowsError(
+			try ABsmartlySDK(
+				endpoint: "https://test.absmartly.io/v1",
+				apiKey: "test-api-key",
+				application: "test-app",
+				environment: ""
+			)
+		) { error in
+			XCTAssertEqual(error.localizedDescription, "Missing Environment configuration")
+		}
+	}
+
+	func testNamedParameterInitializationWithCustomEventLogger() throws {
+		let customLogger = ContextEventLoggerMock()
+
+		let sdk = try ABsmartlySDK(
+			endpoint: "https://test.absmartly.io/v1",
+			apiKey: "test-api-key",
+			application: "test-app",
+			environment: "test",
+			contextEventLogger: customLogger
+		)
+
+		XCTAssertNotNil(sdk)
+	}
+
+	func testBackwardsCompatibility() throws {
+		let clientConfig = ClientConfig(
+			apiKey: "test-key",
+			application: "test-app",
+			endpoint: "https://test.absmartly.io/v1",
+			environment: "test"
+		)
+
+		let client = try DefaultClient(config: clientConfig)
+		let sdkConfig = ABsmartlyConfig(client: client)
+		let sdk = try ABsmartlySDK(config: sdkConfig)
+
+		XCTAssertNotNil(sdk)
+
+		let contextConfig = ContextConfig()
+		contextConfig.setUnit(unitType: "session_id", uid: "test123")
+		let context = sdk.createContext(config: contextConfig)
+		XCTAssertNotNil(context)
 	}
 }

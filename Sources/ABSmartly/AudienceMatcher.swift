@@ -7,15 +7,17 @@ public class AudienceMatcher {
 		let json = JSON(parseJSON: audience)
 		let filter = json["filter"]
 
-		if filter.exists() {
-			switch filter.type {
-			case .dictionary, .array:
-				return jsonExpr.evaluateBooleanExpr(filter, vars: attributes)
-			default:
-				break
-			}
+		guard filter.exists() else {
+			Logger.error("Audience JSON missing 'filter' field. Audience: '\(audience.prefix(100))...'")
+			return nil
 		}
 
-		return nil
+		switch filter.type {
+		case .dictionary, .array:
+			return jsonExpr.evaluateBooleanExpr(filter, vars: attributes)
+		default:
+			Logger.error("Audience filter has invalid type: \(filter.type), expected dictionary or array. Audience: '\(audience.prefix(100))...'")
+			return nil
+		}
 	}
 }

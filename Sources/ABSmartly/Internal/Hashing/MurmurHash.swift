@@ -45,17 +45,14 @@ class MurmurHash {
 			case 3:
 				let k = scramble(Buffers.getUInt32(bytes, i))
 				hash ^= k
-				break
 
 			case 2:
 				let k = scramble(UInt32(Buffers.getUInt16(bytes, i)))
 				hash ^= k
-				break
 
 			case 1:
 				let k = scramble(UInt32(Buffers.getUInt8(bytes, i)))
 				hash ^= k
-				break
 
 			default:
 				break
@@ -71,16 +68,6 @@ class MurmurHash {
 		hash ^= (hash >> 13)
 		hash = hash &* 0xc2b2_ae35
 		hash ^= (hash >> 16)
-
-		return hash
-	}
-
-	private static func updateInternal(_ hashIn: UInt32, _ value: UInt32) -> UInt32 {
-		let k = scramble(value)
-		var hash = hashIn
-		hash = hash ^ k
-		hash = (hash << r2) | (hash >> (32 - r2))
-		hash = hash &* m &+ n
 
 		return hash
 	}

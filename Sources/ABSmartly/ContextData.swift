@@ -16,16 +16,18 @@ public final class ContextData: Codable {
 	}
 
 	public init(from decoder: Decoder) throws {
-		if let container = try? decoder.container(keyedBy: CodingKeys.self) {
-			if let experiments = try? container.decode([Experiment].self, forKey: .experiments) {
-				self.experiments = experiments
-				return
-			}
+		do {
+			let container = try decoder.container(keyedBy: CodingKeys.self)
+			self.experiments = try container.decode([Experiment].self, forKey: .experiments)
+		} catch let error as DecodingError {
+			throw error
+		} catch {
+			throw DecodingError.dataCorrupted(
+				DecodingError.Context(
+					codingPath: decoder.codingPath,
+					debugDescription: "Failed to decode ContextData: \(error.localizedDescription)",
+					underlyingError: error))
 		}
-
-		throw DecodingError.dataCorrupted(
-			DecodingError.Context(
-				codingPath: [], debugDescription: "Experiments array couldn't be decoded from this data"))
 	}
 }
 

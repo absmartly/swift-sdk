@@ -3,6 +3,7 @@ import Foundation
 import FoundationNetworking
 #endif
 import PromiseKit
+import Atomics
 
 public class DefaultHTTPResponse: Response {
 	public init(status: Int, statusMessage: String, contentType: String, content: Data) {
@@ -143,11 +144,11 @@ public class DefaultHTTPClient: HTTPClient {
 }
 
 func retry<T>(times: UInt, delay: TimeInterval, body: @escaping (UInt) -> Promise<T>) -> Promise<T> {
-	var tryCounter: UInt = 0
+	let tryCounter = ManagedAtomic<UInt>(0)
 	func attempt() -> Promise<T> {
-		tryCounter += 1
-		return body(tryCounter).recover(policy: CatchPolicy.allErrorsExceptCancellation) { error -> Promise<T> in
-			guard tryCounter <= times else {
+		let currentTry = tryCounter.wrappingIncrementThenLoad(ordering: .acquiringAndReleasing)
+		return body(currentTry).recover(policy: CatchPolicy.allErrorsExceptCancellation) { error -> Promise<T> in
+			guard currentTry <= times else {
 				throw error
 			}
 			return after(seconds: delay).then(attempt)
