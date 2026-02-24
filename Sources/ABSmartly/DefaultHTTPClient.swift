@@ -78,7 +78,7 @@ public class DefaultHTTPClient: HTTPClient {
 					self.sessionLock.lock()
 					guard let session = self.session else {
 						self.sessionLock.unlock()
-						seal.reject(URLError(.cancelled))
+						seal.reject(ABSmartlyError("HTTP client is closed"))
 						return
 					}
 					self.sessionLock.unlock()

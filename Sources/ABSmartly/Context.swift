@@ -171,6 +171,9 @@ public final class Context {
 				_ = ready.done(on: DispatchQueue.global()) { [weak self] in
 					guard let self = self else { return }
 					seal.fulfill(self)
+				}.catch(on: DispatchQueue.global()) { [weak self] _ in
+					guard let self = self else { return }
+					seal.fulfill(self)
 				}
 			}
 		}
@@ -602,11 +605,15 @@ public final class Context {
 					if eventCount > 0 {
 						if !exposures.isEmpty {
 							localExposures = exposures
+							exposures = []
 						}
 
 						if !achievements.isEmpty {
 							localAchievements = achievements
+							achievements = []
 						}
+
+						pendingCount.store(0, ordering: .releasing)
 					}
 				}
 
@@ -634,22 +641,10 @@ public final class Context {
 
 					return handler.publish(event: event).done(on: DispatchQueue.global()) { [weak self] in
 						guard let self = self else { return }
-
-						self.eventLock.lock()
-						defer { self.eventLock.unlock() }
-
-						if !localExposures.isEmpty {
-							self.exposures.removeFirst(min(localExposures.count, self.exposures.count))
-						}
-						if !localAchievements.isEmpty {
-							self.achievements.removeFirst(min(localAchievements.count, self.achievements.count))
-						}
-						self.pendingCount.store(UInt(self.exposures.count + self.achievements.count), ordering: .releasing)
-
 						self.logEvent(event: .publish(event: event))
 					}.recover { [weak self] error -> Promise<Void> in
 						guard let self = self else { return Promise.value(()) }
-						Logger.error("Publish failed, events retained in queue for retry: \(error.localizedDescription)")
+						Logger.error("Publish failed: \(error.localizedDescription)")
 						self.logError(error: error)
 						throw error
 					}
@@ -1012,10 +1007,6 @@ public final class Context {
 		self.indexVariables = indexVariables
 		self.customFieldValues = customFieldValues
 		ready.store(true, ordering: .releasing)
-
-		contextLock.lock()
-		defer { contextLock.unlock() }
-		assignmentCache = [:]
 
 		setRefreshTimer()
 	}
