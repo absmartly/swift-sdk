@@ -35,9 +35,17 @@ public class DefaultHTTPClient: HTTPClient {
 
 	deinit {
 		sessionLock.lock()
-		session?.invalidateAndCancel()
+		let s = session
 		session = nil
 		sessionLock.unlock()
+		#if canImport(FoundationNetworking)
+		// Skip URLSession invalidation on Linux: swift-corelibs-foundation has a known bug
+		// where invalidateAndCancel/finishTasksAndInvalidate during deinit causes a crash
+		// in the dispatch queue teardown. The session will be cleaned up by ARC.
+		_ = s
+		#else
+		s?.invalidateAndCancel()
+		#endif
 	}
 
 	public func get(url: String, query: [String: String]?, headers: [String: String]?) -> Promise<Response> {

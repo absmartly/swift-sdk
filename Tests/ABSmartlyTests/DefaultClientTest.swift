@@ -73,7 +73,7 @@ final class DefaultClientTest: XCTestCase {
 			XCTFail(error.localizedDescription)
 		}
 
-		let path = Bundle.module.path(forResource: "context", ofType: "json", inDirectory: "Resources")!
+		let path = TestResources.path(forResource: "context", ofType: "json")
 		do {
 			let data = try Foundation.Data(contentsOf: URL(fileURLWithPath: path), options: .mappedIfSafe)
 			let response = DefaultHTTPResponse(
