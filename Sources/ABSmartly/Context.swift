@@ -294,7 +294,7 @@ public final class Context {
 
 	public func setUnit(unitType: String, uid: String) throws {
 		guard !isClosed() && !isClosing() else {
-			let error = "Cannot set unit on closed context"
+			let error = "ABSmartly Context is finalized."
 			Logger.error(error)
 			throw ABSmartlyError(error)
 		}
@@ -680,12 +680,12 @@ public final class Context {
 
 	private func checkNotClosed() throws {
 		if isClosed() {
-			let error = "ABSmartly Context is closed. Cannot perform operations on closed context."
+			let error = "ABSmartly Context is finalized."
 			Logger.error(error)
 			throw ABSmartlyError(error)
 		}
 		if isClosing() {
-			let error = "ABSmartly Context is closing. Cannot perform operations while context is closing."
+			let error = "ABSmartly Context is finalizing."
 			Logger.error(error)
 			throw ABSmartlyError(error)
 		}
