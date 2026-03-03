@@ -1003,10 +1003,12 @@ public final class Context {
 		dataLock.lock()
 		defer { dataLock.unlock() }
 		self.data = data
-		self.index = index
-		self.indexVariables = indexVariables
-		self.customFieldValues = customFieldValues
-		ready.store(true, ordering: .releasing)
+			self.index = index
+			self.indexVariables = indexVariables
+			self.customFieldValues = customFieldValues
+			// A new payload should force assignment/exposure recomputation.
+			self.assignmentCache = [:]
+			ready.store(true, ordering: .releasing)
 
 		setRefreshTimer()
 	}

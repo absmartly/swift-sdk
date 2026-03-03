@@ -1,13 +1,9 @@
 class BinaryOperator: Operator {
 	func evaluate(_ evaluator: Evaluator, _ args: JSON) -> JSON {
-		if args.type == .array {
+		if args.type == .array, args.count >= 2 {
 			let lhs = evaluator.evaluate(args[0])
-			if lhs.type != .null {
-				let rhs = evaluator.evaluate(args[1])
-				if rhs.type != .null {
-					return binary(evaluator, lhs, rhs)
-				}
-			}
+			let rhs = evaluator.evaluate(args[1])
+			return binary(evaluator, lhs, rhs)
 		}
 
 		return JSON.null

@@ -9,7 +9,7 @@ import Crypto
 // It provides a fast, deterministic hash for unit ID bucketing in A/B test assignment.
 // Security properties (collision resistance, pre-image resistance) are not required
 // for this use case. The hash is used to consistently assign users to experiment variants.
-class Hashing {
+public class Hashing {
 
 	private static func MD5Base64Url(_ string: String) -> String {
 		let data = Data(string.utf8)
@@ -41,7 +41,7 @@ class Hashing {
 		return base64url
 	}
 
-	static func hash(_ unit: String) -> String {
+	public static func hash(_ unit: String) -> String {
 		return MD5Base64Url(unit)
 	}
 
