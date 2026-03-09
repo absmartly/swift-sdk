@@ -41,18 +41,19 @@ class MurmurHash {
 
 		let remaining = byteCount & 3
 		if remaining != 0 {
+			var tail = UInt32(0)
 			switch remaining {
 			case 3:
-				let k = scramble(Buffers.getUInt32(bytes, i))
-				hash ^= k
+				tail ^= UInt32(Buffers.getUInt8(bytes, i + 2)) << 16
+				fallthrough
 
 			case 2:
-				let k = scramble(UInt32(Buffers.getUInt16(bytes, i)))
-				hash ^= k
+				tail ^= UInt32(Buffers.getUInt8(bytes, i + 1)) << 8
+				fallthrough
 
 			case 1:
-				let k = scramble(UInt32(Buffers.getUInt8(bytes, i)))
-				hash ^= k
+				tail ^= UInt32(Buffers.getUInt8(bytes, i))
+				hash ^= scramble(tail)
 
 			default:
 				break

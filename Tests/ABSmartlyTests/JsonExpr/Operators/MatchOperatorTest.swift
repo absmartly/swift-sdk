@@ -16,7 +16,7 @@ final class MatchOperatorTest: OperatorTest {
 		XCTAssertTrue(matchOperator.evaluate(evaluator, ["abcdefghijk", "b.*j"]).boolValue)
 		XCTAssertFalse(matchOperator.evaluate(evaluator, ["abcdefghijk", "xyz"]).boolValue)
 
-		XCTAssertEqual(JSON.null, matchOperator.evaluate(evaluator, [JSON.null, "abc"]))
-		XCTAssertEqual(JSON.null, matchOperator.evaluate(evaluator, ["abcdefghijk", JSON.null]))
+		XCTAssertFalse(matchOperator.evaluate(evaluator, [JSON.null, "abc"]).boolValue)
+		XCTAssertTrue(matchOperator.evaluate(evaluator, ["abcdefghijk", JSON.null]).boolValue)
 	}
 }

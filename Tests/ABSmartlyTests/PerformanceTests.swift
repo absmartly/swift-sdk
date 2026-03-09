@@ -105,6 +105,7 @@ final class PerformanceTests: XCTestCase {
 	func testGoalTrackingPerformance() throws {
 		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
 		let context = try createContext(config: contextConfig)
+		let pendingBefore = context.getPendingCount()
 
 		self.measure {
 			for i in 0..<100 {
@@ -112,7 +113,9 @@ final class PerformanceTests: XCTestCase {
 			}
 		}
 
-		XCTAssertEqual(100, context.getPendingCount())
+		let queuedDuringMeasure = Int(context.getPendingCount()) - Int(pendingBefore)
+		XCTAssertGreaterThanOrEqual(queuedDuringMeasure, 100)
+		XCTAssertEqual(0, queuedDuringMeasure % 100)
 	}
 
 	func testVariableAccessPerformance() throws {

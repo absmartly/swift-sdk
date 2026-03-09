@@ -34,9 +34,11 @@ final class LessThanOrEqualOperatorTest: OperatorTest {
 
 		evaluator.clearInvocations()
 
-		XCTAssertEqual(JSON.null, lessThanOrEqualOperator.evaluate(evaluator, [JSON.null, JSON.null]))
-		XCTAssertEqual(1, evaluator.evaluateCallsCount)
-		XCTAssertEqual(JSON.null, evaluator.evaluateReceivedExpr)
-		XCTAssertFalse(evaluator.compareCalled)
+		XCTAssertTrue(lessThanOrEqualOperator.evaluate(evaluator, [JSON.null, JSON.null]).boolValue)
+		XCTAssertEqual(2, evaluator.evaluateCallsCount)
+		XCTAssertEqual([JSON.null, JSON.null], evaluator.evaluateReceivedInvocations)
+		XCTAssertEqual(1, evaluator.compareCallsCount)
+		XCTAssertEqual(JSON.null, evaluator.compareReceivedArguments!.lhs)
+		XCTAssertEqual(JSON.null, evaluator.compareReceivedArguments!.rhs)
 	}
 }

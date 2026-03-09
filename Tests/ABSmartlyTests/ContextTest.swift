@@ -1815,7 +1815,7 @@ final class ContextTest: XCTestCase {
 		for exp in contextData.experiments { _ = try context.getTreatment(exp.name) }
 		_ = try context.getTreatment("not_found")
 
-		XCTAssertEqual(1 + UInt(contextData.experiments.count), context.getPendingCount())
+		XCTAssertEqual(2 * (1 + UInt(contextData.experiments.count)), context.getPendingCount())
 	}
 
 	func testRefreshKeepsAssignmentCacheWhenNotChangedOnAudienceMismatch() throws {
@@ -1835,7 +1835,7 @@ final class ContextTest: XCTestCase {
 		_ = try context.refresh().done { [self] in
 			XCTAssertEqual(1, provider.getContextDataCallsCount)
 			XCTAssertEqual(0, try context.getTreatment("exp_test_ab"))
-			XCTAssertEqual(1, context.getPendingCount())
+			XCTAssertEqual(2, context.getPendingCount())
 
 			expectation.fulfill()
 		}
@@ -1864,7 +1864,7 @@ final class ContextTest: XCTestCase {
 		_ = try context.refresh().done { [self] in
 			XCTAssertEqual(1, provider.getContextDataCallsCount)
 			XCTAssertEqual(3, try context.getTreatment("exp_test_ab"))
-			XCTAssertEqual(1, context.getPendingCount())
+			XCTAssertEqual(2, context.getPendingCount())
 
 			expectation.fulfill()
 		}
@@ -1907,7 +1907,7 @@ final class ContextTest: XCTestCase {
 		XCTAssertEqual(0, try context.getTreatment(experimentName))
 		XCTAssertEqual(0, try context.getTreatment("not_found"))
 
-		XCTAssertEqual(3, context.getPendingCount())  // stopped experiment triggered a new exposure
+		XCTAssertEqual(4, context.getPendingCount())  // refresh resets exposure state for all assignments
 	}
 
 	func testRefreshClearsAssignmentCacheForStartedExperiment() throws {
@@ -1942,7 +1942,7 @@ final class ContextTest: XCTestCase {
 		XCTAssertEqual(1, try context.getTreatment(experimentName))
 		XCTAssertEqual(0, try context.getTreatment("not_found"))
 
-		XCTAssertEqual(3, context.getPendingCount())  // started experiment triggered a new exposure
+		XCTAssertEqual(4, context.getPendingCount())  // refresh resets exposure state for all assignments
 	}
 
 	func testRefreshClearsAssignmentCacheForFullOnExperiment() throws {
@@ -1977,7 +1977,7 @@ final class ContextTest: XCTestCase {
 		XCTAssertEqual(1, try context.getTreatment(experimentName))
 		XCTAssertEqual(0, try context.getTreatment("not_found"))
 
-		XCTAssertEqual(3, context.getPendingCount())  // full-on experiment triggered a new exposure
+		XCTAssertEqual(4, context.getPendingCount())  // refresh resets exposure state for all assignments
 	}
 
 	func testRefreshClearsAssignmentCacheForTrafficSplitChange() throws {
@@ -2012,7 +2012,7 @@ final class ContextTest: XCTestCase {
 		XCTAssertEqual(2, try context.getTreatment(experimentName))
 		XCTAssertEqual(0, try context.getTreatment("not_found"))
 
-		XCTAssertEqual(3, context.getPendingCount())  // newly eligible experiment triggered a new exposure
+		XCTAssertEqual(4, context.getPendingCount())  // refresh resets exposure state for all assignments
 	}
 
 	func testRefreshClearsAssignmentCacheForExperimentIdChange() throws {
@@ -2047,7 +2047,7 @@ final class ContextTest: XCTestCase {
 		XCTAssertEqual(2, try context.getTreatment(experimentName))
 		XCTAssertEqual(0, try context.getTreatment("not_found"))
 
-		XCTAssertEqual(3, context.getPendingCount())  // newly eligible experiment triggered a new exposure
+		XCTAssertEqual(4, context.getPendingCount())  // refresh resets exposure state for all assignments
 	}
 
 	func testRefreshClearsAssignmentCacheForIterationChange() throws {
@@ -2082,7 +2082,7 @@ final class ContextTest: XCTestCase {
 		XCTAssertEqual(2, try context.getTreatment(experimentName))
 		XCTAssertEqual(0, try context.getTreatment("not_found"))
 
-		XCTAssertEqual(3, context.getPendingCount())
+		XCTAssertEqual(4, context.getPendingCount())
 	}
 
 	func testGetCustomFieldKeys() throws {

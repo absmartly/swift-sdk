@@ -119,29 +119,28 @@ public final class Context {
 					return
 				}
 
-				promise.done(on: DispatchQueue.global()) { [weak self] data in
-					guard let self = self else { return }
-					self.setData(data)
-					seal.fulfill(())
-					self.readyPromise = nil
+					promise.done(on: DispatchQueue.global()) { [weak self] data in
+						guard let self = self else { return }
+						self.setData(data)
+						self.readyPromise = nil
 
-					self.logEvent(event: .ready(data: data))
+						self.logEvent(event: .ready(data: data))
+						if self.pendingCount.load(ordering: .acquiring) > 0 {
+							self.setTimeout()
+						}
+						seal.fulfill(())
+					}.catch(on: DispatchQueue.global()) { [weak self] error in
+						guard let self = self else { return }
+						self.setDataFailed(error)
+						self.readyPromise = nil
+						Logger.error("Context initialization failed: \(error.localizedDescription)")
 
-					if self.pendingCount.load(ordering: .acquiring) > 0 {
-						self.setTimeout()
+						self.logError(error: error)
+						seal.reject(error)
 					}
-				}.catch(on: DispatchQueue.global()) { [weak self] error in
-					guard let self = self else { return }
-					self.setDataFailed(error)
-					self.readyPromise = nil
-					Logger.error("Context initialization failed: \(error.localizedDescription)")
-					seal.reject(error)
-
-					self.logError(error: error)
 				}
 			}
 		}
-	}
 
 	public func isReady() -> Bool {
 		return ready.load(ordering: .acquiring) || failed.load(ordering: .acquiring)
@@ -523,9 +522,8 @@ public final class Context {
 				guard let self = self else { return }
 				self.setData(data)
 				self.refreshing.store(false, ordering: .releasing)
-				seal.fulfill(())
-
 				self.logEvent(event: .refresh(data: data))
+				seal.fulfill(())
 			}.catch(on: DispatchQueue.global()) { [weak self] error in
 				guard let self = self else { return }
 				self.refreshing.store(false, ordering: .releasing)
@@ -1001,14 +999,19 @@ public final class Context {
 		}
 
 		dataLock.lock()
-		defer { dataLock.unlock() }
 		self.data = data
-			self.index = index
-			self.indexVariables = indexVariables
-			self.customFieldValues = customFieldValues
-			// A new payload should force assignment/exposure recomputation.
-			self.assignmentCache = [:]
-			ready.store(true, ordering: .releasing)
+		self.index = index
+		self.indexVariables = indexVariables
+		self.customFieldValues = customFieldValues
+		dataLock.unlock()
+
+		// Refresh should emit fresh exposure events while retaining cached assignment computations.
+		contextLock.lock()
+		for assignment in assignmentCache.values {
+			assignment.exposed.store(false, ordering: .releasing)
+		}
+		contextLock.unlock()
+		ready.store(true, ordering: .releasing)
 
 		setRefreshTimer()
 	}

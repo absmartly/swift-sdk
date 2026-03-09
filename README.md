@@ -88,9 +88,9 @@ let sdk = try ABsmartlySDK(
 )
 ```
 
-#### Advanced: Using Configuration Objects
+#### Alternative: Using Configuration Objects
 
-For advanced use cases with custom providers or handlers:
+For use cases with custom providers or handlers:
 
 ```swift
 let clientConfig = ClientConfig(
@@ -337,13 +337,12 @@ public class CustomEventLogger: ContextEventLogger {
 
 ```swift
 // For all contexts, during SDK initialization
-let absmartlyConfig = ABsmartlyConfig(
-    contextDataProvider: nil,
-    contextEventHandler: nil,
-    contextEventLogger: CustomEventLogger(),
-    variableParser: nil,
-    scheduler: nil,
-    client: client
+let sdk = try ABsmartlySDK(
+    endpoint: "https://your-company.absmartly.io/v1",
+    apiKey: "YOUR-API-KEY",
+    application: "website",
+    environment: "production",
+    contextEventLogger: CustomEventLogger()
 )
 
 // OR, alternatively, during a particular context initialization
@@ -380,16 +379,12 @@ class ABSmartlyService: ObservableObject {
     private let sdk: ABsmartlySDK
 
     private init() {
-        let clientConfig = ClientConfig(
+        sdk = try! ABsmartlySDK(
+            endpoint: "https://your-company.absmartly.io/v1",
             apiKey: ProcessInfo.processInfo.environment["ABSMARTLY_API_KEY"] ?? "",
             application: "ios-app",
-            endpoint: "https://your-company.absmartly.io/v1",
             environment: "production"
         )
-
-        let client = try! DefaultClient(config: clientConfig)
-        let sdkConfig = ABsmartlyConfig(client: client)
-        sdk = try! ABsmartlySDK(config: sdkConfig)
     }
 
     func createContext(deviceId: String) async throws -> Context {
@@ -646,7 +641,7 @@ class ExperimentManager {
 
 ### Timeout Override
 
-Override the default timeout for specific contexts:
+Override the default timeout:
 
 ```swift
 let sdk = try ABsmartlySDK(
@@ -656,7 +651,11 @@ let sdk = try ABsmartlySDK(
     environment: "production",
     timeout: 10.0  // 10 seconds instead of default 3 seconds
 )
+```
 
+For full control over the HTTP client configuration:
+
+```swift
 let httpClientConfig = DefaultHTTPClientConfig()
 httpClientConfig.connectionResourceTimeout = 10.0
 httpClientConfig.connectionRequestTimeout = 10.0
