@@ -39,6 +39,7 @@ public final class Context {
 	private var indexVariables: [String: [ExperimentVariables]] = [:]
 	private var customFieldValues: [String: [String: ContextCustomFieldValue]] = [:]
 	private var data: ContextData? = nil
+	private var failedError: Error? = nil
 
 	private var hashedUnits: [String: [UInt8]] = [:]
 	private var assigners: [String: VariantAssigner] = [:]
@@ -144,6 +145,12 @@ public final class Context {
 
 	public func isFailed() -> Bool {
 		return failed.load(ordering: .acquiring)
+	}
+
+	public func readyError() -> Error? {
+		dataLock.lock()
+		defer { dataLock.unlock() }
+		return failedError
 	}
 
 	public func isClosing() -> Bool {
@@ -1035,6 +1042,7 @@ public final class Context {
 		index = [:]
 		indexVariables = [:]
 		data = nil
+		failedError = error
 		failed.store(true, ordering: .releasing)
 	}
 

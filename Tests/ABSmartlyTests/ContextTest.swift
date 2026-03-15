@@ -146,6 +146,40 @@ final class ContextTest: XCTestCase {
 		wait(for: [expectation], timeout: 1.0)
 	}
 
+	func testReadyErrorReturnsNilOnSuccess() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let context = try createContext(config: contextConfig)
+		XCTAssertNil(context.readyError())
+	}
+
+	func testReadyErrorReturnsErrorOnFulfilledFailure() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let error = ABSmartlyError("test")
+		let context = try createContext(
+			config: contextConfig, data: Promise<ContextData>.init(error: error))
+		XCTAssertTrue(context.isFailed())
+		XCTAssertNotNil(context.readyError())
+	}
+
+	func testReadyErrorReturnsErrorOnAsyncFailure() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let (promise, resolver) = Promise<ContextData>.pending()
+		let context = try createContext(config: contextConfig, data: promise)
+
+		let expectation = XCTestExpectation()
+		let error = ABSmartlyError("test")
+
+		_ = context.waitUntilReady().done { ctx in
+			XCTAssertTrue(ctx.isFailed())
+			XCTAssertNotNil(ctx.readyError())
+			expectation.fulfill()
+		}
+
+		resolver.reject(error)
+
+		wait(for: [expectation], timeout: 1.0)
+	}
+
 	func testCallsEventLoggerWhenReady() throws {
 		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
 		let (promise, resolver) = Promise<ContextData>.pending()
