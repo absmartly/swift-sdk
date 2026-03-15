@@ -161,6 +161,18 @@ public final class Context {
 		return closed.load(ordering: .acquiring)
 	}
 
+	public func isFinalizing() -> Bool {
+		return isClosing()
+	}
+
+	public func isFinalized() -> Bool {
+		return isClosed()
+	}
+
+	public func finalize() -> Promise<Void> {
+		return close()
+	}
+
 	public func waitUntilReady() -> Promise<Context> {
 		return Promise<Context> { [weak self] seal in
 			guard let self = self else {
@@ -683,7 +695,7 @@ public final class Context {
 
 	private func checkReady(_ expectNotClosed: Bool) -> Bool {
 		if !isReady() {
-			Logger.error("ABSmartly Context is not yet ready. Call waitUntilReady() before using the context.")
+			Logger.error("ABSmartly Context is not yet ready.")
 			return false
 		}
 		if expectNotClosed {
