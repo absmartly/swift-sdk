@@ -197,8 +197,6 @@ public final class Context {
 	}
 
 	public func getExperiments() -> [String] {
-		guard checkReady(true) else { return [] }
-
 		dataLock.lock()
 		defer { dataLock.unlock() }
 		return data?.experiments.map { $0.name } ?? []
@@ -249,8 +247,6 @@ public final class Context {
 	}
 
 	public func getContextData() -> ContextData? {
-		guard checkReady(true) else { return nil }
-
 		dataLock.lock()
 		defer { dataLock.unlock() }
 		return data
@@ -397,8 +393,6 @@ public final class Context {
 	}
 
 	public func getTreatment(_ experimentName: String) -> Int {
-		guard checkReady(true) else { return 0 }
-
 		let assignment = getAssignment(experimentName)
 		if !assignment.exposed.load(ordering: .acquiring) {
 			queueExposure(assignment)
@@ -437,14 +431,10 @@ public final class Context {
 	}
 
 	public func peekTreatment(_ experimentName: String) -> Int {
-		guard checkReady(true) else { return 0 }
-
 		return getAssignment(experimentName).variant
 	}
 
 	public func getVariableKeys() -> [String: [String]] {
-		guard checkReady(true) else { return [:] }
-
 		dataLock.lock()
 		defer { dataLock.unlock() }
 
@@ -452,8 +442,6 @@ public final class Context {
 	}
 
 	public func getVariableValue(_ key: String, defaultValue: JSON? = nil) -> JSON? {
-		guard checkReady(true) else { return defaultValue }
-
 		if let assignment = getVariableAssignment(key), let variables = assignment.variables {
 			if !assignment.exposed.load(ordering: .acquiring) {
 				queueExposure(assignment)
@@ -468,8 +456,6 @@ public final class Context {
 	}
 
 	public func peekVariableValue(_ key: String, defaultValue: JSON? = nil) -> JSON? {
-		guard checkReady(true) else { return defaultValue }
-
 		if let assignment = getVariableAssignment(key), let variables = assignment.variables {
 			if let object = variables[key] {
 				return object
