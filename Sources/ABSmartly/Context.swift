@@ -308,13 +308,13 @@ public final class Context {
 
 	public func setUnit(unitType: String, uid: String) {
 		guard !isClosed() && !isClosing() else {
-			Logger.error("ABSmartly Context is finalized.")
+			Logger.error("ABsmartly Context is finalized.")
 			return
 		}
 
 		let trimmed = uid.trimmingCharacters(in: .whitespacesAndNewlines)
 		guard !trimmed.isEmpty else {
-			Logger.error("Unit '\(unitType)' UID must not be blank")
+			Logger.error("Unit '\(unitType)' UID must not be blank.")
 			return
 		}
 
@@ -327,7 +327,7 @@ public final class Context {
 		defer { contextLock.unlock() }
 
 		if let previous = units[unitType], previous != uid {
-			Logger.error("Unit '\(unitType)' already set to '\(previous)', cannot change to '\(uid)'")
+			Logger.error("Unit '\(unitType)' UID already set.")
 			return
 		}
 
@@ -681,7 +681,7 @@ public final class Context {
 
 	private func checkReady(_ expectNotClosed: Bool) -> Bool {
 		if !isReady() {
-			Logger.error("ABSmartly Context is not yet ready.")
+			Logger.error("ABsmartly Context is not yet ready.")
 			return false
 		}
 		if expectNotClosed {
@@ -692,11 +692,11 @@ public final class Context {
 
 	private func checkNotClosed() -> Bool {
 		if isClosed() {
-			Logger.error("ABSmartly Context is finalized.")
+			Logger.error("ABsmartly Context is finalized.")
 			return false
 		}
 		if isClosing() {
-			Logger.error("ABSmartly Context is finalizing.")
+			Logger.error("ABsmartly Context is finalizing.")
 			return false
 		}
 		return true
