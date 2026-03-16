@@ -1898,7 +1898,7 @@ final class ContextTest: XCTestCase {
 		_ = context.refresh().done { [self] in
 			XCTAssertEqual(1, provider.getContextDataCallsCount)
 			XCTAssertEqual(3, context.getTreatment("exp_test_ab"))
-			XCTAssertEqual(2, context.getPendingCount())
+			XCTAssertEqual(1, context.getPendingCount())
 
 			expectation.fulfill()
 		}

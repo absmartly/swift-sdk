@@ -1016,10 +1016,12 @@ public final class Context {
 		self.customFieldValues = customFieldValues
 		dataLock.unlock()
 
-		// Only reset exposed flag for assignments where the experiment data changed.
 		contextLock.lock()
 		defer { contextLock.unlock() }
 		for (experimentName, assignment) in assignmentCache {
+			if assignment.overridden {
+				continue
+			}
 			if let experiment = index[experimentName] {
 				if !experimentMatches(experiment.data, assignment) {
 					assignment.exposed.store(false, ordering: .releasing)
