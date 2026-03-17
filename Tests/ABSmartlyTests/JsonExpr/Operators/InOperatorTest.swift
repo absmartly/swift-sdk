@@ -120,4 +120,22 @@ final class InOperatorTest: OperatorTest {
 
 		evaluator.clearInvocations()
 	}
+
+	func testInOperatorArgumentOrder() {
+		let haystack = JSON([1, 2, 3])
+
+		XCTAssertTrue(inOperator.evaluate(evaluator, [2, haystack]).boolValue)
+
+		evaluator.clearInvocations()
+
+		XCTAssertFalse(inOperator.evaluate(evaluator, [4, haystack]).boolValue)
+
+		evaluator.clearInvocations()
+
+		XCTAssertTrue(inOperator.evaluate(evaluator, ["bc", "abcdef"]).boolValue)
+
+		evaluator.clearInvocations()
+
+		XCTAssertFalse(inOperator.evaluate(evaluator, ["abcdef", "bc"]).boolValue)
+	}
 }

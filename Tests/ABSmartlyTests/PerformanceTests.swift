@@ -59,12 +59,12 @@ final class PerformanceTests: XCTestCase {
 
 		XCTAssertTrue(context.isReady())
 
-		let experiments = try context.getExperiments()
+		let experiments = context.getExperiments()
 		XCTAssertFalse(experiments.isEmpty)
 
 		self.measure {
 			for experimentName in experiments {
-				_ = try? context.peekTreatment(experimentName)
+				_ = context.peekTreatment(experimentName)
 			}
 		}
 
@@ -77,7 +77,7 @@ final class PerformanceTests: XCTestCase {
 
 		self.measure {
 			for i in 0..<1000 {
-				try? context.setAttribute(name: "attr_\(i % 100)", value: JSON("value_\(i)"))
+				context.setAttribute(name: "attr_\(i % 100)", value: JSON("value_\(i)"))
 			}
 		}
 
@@ -89,12 +89,12 @@ final class PerformanceTests: XCTestCase {
 		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
 		let context = try createContext(config: contextConfig)
 
-		let experimentNames = try context.getExperiments()
+		let experimentNames = context.getExperiments()
 
 		self.measure {
 			for _ in 0..<100 {
 				for experimentName in experimentNames {
-					_ = try? context.getTreatment(experimentName)
+					_ = context.getTreatment(experimentName)
 				}
 			}
 		}
@@ -109,7 +109,7 @@ final class PerformanceTests: XCTestCase {
 
 		self.measure {
 			for i in 0..<100 {
-				try? context.track("goal_\(i % 10)", properties: ["iteration": JSON(i)])
+				context.track("goal_\(i % 10)", properties: ["iteration": JSON(i)])
 			}
 		}
 
@@ -127,7 +127,7 @@ final class PerformanceTests: XCTestCase {
 		self.measure {
 			for _ in 0..<100 {
 				for key in variableKeys {
-					_ = try? context.peekVariableValue(key, defaultValue: nil)
+					_ = context.peekVariableValue(key, defaultValue: nil)
 				}
 			}
 		}
@@ -139,7 +139,7 @@ final class PerformanceTests: XCTestCase {
 
 		self.measure {
 			for i in 0..<1000 {
-				try? context.setOverride(experimentName: "exp_\(i % 100)", variant: i % 5)
+				context.setOverride(experimentName: "exp_\(i % 100)", variant: i % 5)
 			}
 		}
 
@@ -153,7 +153,7 @@ final class PerformanceTests: XCTestCase {
 
 		self.measure {
 			for i in 0..<1000 {
-				try? context.setCustomAssignment(experimentName: "exp_\(i % 100)", variant: i % 5)
+				context.setCustomAssignment(experimentName: "exp_\(i % 100)", variant: i % 5)
 			}
 		}
 
@@ -167,7 +167,7 @@ final class PerformanceTests: XCTestCase {
 
 		self.measure {
 			for i in 0..<100 {
-				try? context.setUnit(unitType: "unit_\(i)", uid: "uid_\(i)")
+				context.setUnit(unitType: "unit_\(i)", uid: "uid_\(i)")
 			}
 		}
 
@@ -195,15 +195,15 @@ final class PerformanceTests: XCTestCase {
 		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
 		let context = try createContext(config: contextConfig)
 
-		let experiments = try context.getExperiments()
+		let experiments = context.getExperiments()
 		for experimentName in experiments {
-			_ = try context.getTreatment(experimentName)
+			_ = context.getTreatment(experimentName)
 		}
 
 		XCTAssertEqual(UInt(experiments.count), context.getPendingCount())
 
 		for i in 0..<100 {
-			try context.track("goal_\(i)", properties: ["data": JSON(String(repeating: "x", count: 100))])
+			context.track("goal_\(i)", properties: ["data": JSON(String(repeating: "x", count: 100))])
 		}
 
 		XCTAssertEqual(UInt(experiments.count) + 100, context.getPendingCount())

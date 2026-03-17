@@ -39,7 +39,7 @@ final class VariantAssignerTest: XCTestCase {
 	}
 
 	private func assertAssignment(_ unit: String, _ split: [Double], _ seedHi: Int, _ seedLo: Int, _ expected: Int, file: StaticString = #file, line: UInt = #line) {
-		let unitHash: [UInt8] = Hashing.hash(unit)
+		let unitHash: [UInt8] = Hashing.hashBytes(unit)
 		let assigner = VariantAssigner(unitHash)
 		let variant = assigner.assign(split, seedHi, seedLo)
 		XCTAssertEqual(variant, expected, "Unit: \(unit), split: \(split), seeds: [\(seedHi), \(seedLo)]", file: file, line: line)

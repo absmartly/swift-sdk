@@ -66,7 +66,7 @@ public class DefaultHTTPClient: HTTPClient {
 	public func request(method: String, url: String, query: [String: String]?, headers: [String: String]?, body: Data?)
 		-> Promise<Response>
 	{
-		return retry(
+		return Self.retry(
 			times: config.retries, delay: config.retryInterval,
 			body: { [weak self] attempt in
 				return Promise<Response> { seal in
@@ -76,12 +76,12 @@ public class DefaultHTTPClient: HTTPClient {
 					}
 
 					self.sessionLock.lock()
-					guard let session = self.session else {
-						self.sessionLock.unlock()
+					let capturedSession = self.session
+					self.sessionLock.unlock()
+					guard let session = capturedSession else {
 						seal.reject(ABSmartlyError("HTTP client is closed"))
 						return
 					}
-					self.sessionLock.unlock()
 
 					guard var components = URLComponents(string: url) else {
 						seal.reject(URLError(.badURL))
@@ -151,16 +151,18 @@ public class DefaultHTTPClient: HTTPClient {
 	}
 }
 
-func retry<T>(times: UInt, delay: TimeInterval, body: @escaping (UInt) -> Promise<T>) -> Promise<T> {
-	let tryCounter = ManagedAtomic<UInt>(0)
-	func attempt() -> Promise<T> {
-		let currentTry = tryCounter.wrappingIncrementThenLoad(ordering: .acquiringAndReleasing)
-		return body(currentTry).recover(policy: CatchPolicy.allErrorsExceptCancellation) { error -> Promise<T> in
-			guard currentTry <= times else {
-				throw error
+extension DefaultHTTPClient {
+	static func retry<T>(times: UInt, delay: TimeInterval, body: @escaping (UInt) -> Promise<T>) -> Promise<T> {
+		let tryCounter = ManagedAtomic<UInt>(0)
+		func attempt() -> Promise<T> {
+			let currentTry = tryCounter.wrappingIncrementThenLoad(ordering: .acquiringAndReleasing)
+			return body(currentTry).recover(policy: CatchPolicy.allErrorsExceptCancellation) { error -> Promise<T> in
+				guard currentTry <= times else {
+					throw error
+				}
+				return after(seconds: delay).then(attempt)
 			}
-			return after(seconds: delay).then(attempt)
 		}
+		return attempt()
 	}
-	return attempt()
 }

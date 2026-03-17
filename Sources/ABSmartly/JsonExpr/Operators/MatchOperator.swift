@@ -3,7 +3,6 @@ import Foundation
 final class MatchOperator: BinaryOperator {
 	private static let maxPatternLength = 1000
 	private static let maxInputLength = 10000
-	private static let matchTimeout: TimeInterval = 0.1
 
 	override func binary(_ evaluator: Evaluator, _ lhs: JSON, _ rhs: JSON) -> JSON {
 		let text = evaluator.stringConvert(lhs)
@@ -33,26 +32,8 @@ final class MatchOperator: BinaryOperator {
 
 				do {
 					let matcher = try NSRegularExpression(pattern: regex, options: [])
-
-					var matchResult: Bool?
-					let semaphore = DispatchSemaphore(value: 0)
-
-					DispatchQueue.global(qos: .userInitiated).async {
-						let range = NSRange(string.startIndex..., in: string)
-						matchResult = matcher.firstMatch(in: string, range: range) != nil
-						semaphore.signal()
-					}
-
-					let timeout = DispatchTime.now() + Self.matchTimeout
-					if semaphore.wait(timeout: timeout) == .timedOut {
-						Logger.error("Regex match timed out after \(Self.matchTimeout)s for pattern: '\(regex.prefix(50))...'")
-						return JSON.null
-					}
-
-					if let result = matchResult {
-						return JSON(result)
-					}
-					return JSON(false)
+					let range = NSRange(string.startIndex..., in: string)
+					return JSON(matcher.firstMatch(in: string, range: range) != nil)
 				} catch {
 					Logger.error("Failed to compile regex pattern '\(regex)': \(error.localizedDescription)")
 					return JSON.null

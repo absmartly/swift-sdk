@@ -45,7 +45,7 @@ public class Hashing {
 		return MD5Base64Url(unit)
 	}
 
-	static func hash(_ unit: String) -> [UInt8] {
+	static func hashBytes(_ unit: String) -> [UInt8] {
 		return Array(MD5Base64Url(unit).utf8)
 	}
 }

@@ -91,4 +91,18 @@ final class MD5Test: XCTestCase {
 		let hash: String = Hashing.hash("Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.")
 		XCTAssertEqual(hash, "24m7XOq4f5wPzCqzbBicLA")
 	}
+
+	func testHashBytesReturnsUTF8OfStringHash() {
+		let stringHash: String = Hashing.hash("test")
+		let bytesHash: [UInt8] = Hashing.hashBytes("test")
+		XCTAssertEqual(Array(stringHash.utf8), bytesHash)
+	}
+
+	func testHashBytesConsistentWithHash() {
+		for testCase in testCases {
+			let stringHash: String = Hashing.hash(testCase.input)
+			let bytesHash: [UInt8] = Hashing.hashBytes(testCase.input)
+			XCTAssertEqual(Array(stringHash.utf8), bytesHash, "hashBytes mismatch for input: \(testCase.input)")
+		}
+	}
 }
