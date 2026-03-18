@@ -167,7 +167,7 @@ try await context.waitUntilReady()
 let anotherContextConfig = ContextConfig()
 anotherContextConfig.setUnit(unitType: "session_id", uid: "another-user-id")
 
-let anotherContext = sdk.createContextWithData(config: anotherContextConfig, contextData: context.getData())
+let anotherContext = sdk.createContextWithData(config: anotherContextConfig, contextData: context.getContextData())
 ```
 
 ### Refreshing the Context with Fresh Experiment Data
@@ -232,7 +232,7 @@ let buttonColor = context.getVariableValue("button.color", defaultValue: default
 Although generally not recommended, it is sometimes necessary to peek at a treatment or variable without triggering an exposure. The A/B Smartly SDK provides a `peekTreatment()` method for that.
 
 ```swift
-let treatment = context.peekTreatment(experimentName: "exp_test_experiment")
+let treatment = context.peekTreatment("exp_test_experiment")
 if treatment == 0 {
     // user is in control group (variant 0)
 } else {

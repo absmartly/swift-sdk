@@ -14,7 +14,7 @@ class Buffers {
 	}
 
 	static func putUInt32(_ buf: inout [UInt8], _ offset: Int, _ x: Int) {
-		putUInt32(&buf, offset, UInt32(x))
+		putUInt32(&buf, offset, UInt32(truncatingIfNeeded: x))
 	}
 
 	static func putUInt32(_ buf: inout [UInt8], _ offset: Int, _ x: UInt32) {

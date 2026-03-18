@@ -25,7 +25,6 @@ public final class Context {
 	private var closing = ManagedAtomic<Bool>(false)
 	private var refreshing = ManagedAtomic<Bool>(false)
 
-	private let promiseLock = NSLock()
 	private var readyPromise: Promise<Void>?
 	private var refreshPromise: Promise<Void>?
 	private var closePromise: Promise<Void>?
@@ -308,7 +307,7 @@ public final class Context {
 
 	public func setUnit(unitType: String, uid: String) {
 		guard !isClosed() && !isClosing() else {
-			Logger.error("ABsmartly Context is finalized.")
+			Logger.error(isClosed() ? "ABsmartly Context is finalized." : "ABsmartly Context is closing.")
 			return
 		}
 
@@ -326,7 +325,7 @@ public final class Context {
 		contextLock.lock()
 		defer { contextLock.unlock() }
 
-		if let previous = units[unitType], previous != uid {
+		if let previous = units[unitType], previous != trimmed {
 			Logger.error("Unit '\(unitType)' UID already set.")
 			return
 		}
@@ -982,7 +981,8 @@ public final class Context {
 								let nativeValue = jsonObjectToNative(jsonObject)
 								value.value = nativeValue
 							} catch {
-								Logger.error("Failed to parse JSON custom field '\(fieldName)' for experiment '\(experiment.name)': \(error.localizedDescription). Original value: '\(customValue.prefix(100))...'")
+								let truncated = customValue.count > 100 ? "\(customValue.prefix(100))..." : customValue
+							Logger.error("Failed to parse JSON custom field '\(fieldName)' for experiment '\(experiment.name)': \(error.localizedDescription). Original value: '\(truncated)'")
 								value.value = nil
 							}
 						} else if fieldType.starts(with: "boolean") {

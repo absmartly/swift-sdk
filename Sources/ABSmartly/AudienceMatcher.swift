@@ -8,7 +8,8 @@ public class AudienceMatcher {
 		let filter = json["filter"]
 
 		guard filter.exists() else {
-			Logger.error("Audience JSON missing 'filter' field. Audience: '\(audience.prefix(100))...'")
+			let truncated = audience.count > 100 ? "\(audience.prefix(100))..." : audience
+			Logger.error("Audience JSON missing 'filter' field. Audience: '\(truncated)'")
 			return nil
 		}
 
@@ -16,7 +17,8 @@ public class AudienceMatcher {
 		case .dictionary, .array:
 			return jsonExpr.evaluateBooleanExpr(filter, vars: attributes)
 		default:
-			Logger.error("Audience filter has invalid type: \(filter.type), expected dictionary or array. Audience: '\(audience.prefix(100))...'")
+			let truncated = audience.count > 100 ? "\(audience.prefix(100))..." : audience
+			Logger.error("Audience filter has invalid type: \(filter.type), expected dictionary or array. Audience: '\(truncated)'")
 			return nil
 		}
 	}

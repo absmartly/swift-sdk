@@ -10,11 +10,13 @@ public class DefaultVariableParser: VariableParser {
 			if let dictionary = parsed.dictionary {
 				return dictionary
 			} else {
-				Logger.error("Variant config for experiment '\(experimentName)' is not a valid JSON object. Config: '\(config.prefix(100))...'")
+				let truncated = config.count > 100 ? "\(config.prefix(100))..." : config
+				Logger.error("Variant config for experiment '\(experimentName)' is not a valid JSON object. Config: '\(truncated)'")
 				return nil
 			}
 		} catch {
-			Logger.error("Failed to parse variant config for experiment '\(experimentName)': \(error.localizedDescription). Config: '\(config.prefix(100))...'")
+			let truncated = config.count > 100 ? "\(config.prefix(100))..." : config
+			Logger.error("Failed to parse variant config for experiment '\(experimentName)': \(error.localizedDescription). Config: '\(truncated)'")
 			return nil
 		}
 	}
