@@ -4,7 +4,7 @@ import PromiseKit
 public final class ABsmartlySDK {
 	private var client: Client?
 	private let contextDataProvider: ContextDataProvider
-	private let contextEventHandler: ContextEventHandler
+	private let contextEventHandler: ContextPublisher
 	private let contextEventLogger: ContextEventLogger?
 	private let variableParser: VariableParser
 	private let scheduler: Scheduler
@@ -15,16 +15,16 @@ public final class ABsmartlySDK {
 		scheduler = config.scheduler ?? DefaultScheduler()
 		client = config.client
 
-		if config.contextDataProvider == nil || config.contextEventHandler == nil {
+		if config.contextDataProvider == nil || config.contextPublisher == nil {
 			guard let client = client else {
 				throw ABSmartlyError("Missing Client instance")
 			}
 
 			contextDataProvider = config.contextDataProvider ?? DefaultContextDataProvider(client: client)
-			contextEventHandler = config.contextEventHandler ?? DefaultContextEventHandler(client: client)
+			contextEventHandler = config.contextPublisher ?? DefaultContextPublisher(client: client)
 		} else {
-			guard let provider = config.contextDataProvider, let handler = config.contextEventHandler else {
-				throw ABSmartlyError("Missing contextDataProvider or contextEventHandler")
+			guard let provider = config.contextDataProvider, let handler = config.contextPublisher else {
+				throw ABSmartlyError("Missing contextDataProvider or contextPublisher")
 			}
 			contextDataProvider = provider
 			contextEventHandler = handler
@@ -81,7 +81,7 @@ public final class ABsmartlySDK {
 
 		let sdkConfig = ABsmartlyConfig(
 			contextDataProvider: contextDataProvider,
-			contextEventHandler: contextEventHandler,
+			contextPublisher: contextEventHandler,
 			contextEventLogger: contextEventLogger,
 			variableParser: variableParser,
 			scheduler: scheduler,
