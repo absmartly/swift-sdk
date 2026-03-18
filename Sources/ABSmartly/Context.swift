@@ -52,6 +52,7 @@ public final class Context {
 	private var cassignments: [String: Int] = [:]
 
 	private let eventLock = NSLock()
+	private let promiseLock = NSLock()
 	private var exposures: [Exposure] = []
 	private var achievements: [GoalAchievement] = []
 	private let maxExposures = 500
