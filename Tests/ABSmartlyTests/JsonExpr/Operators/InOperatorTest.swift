@@ -7,27 +7,27 @@ final class InOperatorTest: OperatorTest {
 	let inOperator = InOperator()
 
 	func testString() {
-		XCTAssertTrue(inOperator.evaluate(evaluator, ["abc", "abcdefghijk"]).boolValue)
-		XCTAssertTrue(inOperator.evaluate(evaluator, ["def", "abcdefghijk"]).boolValue)
-		XCTAssertFalse(inOperator.evaluate(evaluator, ["xxx", "abcdefghijk"]).boolValue)
-		XCTAssertFalse(inOperator.evaluate(evaluator, [JSON.null, "abcdefghijk"]).boolValue)
-		XCTAssertEqual(JSON.null, inOperator.evaluate(evaluator, ["abc", JSON.null]))
+		XCTAssertTrue(inOperator.evaluate(evaluator, ["abcdefghijk", "abc"]).boolValue)
+		XCTAssertTrue(inOperator.evaluate(evaluator, ["abcdefghijk", "def"]).boolValue)
+		XCTAssertFalse(inOperator.evaluate(evaluator, ["abcdefghijk", "xxx"]).boolValue)
+		XCTAssertEqual(JSON.null, inOperator.evaluate(evaluator, ["abcdefghijk", JSON.null]))
+		XCTAssertEqual(JSON.null, inOperator.evaluate(evaluator, [JSON.null, "abc"]))
 
-		XCTAssertEqual(10, evaluator.evaluateCallsCount)
+		XCTAssertEqual(9, evaluator.evaluateCallsCount)
 		XCTAssertEqual(
-			["abc", "abcdefghijk", "def", "abcdefghijk", "xxx", "abcdefghijk", JSON.null, "abcdefghijk", "abc", JSON.null],
+			["abcdefghijk", "abc", "abcdefghijk", "def", "abcdefghijk", "xxx", "abcdefghijk", JSON.null, JSON.null],
 			evaluator.evaluateReceivedInvocations)
-		XCTAssertEqual(4, evaluator.stringConvertCallsCount)
-		XCTAssertEqual(["abc", "def", "xxx", JSON.null], evaluator.stringConvertReceivedInvocations)
+		XCTAssertEqual(3, evaluator.stringConvertCallsCount)
+		XCTAssertEqual(["abc", "def", "xxx"], evaluator.stringConvertReceivedInvocations)
 
 	}
 
 	func testArrayEmpty() {
-		XCTAssertFalse(inOperator.evaluate(evaluator, [1, []]).boolValue)
-		XCTAssertFalse(inOperator.evaluate(evaluator, ["1", []]).boolValue)
-		XCTAssertFalse(inOperator.evaluate(evaluator, [true, []]).boolValue)
-		XCTAssertFalse(inOperator.evaluate(evaluator, [false, []]).boolValue)
-		XCTAssertFalse(inOperator.evaluate(evaluator, [JSON.null, []]).boolValue)
+		XCTAssertFalse(inOperator.evaluate(evaluator, [[], 1]).boolValue)
+		XCTAssertFalse(inOperator.evaluate(evaluator, [[], "1"]).boolValue)
+		XCTAssertFalse(inOperator.evaluate(evaluator, [[], true]).boolValue)
+		XCTAssertFalse(inOperator.evaluate(evaluator, [[], false]).boolValue)
+		XCTAssertEqual(JSON.null, inOperator.evaluate(evaluator, [[], JSON.null]))
 
 		XCTAssertFalse(evaluator.booleanConvertCalled)
 		XCTAssertFalse(evaluator.numberConvertCalled)
@@ -39,35 +39,35 @@ final class InOperatorTest: OperatorTest {
 		let haystack01 = JSON([0, 1])
 		let haystack12 = JSON([1, 2])
 
-		XCTAssertFalse(inOperator.evaluate(evaluator, [2, haystack01]).boolValue)
+		XCTAssertFalse(inOperator.evaluate(evaluator, [haystack01, 2]).boolValue)
 		XCTAssertEqual(2, evaluator.evaluateCallsCount)
-		XCTAssertEqual([2, haystack01], evaluator.evaluateReceivedInvocations)
+		XCTAssertEqual([haystack01, 2], evaluator.evaluateReceivedInvocations)
 		XCTAssertEqual(2, evaluator.compareCallsCount)
 		XCTAssertTrue((0, 2) == evaluator.compareReceivedInvocations[0])
 		XCTAssertTrue((1, 2) == evaluator.compareReceivedInvocations[1])
 
 		evaluator.clearInvocations()
 
-		XCTAssertFalse(inOperator.evaluate(evaluator, [0, haystack12]).boolValue)
+		XCTAssertFalse(inOperator.evaluate(evaluator, [haystack12, 0]).boolValue)
 		XCTAssertEqual(2, evaluator.evaluateCallsCount)
-		XCTAssertEqual([0, haystack12], evaluator.evaluateReceivedInvocations)
+		XCTAssertEqual([haystack12, 0], evaluator.evaluateReceivedInvocations)
 		XCTAssertEqual(2, evaluator.compareCallsCount)
 		XCTAssertTrue((1, 0) == evaluator.compareReceivedInvocations[0])
 		XCTAssertTrue((2, 0) == evaluator.compareReceivedInvocations[1])
 
 		evaluator.clearInvocations()
 
-		XCTAssertTrue(inOperator.evaluate(evaluator, [1, haystack12]).boolValue)
+		XCTAssertTrue(inOperator.evaluate(evaluator, [haystack12, 1]).boolValue)
 		XCTAssertEqual(2, evaluator.evaluateCallsCount)
-		XCTAssertEqual([1, haystack12], evaluator.evaluateReceivedInvocations)
+		XCTAssertEqual([haystack12, 1], evaluator.evaluateReceivedInvocations)
 		XCTAssertEqual(1, evaluator.compareCallsCount)
 		XCTAssertTrue((1, 1) == evaluator.compareReceivedArguments!)
 
 		evaluator.clearInvocations()
 
-		XCTAssertTrue(inOperator.evaluate(evaluator, [2, haystack12]).boolValue)
+		XCTAssertTrue(inOperator.evaluate(evaluator, [haystack12, 2]).boolValue)
 		XCTAssertEqual(2, evaluator.evaluateCallsCount)
-		XCTAssertEqual([2, haystack12], evaluator.evaluateReceivedInvocations)
+		XCTAssertEqual([haystack12, 2], evaluator.evaluateReceivedInvocations)
 		XCTAssertEqual(2, evaluator.compareCallsCount)
 		XCTAssertTrue((1, 2) == evaluator.compareReceivedInvocations[0])
 		XCTAssertTrue((2, 2) == evaluator.compareReceivedInvocations[1])
@@ -79,63 +79,45 @@ final class InOperatorTest: OperatorTest {
 		let haystackab = JSON(["a": 1, "b": 2])
 		let haystackbc = JSON(["b": 2, "c": 3, "0": 100])
 
-		XCTAssertFalse(inOperator.evaluate(evaluator, ["c", haystackab]).boolValue)
+		XCTAssertFalse(inOperator.evaluate(evaluator, [haystackab, "c"]).boolValue)
 		XCTAssertEqual(2, evaluator.evaluateCallsCount)
-		XCTAssertEqual(["c", haystackab], evaluator.evaluateReceivedInvocations)
+		XCTAssertEqual([haystackab, "c"], evaluator.evaluateReceivedInvocations)
 		XCTAssertEqual(1, evaluator.stringConvertCallsCount)
 		XCTAssertTrue("c" == evaluator.stringConvertReceivedX)
 
 		evaluator.clearInvocations()
 
-		XCTAssertFalse(inOperator.evaluate(evaluator, ["a", haystackbc]).boolValue)
+		XCTAssertFalse(inOperator.evaluate(evaluator, [haystackbc, "a"]).boolValue)
 		XCTAssertEqual(2, evaluator.evaluateCallsCount)
-		XCTAssertEqual(["a", haystackbc], evaluator.evaluateReceivedInvocations)
+		XCTAssertEqual([haystackbc, "a"], evaluator.evaluateReceivedInvocations)
 		XCTAssertEqual(1, evaluator.stringConvertCallsCount)
 		XCTAssertTrue("a" == evaluator.stringConvertReceivedX)
 
 		evaluator.clearInvocations()
 
-		XCTAssertTrue(inOperator.evaluate(evaluator, ["b", haystackbc]).boolValue)
+		XCTAssertTrue(inOperator.evaluate(evaluator, [haystackbc, "b"]).boolValue)
 		XCTAssertEqual(2, evaluator.evaluateCallsCount)
-		XCTAssertEqual(["b", haystackbc], evaluator.evaluateReceivedInvocations)
+		XCTAssertEqual([haystackbc, "b"], evaluator.evaluateReceivedInvocations)
 		XCTAssertEqual(1, evaluator.stringConvertCallsCount)
 		XCTAssertTrue("b" == evaluator.stringConvertReceivedX)
 
 		evaluator.clearInvocations()
 
-		XCTAssertTrue(inOperator.evaluate(evaluator, ["c", haystackbc]).boolValue)
+		XCTAssertTrue(inOperator.evaluate(evaluator, [haystackbc, "c"]).boolValue)
 
 		XCTAssertEqual(2, evaluator.evaluateCallsCount)
-		XCTAssertEqual(["c", haystackbc], evaluator.evaluateReceivedInvocations)
+		XCTAssertEqual([haystackbc, "c"], evaluator.evaluateReceivedInvocations)
 		XCTAssertEqual(1, evaluator.stringConvertCallsCount)
 		XCTAssertTrue("c" == evaluator.stringConvertReceivedX)
 
 		evaluator.clearInvocations()
 
-		XCTAssertTrue(inOperator.evaluate(evaluator, [0, haystackbc]).boolValue)
+		XCTAssertTrue(inOperator.evaluate(evaluator, [haystackbc, 0]).boolValue)
 		XCTAssertEqual(2, evaluator.evaluateCallsCount)
-		XCTAssertEqual([0, haystackbc], evaluator.evaluateReceivedInvocations)
+		XCTAssertEqual([haystackbc, 0], evaluator.evaluateReceivedInvocations)
 		XCTAssertEqual(1, evaluator.stringConvertCallsCount)
 		XCTAssertTrue(0 == evaluator.stringConvertReceivedX)
 
 		evaluator.clearInvocations()
-	}
-
-	func testInOperatorArgumentOrder() {
-		let haystack = JSON([1, 2, 3])
-
-		XCTAssertTrue(inOperator.evaluate(evaluator, [2, haystack]).boolValue)
-
-		evaluator.clearInvocations()
-
-		XCTAssertFalse(inOperator.evaluate(evaluator, [4, haystack]).boolValue)
-
-		evaluator.clearInvocations()
-
-		XCTAssertTrue(inOperator.evaluate(evaluator, ["bc", "abcdef"]).boolValue)
-
-		evaluator.clearInvocations()
-
-		XCTAssertFalse(inOperator.evaluate(evaluator, ["abcdef", "bc"]).boolValue)
 	}
 }

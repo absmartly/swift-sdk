@@ -1,7 +1,7 @@
 import Foundation
 
 final class InOperator: BinaryOperator {
-	override func binary(_ evaluator: Evaluator, _ needle: JSON, _ haystack: JSON) -> JSON {
+	override func binary(_ evaluator: Evaluator, _ haystack: JSON, _ needle: JSON) -> JSON {
 		switch haystack.type {
 		case .array:
 			for (_, item): (String, JSON) in haystack {
