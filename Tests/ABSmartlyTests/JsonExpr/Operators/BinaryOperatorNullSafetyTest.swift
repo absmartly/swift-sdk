@@ -14,7 +14,7 @@ final class BinaryOperatorNullSafetyTest: OperatorTest {
 
 	func testEqualsNullNull() {
 		let result = equalsOp.evaluate(evaluator, [JSON.null, JSON.null])
-		XCTAssertTrue(result.boolValue)
+		XCTAssertEqual(JSON.null, result)
 	}
 
 	func testEqualsNullVsNumber() {
@@ -41,12 +41,12 @@ final class BinaryOperatorNullSafetyTest: OperatorTest {
 
 	func testGreaterThanOrEqualNullNull() {
 		let result = greaterEqOp.evaluate(evaluator, [JSON.null, JSON.null])
-		XCTAssertTrue(result.boolValue)
+		XCTAssertEqual(JSON.null, result)
 	}
 
 	func testLessThanOrEqualNullNull() {
 		let result = lessEqOp.evaluate(evaluator, [JSON.null, JSON.null])
-		XCTAssertTrue(result.boolValue)
+		XCTAssertEqual(JSON.null, result)
 	}
 
 	func testMatchWithNullLhsDoesNotCrash() {

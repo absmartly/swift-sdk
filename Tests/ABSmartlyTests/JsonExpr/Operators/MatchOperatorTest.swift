@@ -17,7 +17,7 @@ final class MatchOperatorTest: OperatorTest {
 		XCTAssertFalse(matchOperator.evaluate(evaluator, ["abcdefghijk", "xyz"]).boolValue)
 
 		XCTAssertFalse(matchOperator.evaluate(evaluator, [JSON.null, "abc"]).boolValue)
-		XCTAssertTrue(matchOperator.evaluate(evaluator, ["abcdefghijk", JSON.null]).boolValue)
+		XCTAssertEqual(JSON.null, matchOperator.evaluate(evaluator, ["abcdefghijk", JSON.null]))
 	}
 
 	func testRejectsLongPattern() {
