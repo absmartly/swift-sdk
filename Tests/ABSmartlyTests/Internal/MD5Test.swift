@@ -77,6 +77,14 @@ final class MD5Test: XCTestCase {
 		XCTAssertEqual(hash, "4PIrO7lKtTxOcj2eMYlG7A")
 	}
 
+	// Characters outside the BMP are stored as UTF-16 surrogate pairs and must encode to 4-byte UTF-8; these canonical hashes are shared across all SDKs.
+	func testHashAstralAndMultibyteCharacters() {
+		XCTAssertEqual(Hashing.hash("😀"), "KgLqw51xanDs83V5GFkntg")
+		XCTAssertEqual(Hashing.hash("😀😁"), "ZJuDalvUWRJnVtkspj-2bQ")
+		XCTAssertEqual(Hashing.hash("世界你好"), "v2CJG7YcjjWncKOSCzF2GA")
+		XCTAssertEqual(Hashing.hash("user_世界_123"), "SCgk4OzXlFMvo1UMsP88fA")
+	}
+
 	func testHashQuickBrownFox() {
 		let hash: String = Hashing.hash("The quick brown fox jumps over the lazy dog")
 		XCTAssertEqual(hash, "nhB9nTcrtoJr2B01QqQZ1g")
