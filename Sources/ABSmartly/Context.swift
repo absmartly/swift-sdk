@@ -652,9 +652,8 @@ public final class Context {
 					return handler.publish(event: event).done(on: DispatchQueue.global()) { [weak self] in
 						guard let self = self else { return }
 						self.logEvent(event: .publish(event: event))
-					}.recover { [weak self] error -> Promise<Void> in
+					}.recover(on: DispatchQueue.global()) { [weak self] error -> Promise<Void> in
 						guard let self = self else { return Promise.value(()) }
-
 						self.eventLock.lock()
 						self.exposures.insert(contentsOf: localExposures, at: 0)
 						self.achievements.insert(contentsOf: localAchievements, at: 0)
@@ -1062,9 +1061,11 @@ public final class Context {
 			return array.compactMap { jsonObjectToNative($0) }
 		} else if let string = jsonObject as? String {
 			return string
-		} else if let bool = jsonObject as? Bool {
-			return bool
 		} else if let number = jsonObject as? NSNumber {
+			let objCType = String(cString: number.objCType)
+			if objCType == "c" || objCType == "B" {
+				return number.boolValue
+			}
 			return number
 		}
 		return jsonObject
