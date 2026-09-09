@@ -1,15 +1,31 @@
-import CommonCrypto
 import Foundation
+#if canImport(CommonCrypto)
+import CommonCrypto
+#else
+import Crypto
+#endif
 
-class Hashing {
+// NOTE: MD5 is used here for non-cryptographic purposes only.
+// It provides a fast, deterministic hash for unit ID bucketing in A/B test assignment.
+// Security properties (collision resistance, pre-image resistance) are not required
+// for this use case. The hash is used to consistently assign users to experiment variants.
+public class Hashing {
 
 	private static func MD5Base64Url(_ string: String) -> String {
 		let data = Data(string.utf8)
+
+		#if canImport(CommonCrypto)
+		// Apple platforms
 		let md5 = data.withUnsafeBytes { (bytes: UnsafeRawBufferPointer) -> [UInt8] in
 			var hash = [UInt8](repeating: 0, count: Int(CC_MD5_DIGEST_LENGTH))
 			CC_MD5(bytes.baseAddress, CC_LONG(data.count), &hash)
 			return hash
 		}
+		#else
+		// Linux with Swift Crypto
+		let digest = Insecure.MD5.hash(data: data)
+		let md5 = Array(digest)
+		#endif
 
 		let base64Str = Data(md5).base64EncodedString()
 
@@ -25,11 +41,11 @@ class Hashing {
 		return base64url
 	}
 
-	static func hash(_ unit: String) -> String {
+	public static func hash(_ unit: String) -> String {
 		return MD5Base64Url(unit)
 	}
 
-	static func hash(_ unit: String) -> [UInt8] {
+	static func hashBytes(_ unit: String) -> [UInt8] {
 		return Array(MD5Base64Url(unit).utf8)
 	}
 }

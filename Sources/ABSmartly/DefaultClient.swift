@@ -40,20 +40,24 @@ public final class DefaultClient: Client {
 			"X-API-Key": config.apiKey,
 			"X-Environment": config.environment,
 			"X-Application": config.application,
-			"X-Application-Version": "0",
+			"X-Application-Version": config.applicationVersion,
 		]
 	}
 
 	public func getContextData() -> Promise<ContextData> {
 		return Promise<ContextData> { seal in
-			httpClient.get(url: url, query: getQuery, headers: nil).done { response in
+			httpClient.get(url: url, query: getQuery, headers: nil).done(on: DispatchQueue.global()) { response in
+				guard (200...299).contains(response.status) else {
+					seal.reject(ABSmartlyHTTPError(response.status, response.statusMessage))
+					return
+				}
 				do {
 					let result = try JSONDecoder().decode(ContextData.self, from: response.content)
 					seal.fulfill(result)
 				} catch {
 					seal.reject(error)
 				}
-			}.catch { error in
+			}.catch(on: DispatchQueue.global()) { error in
 				seal.reject(error)
 			}
 		}
@@ -63,9 +67,13 @@ public final class DefaultClient: Client {
 		return Promise<Void> { seal in
 			do {
 				let data = try JSONEncoder().encode(event)
-				httpClient.put(url: url, query: nil, headers: putHeaders, body: data).done { response in
+				httpClient.put(url: url, query: nil, headers: putHeaders, body: data).done(on: DispatchQueue.global()) { response in
+					guard (200...299).contains(response.status) else {
+						seal.reject(ABSmartlyHTTPError(response.status, response.statusMessage))
+						return
+					}
 					seal.fulfill(())
-				}.catch { error in
+				}.catch(on: DispatchQueue.global()) { error in
 					seal.reject(error)
 				}
 			} catch {

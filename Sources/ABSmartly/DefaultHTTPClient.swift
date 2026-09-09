@@ -1,5 +1,9 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 import PromiseKit
+import Atomics
 
 public class DefaultHTTPResponse: Response {
 	public init(status: Int, statusMessage: String, contentType: String, content: Data) {
@@ -17,14 +21,31 @@ public class DefaultHTTPResponse: Response {
 
 public class DefaultHTTPClient: HTTPClient {
 	private var config: DefaultHTTPClientConfig = DefaultHTTPClientConfig()
-	private var session: URLSession
+	private var session: URLSession?
+	private let sessionLock = NSLock()
 
 	public init(config: DefaultHTTPClientConfig) {
 		self.config = config
 		let sessionConfig = URLSessionConfiguration.ephemeral
 		sessionConfig.timeoutIntervalForRequest = config.connectionRequestTimeout
 		sessionConfig.timeoutIntervalForResource = config.connectionResourceTimeout
+		sessionConfig.httpMaximumConnectionsPerHost = 4
 		self.session = URLSession(configuration: sessionConfig)
+	}
+
+	deinit {
+		sessionLock.lock()
+		let s = session
+		session = nil
+		sessionLock.unlock()
+		#if canImport(FoundationNetworking)
+		// Skip URLSession invalidation on Linux: swift-corelibs-foundation has a known bug
+		// where invalidateAndCancel/finishTasksAndInvalidate during deinit causes a crash
+		// in the dispatch queue teardown. The session will be cleaned up by ARC.
+		_ = s
+		#else
+		s?.invalidateAndCancel()
+		#endif
 	}
 
 	public func get(url: String, query: [String: String]?, headers: [String: String]?) -> Promise<Response> {
@@ -45,33 +66,52 @@ public class DefaultHTTPClient: HTTPClient {
 	public func request(method: String, url: String, query: [String: String]?, headers: [String: String]?, body: Data?)
 		-> Promise<Response>
 	{
-		return retry(
+		return Self.retry(
 			times: config.retries, delay: config.retryInterval,
-			body: { attempt in
+			body: { [weak self] attempt in
 				return Promise<Response> { seal in
-					guard var components = URLComponents(string: url) else {
-						throw URLError(.badURL)
+					guard let self = self else {
+						seal.reject(URLError(.cancelled))
+						return
 					}
 
-					if query != nil {
-						components.queryItems = query!.compactMap { (key, value) in
+					self.sessionLock.lock()
+					let capturedSession = self.session
+					self.sessionLock.unlock()
+					guard let session = capturedSession else {
+						seal.reject(ABSmartlyError("HTTP client is closed"))
+						return
+					}
+
+					guard var components = URLComponents(string: url) else {
+						seal.reject(URLError(.badURL))
+						return
+					}
+
+					if let query = query {
+						components.queryItems = query.compactMap { (key, value) in
 							URLQueryItem(name: key, value: value)
 						}
 					}
 
-					var request = URLRequest(url: components.url!)
+					guard let requestURL = components.url else {
+						seal.reject(URLError(.badURL))
+						return
+					}
+
+					var request = URLRequest(url: requestURL)
 					request.httpMethod = method
 					request.timeoutInterval = self.config.connectionResourceTimeout
 
-					if headers != nil {
+					if let headers = headers {
 						request.allHTTPHeaderFields = headers
 					}
 
-					if method != "GET" && body != nil {
+					if method != "GET", let body = body {
 						request.httpBody = body
 					}
 
-					self.session.dataTask(
+					session.dataTask(
 						with: request,
 						completionHandler: { data, rsp, error in
 							if let data = data, let rsp = rsp as? HTTPURLResponse {
@@ -103,20 +143,27 @@ public class DefaultHTTPClient: HTTPClient {
 	}
 
 	public func close() -> Promise<Void> {
+		sessionLock.lock()
+		session?.finishTasksAndInvalidate()
+		session = nil
+		sessionLock.unlock()
 		return Promise<Void>.value(())
 	}
 }
 
-func retry<T>(times: UInt, delay: TimeInterval, body: @escaping (UInt) -> Promise<T>) -> Promise<T> {
-	var tryCounter: UInt = 0
-	func attempt() -> Promise<T> {
-		tryCounter += 1
-		return body(tryCounter).recover(policy: CatchPolicy.allErrorsExceptCancellation) { error -> Promise<T> in
-			guard tryCounter <= times else {
-				throw error
+extension DefaultHTTPClient {
+	static func retry<T>(times: UInt, delay: TimeInterval, body: @escaping (UInt) -> Promise<T>) -> Promise<T> {
+		let tryCounter = ManagedAtomic<UInt>(0)
+		func attempt() -> Promise<T> {
+			let currentTry = tryCounter.wrappingIncrementThenLoad(ordering: .acquiringAndReleasing)
+			return body(currentTry).recover(on: DispatchQueue.global(), policy: CatchPolicy.allErrorsExceptCancellation) {
+				error -> Promise<T> in
+				guard currentTry <= times else {
+					throw error
+				}
+				return after(seconds: delay).then(on: DispatchQueue.global(), attempt)
 			}
-			return after(seconds: delay).then(attempt)
 		}
+		return attempt()
 	}
-	return attempt()
 }

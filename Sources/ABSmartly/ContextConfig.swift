@@ -17,7 +17,9 @@ public class ContextConfig {
 	}
 
 	public func setUnits(units: [String: String]) {
-		units.forEach { setUnit(unitType: $0.key, uid: $0.value) }
+		for (unitType, uid) in units {
+			setUnit(unitType: unitType, uid: uid)
+		}
 	}
 
 	public func setAttribute(name: String, value: JSON) {
@@ -25,7 +27,9 @@ public class ContextConfig {
 	}
 
 	public func setAttributes(attributes: [String: JSON]) {
-		attributes.forEach { setAttribute(name: $0.key, value: $0.value) }
+		for (name, value) in attributes {
+			setAttribute(name: name, value: value)
+		}
 	}
 
 	public func setOverride(experimentName: String, variant: Int) {
@@ -33,7 +37,9 @@ public class ContextConfig {
 	}
 
 	public func setOverrides(overrides: [String: Int]) {
-		overrides.forEach { setOverride(experimentName: $0.key, variant: $0.value) }
+		for (experimentName, variant) in overrides {
+			setOverride(experimentName: experimentName, variant: variant)
+		}
 	}
 
 	public func setCustomAssignment(experimentName: String, variant: Int) {
@@ -41,6 +47,8 @@ public class ContextConfig {
 	}
 
 	public func setCustomAssignments(assignments: [String: Int]) {
-		assignments.forEach { setCustomAssignment(experimentName: $0.key, variant: $0.value) }
+		for (experimentName, variant) in assignments {
+			setCustomAssignment(experimentName: experimentName, variant: variant)
+		}
 	}
 }
