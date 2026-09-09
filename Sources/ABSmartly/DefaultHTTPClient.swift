@@ -156,11 +156,12 @@ extension DefaultHTTPClient {
 		let tryCounter = ManagedAtomic<UInt>(0)
 		func attempt() -> Promise<T> {
 			let currentTry = tryCounter.wrappingIncrementThenLoad(ordering: .acquiringAndReleasing)
-			return body(currentTry).recover(policy: CatchPolicy.allErrorsExceptCancellation) { error -> Promise<T> in
+			return body(currentTry).recover(on: DispatchQueue.global(), policy: CatchPolicy.allErrorsExceptCancellation) {
+				error -> Promise<T> in
 				guard currentTry <= times else {
 					throw error
 				}
-				return after(seconds: delay).then(attempt)
+				return after(seconds: delay).then(on: DispatchQueue.global(), attempt)
 			}
 		}
 		return attempt()
