@@ -562,11 +562,7 @@ public final class Context {
 
 				// Wait for publishes already in flight (a failed one re-queues its events)
 				// before deciding whether a final flush is needed.
-				self.eventLock.lock()
-				let inFlight = Array(self.inFlightPublishes.values)
-				self.eventLock.unlock()
-
-				when(resolved: inFlight).done(on: DispatchQueue.global()) { [weak self] _ in
+				self.awaitInFlightPublishes().done(on: DispatchQueue.global()) { [weak self] in
 					guard let self = self else { return }
 					if self.pendingCount.load(ordering: .acquiring) > 0 {
 						self.flush().done(on: DispatchQueue.global()) { [weak self] in
@@ -603,6 +599,20 @@ public final class Context {
 		return Promise<Void>.value(())
 	}
 
+	private func awaitInFlightPublishes() -> Promise<Void> {
+		eventLock.lock()
+		let inFlight = Array(inFlightPublishes.values)
+		eventLock.unlock()
+
+		if inFlight.isEmpty {
+			return Promise<Void>.value(())
+		}
+		return when(resolved: inFlight).then(on: DispatchQueue.global()) { [weak self] _ -> Promise<Void> in
+			guard let self = self else { return Promise<Void>.value(()) }
+			return self.awaitInFlightPublishes()
+		}
+	}
+
 	private func flush() -> Promise<Void> {
 		clearTimeout()
 
@@ -613,6 +623,8 @@ public final class Context {
 				var localAchievements: [GoalAchievement] = []
 				var localUnits: [Unit] = []
 				var localAttributes: [Attribute] = []
+				var publishId: UInt = 0
+				var barrierSeal: Resolver<Void>?
 
 				do {
 					eventLock.lock()
@@ -631,6 +643,14 @@ public final class Context {
 						}
 
 						pendingCount.store(0, ordering: .releasing)
+
+						// Register the close barrier in the same critical section that drains the
+						// queue, so close() can never observe an empty queue and no in-flight publish.
+						let (barrier, seal) = Promise<Void>.pending()
+						publishId = nextPublishId
+						nextPublishId += 1
+						inFlightPublishes[publishId] = barrier
+						barrierSeal = seal
 					}
 				}
 
@@ -656,11 +676,6 @@ public final class Context {
 						localAchievements,
 						localAttributes)
 
-					eventLock.lock()
-					let publishId = nextPublishId
-					nextPublishId += 1
-					eventLock.unlock()
-
 					let publishPromise = handler.publish(event: event).done(on: DispatchQueue.global()) { [weak self] in
 						guard let self = self else { return }
 						self.logEvent(event: .publish(event: event))
@@ -676,14 +691,13 @@ public final class Context {
 						self.logError(error: error)
 						throw error
 					}
-					eventLock.lock()
-					inFlightPublishes[publishId] = publishPromise
-					eventLock.unlock()
 					publishPromise.ensure(on: DispatchQueue.global()) { [weak self] in
-						guard let self = self else { return }
-						self.eventLock.lock()
-						self.inFlightPublishes[publishId] = nil
-						self.eventLock.unlock()
+						if let self = self {
+							self.eventLock.lock()
+							self.inFlightPublishes[publishId] = nil
+							self.eventLock.unlock()
+						}
+						barrierSeal?.fulfill(())
 					}
 					return publishPromise
 				}

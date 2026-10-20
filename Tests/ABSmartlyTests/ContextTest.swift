@@ -2641,6 +2641,26 @@ final class ContextTest: XCTestCase {
 		wait(for: [expectation], timeout: 1.0)
 	}
 
+	func testCloseWaitsForInFlightPublish() throws {
+		let context = try createContext(config: getContextConfig(withUnits: true))
+		context.track("goal1", properties: nil)
+
+		let (pending, resolver) = Promise<Void>.pending()
+		handler.publishEventReturnValue = pending
+
+		_ = context.publish()
+		let closeDone = XCTestExpectation(description: "close resolved")
+		closeDone.isInverted = true
+		_ = context.close().done { closeDone.fulfill() }
+		wait(for: [closeDone], timeout: 0.3)
+
+		let closeResolved = XCTestExpectation(description: "close resolved after publish")
+		_ = context.close().done { closeResolved.fulfill() }
+		resolver.fulfill(())
+		wait(for: [closeResolved], timeout: 2.0)
+		XCTAssertTrue(context.isClosed())
+	}
+
 	// MARK: - Fix #18: setTimeout race condition removed
 
 	func testSetTimeoutNoRaceCondition() throws {
