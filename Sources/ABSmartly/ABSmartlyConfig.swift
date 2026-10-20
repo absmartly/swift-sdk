@@ -38,6 +38,21 @@ public class ABsmartlyConfig {
 	}
 }
 
+extension ABsmartlyConfig {
+	/// Deprecated: Use `init(contextDataProvider:contextPublisher:...)` instead.
+	@available(*, deprecated, message: "Use init(contextDataProvider:contextPublisher:contextEventLogger:variableParser:scheduler:client:) instead")
+	public convenience init(
+		contextDataProvider: ContextDataProvider?, contextEventHandler: ContextPublisher?,
+		contextEventLogger: ContextEventLogger?,
+		variableParser: VariableParser?, scheduler: Scheduler?, client: Client?
+	) {
+		self.init(
+			contextDataProvider: contextDataProvider, contextPublisher: contextEventHandler,
+			contextEventLogger: contextEventLogger, variableParser: variableParser,
+			scheduler: scheduler, client: client)
+	}
+}
+
 @available(*, deprecated, message: "Use ABsmartlyConfig instead")
 public typealias AbsmartlyConfig = ABsmartlyConfig
 

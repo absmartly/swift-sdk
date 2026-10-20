@@ -54,6 +54,8 @@ public final class Context {
 
 	private let eventLock = NSLock()
 	private let promiseLock = NSLock()
+	private var inFlightPublishes: [UInt: Promise<Void>] = [:]
+	private var nextPublishId: UInt = 0
 	private var exposures: [Exposure] = []
 	private var achievements: [GoalAchievement] = []
 	private let maxExposures = 500
@@ -504,14 +506,11 @@ public final class Context {
 	public func refresh() -> Promise<Void> {
 		guard checkNotClosed() else { return Promise<Void>.value(()) }
 
+		promiseLock.lock()
+		defer { promiseLock.unlock() }
+
 		if !refreshing.compareExchange(expected: false, desired: true, ordering: .acquiringAndReleasing).0 {
-			promiseLock.lock()
-			let existingPromise = refreshPromise
-			promiseLock.unlock()
-			if let existingPromise = existingPromise {
-				return existingPromise
-			}
-			return Promise<Void>.value(())
+			return refreshPromise ?? Promise<Void>.value(())
 		}
 
 		let promise = Promise<Void> { [weak self] seal in
@@ -537,9 +536,7 @@ public final class Context {
 			}
 		}
 
-		promiseLock.lock()
 		refreshPromise = promise
-		promiseLock.unlock()
 		return promise
 	}
 
@@ -563,24 +560,33 @@ public final class Context {
 
 				self.clearRefreshTimer()
 
-				if self.pendingCount.load(ordering: .acquiring) > 0 {
-					self.flush().done(on: DispatchQueue.global()) { [weak self] in
-						guard let self = self else { return }
+				// Wait for publishes already in flight (a failed one re-queues its events)
+				// before deciding whether a final flush is needed.
+				self.eventLock.lock()
+				let inFlight = Array(self.inFlightPublishes.values)
+				self.eventLock.unlock()
+
+				when(resolved: inFlight).done(on: DispatchQueue.global()) { [weak self] _ in
+					guard let self = self else { return }
+					if self.pendingCount.load(ordering: .acquiring) > 0 {
+						self.flush().done(on: DispatchQueue.global()) { [weak self] in
+							guard let self = self else { return }
+							self.closed.store(true, ordering: .releasing)
+							self.closing.store(false, ordering: .releasing)
+							self.logEvent(event: .close)
+							seal.fulfill(())
+						}.catch(on: DispatchQueue.global()) { [weak self] error in
+							guard let self = self else { return }
+							self.closed.store(true, ordering: .releasing)
+							self.closing.store(false, ordering: .releasing)
+							seal.reject(error)
+						}
+					} else {
 						self.closed.store(true, ordering: .releasing)
 						self.closing.store(false, ordering: .releasing)
 						self.logEvent(event: .close)
 						seal.fulfill(())
-					}.catch(on: DispatchQueue.global()) { [weak self] error in
-						guard let self = self else { return }
-						self.closed.store(true, ordering: .releasing)
-						self.closing.store(false, ordering: .releasing)
-						seal.reject(error)
 					}
-				} else {
-					self.closed.store(true, ordering: .releasing)
-					self.closing.store(false, ordering: .releasing)
-					self.logEvent(event: .close)
-					seal.fulfill(())
 				}
 			}
 			promiseLock.lock()
@@ -650,7 +656,12 @@ public final class Context {
 						localAchievements,
 						localAttributes)
 
-					return handler.publish(event: event).done(on: DispatchQueue.global()) { [weak self] in
+					eventLock.lock()
+					let publishId = nextPublishId
+					nextPublishId += 1
+					eventLock.unlock()
+
+					let publishPromise = handler.publish(event: event).done(on: DispatchQueue.global()) { [weak self] in
 						guard let self = self else { return }
 						self.logEvent(event: .publish(event: event))
 					}.recover(on: DispatchQueue.global()) { [weak self] error -> Promise<Void> in
@@ -665,6 +676,16 @@ public final class Context {
 						self.logError(error: error)
 						throw error
 					}
+					eventLock.lock()
+					inFlightPublishes[publishId] = publishPromise
+					eventLock.unlock()
+					publishPromise.ensure(on: DispatchQueue.global()) { [weak self] in
+						guard let self = self else { return }
+						self.eventLock.lock()
+						self.inFlightPublishes[publishId] = nil
+						self.eventLock.unlock()
+					}
+					return publishPromise
 				}
 			}
 		} else {
