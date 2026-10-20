@@ -40,11 +40,11 @@ public class ClientConfig {
 
 	public convenience init(from dict: [String: String]) {
 		self.init(
-			apiKey: dict["apikey"] ?? "",
+			apiKey: dict["apikey"] ?? dict["apiKey"] ?? "",
 			application: dict["application"] ?? "",
 			endpoint: dict["endpoint"] ?? "",
 			environment: dict["environment"] ?? "",
-			applicationVersion: dict["applicationVersion"] ?? "0"
+			applicationVersion: dict["applicationVersion"] ?? dict["applicationversion"] ?? "0"
 		)
 	}
 }

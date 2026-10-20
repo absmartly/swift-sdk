@@ -87,7 +87,11 @@ final class DefaultHTTPClientTest: XCTestCase {
 				expectation.fulfill()
 			}
 			.catch { error in
-				XCTAssertNotNil(error)
+				if let urlError = error as? URLError {
+					XCTAssertTrue([.badURL, .unsupportedURL].contains(urlError.code), "unexpected code \(urlError.code)")
+				} else {
+					XCTAssertNotNil(error)
+				}
 				expectation.fulfill()
 			}
 

@@ -3,6 +3,7 @@ import PromiseKit
 
 public final class ABsmartlySDK {
 	private var client: Client?
+	private let closeLock = NSLock()
 	private let contextDataProvider: ContextDataProvider
 	private let contextEventHandler: ContextPublisher
 	private let contextEventLogger: ContextEventLogger?
@@ -112,10 +113,13 @@ public final class ABsmartlySDK {
 	}
 
 	public func close() -> Promise<Void> {
-		guard let clientToClose = client else {
+		closeLock.lock()
+		let clientToClose = client
+		client = nil
+		closeLock.unlock()
+		guard let clientToClose = clientToClose else {
 			return Promise<Void>.value(())
 		}
-		client = nil
 		return clientToClose.close()
 	}
 }

@@ -1,4 +1,4 @@
-# A/B Smartly Swift SDK <a href="https://github.com/apple/swift-package-manager" alt="RxSwift on Swift Package Manager" title="RxSwift on Swift Package Manager"><img src="https://img.shields.io/badge/Swift%20Package%20Manager-compatible-brightgreen.svg" /></a>
+# A/B Smartly Swift SDK <a href="https://github.com/apple/swift-package-manager" title="Swift Package Manager compatible"><img src="https://img.shields.io/badge/Swift%20Package%20Manager-compatible-brightgreen.svg" alt="Swift Package Manager compatible" /></a>
 
 A/B Smartly - Swift SDK for iOS and macOS applications.
 
@@ -118,6 +118,7 @@ let sdk = try ABsmartlySDK(config: sdkConfig)
 | retries                 | `UInt`                            | &#10060;  | `5`         | Number of retry attempts for failed network requests.                                                                                                                         |
 | contextEventLogger      | `ContextEventLogger`              | &#10060;  | `nil`       | Callback to handle SDK events (ready, exposure, goal, etc.)                                                                                                                   |
 | contextDataProvider     | `ContextDataProvider`             | &#10060;  | auto        | Custom provider for context data (advanced usage)                                                                                                                             |
+| contextPublisher        | `ContextPublisher`                | &#10060;  | auto        | Custom publisher for context events (advanced usage)                                                                                                                          |
 | contextEventHandler     | `ContextEventHandler`             | &#10060;  | auto        | Custom handler for publishing events (advanced usage)                                                                                                                         |
 | variableParser          | `VariableParser`                  | &#10060;  | auto        | Custom parser for variable values (advanced usage)                                                                                                                            |
 | scheduler               | `Scheduler`                       | &#10060;  | auto        | Custom scheduler for async operations (advanced usage)                                                                                                                        |

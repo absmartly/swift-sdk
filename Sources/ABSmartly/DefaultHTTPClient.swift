@@ -101,7 +101,7 @@ public class DefaultHTTPClient: HTTPClient {
 
 					var request = URLRequest(url: requestURL)
 					request.httpMethod = method
-					request.timeoutInterval = self.config.connectionResourceTimeout
+					request.timeoutInterval = self.config.connectionRequestTimeout
 
 					if let headers = headers {
 						request.allHTTPHeaderFields = headers
@@ -142,6 +142,8 @@ public class DefaultHTTPClient: HTTPClient {
 			})
 	}
 
+	/// Initiates shutdown: in-flight requests are allowed to finish, new ones are rejected.
+	/// The returned promise resolves once shutdown has been initiated, not when pending tasks settle.
 	public func close() -> Promise<Void> {
 		sessionLock.lock()
 		session?.finishTasksAndInvalidate()

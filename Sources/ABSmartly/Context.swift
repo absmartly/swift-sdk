@@ -32,6 +32,7 @@ public final class Context {
 	private let timeoutLock = NSLock()
 	private var timeout: ScheduledHandle?
 	private var refreshTimer: ScheduledHandle?
+	private let refreshTimerLock = NSLock()
 
 	private let dataLock = NSLock()
 	private var index: [String: ExperimentVariables] = [:]
@@ -918,6 +919,8 @@ public final class Context {
 	}
 
 	private func setRefreshTimer() {
+		refreshTimerLock.lock()
+		defer { refreshTimerLock.unlock() }
 		if refreshInterval > 0 && refreshTimer == nil {
 			refreshTimer = scheduler.scheduleWithFixedDelay(
 				after: refreshInterval, repeating: refreshInterval,
@@ -934,6 +937,8 @@ public final class Context {
 	}
 
 	private func clearRefreshTimer() {
+		refreshTimerLock.lock()
+		defer { refreshTimerLock.unlock() }
 		refreshTimer?.cancel()
 		refreshTimer = nil
 	}
@@ -1046,19 +1051,19 @@ public final class Context {
 		failed.store(true, ordering: .releasing)
 	}
 
-	private func jsonObjectToNative(_ jsonObject: Any) -> Any? {
+	private func jsonObjectToNative(_ jsonObject: Any, topLevel: Bool = true) -> Any? {
 		if jsonObject is NSNull {
-			return nil
+			return topLevel ? nil : NSNull()
 		} else if let dict = jsonObject as? [String: Any] {
 			var result: [String: Any] = [:]
 			for (key, value) in dict {
-				if let nativeValue = jsonObjectToNative(value) {
+				if let nativeValue = jsonObjectToNative(value, topLevel: false) {
 					result[key] = nativeValue
 				}
 			}
 			return result
 		} else if let array = jsonObject as? [Any] {
-			return array.compactMap { jsonObjectToNative($0) }
+			return array.compactMap { jsonObjectToNative($0, topLevel: false) }
 		} else if let string = jsonObject as? String {
 			return string
 		} else if let number = jsonObject as? NSNumber {
