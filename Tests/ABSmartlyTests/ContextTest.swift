@@ -2661,6 +2661,36 @@ final class ContextTest: XCTestCase {
 		XCTAssertTrue(context.isClosed())
 	}
 
+	func testGetTreatmentAfterCloseDoesNotEnqueueExposure() throws {
+		let context = try createContext(config: getContextConfig(withUnits: true))
+		handler.publishEventReturnValue = Promise<Void>.value(())
+		let closed = XCTestExpectation()
+		_ = context.close().done { closed.fulfill() }
+		wait(for: [closed], timeout: 2.0)
+
+		_ = context.getTreatment("exp_test_ab")
+		XCTAssertEqual(0, context.getPendingCount())
+	}
+
+	func testFailedCloseIsRetryable() throws {
+		let context = try createContext(config: getContextConfig(withUnits: true))
+		context.track("goal1", properties: nil)
+
+		handler.publishEventReturnValue = Promise<Void>(error: NSError(domain: "t", code: 1))
+		let failed = XCTestExpectation()
+		_ = context.close().catch { _ in failed.fulfill() }
+		wait(for: [failed], timeout: 2.0)
+		XCTAssertFalse(context.isClosed())
+		XCTAssertEqual(1, context.getPendingCount())
+
+		handler.publishEventReturnValue = Promise<Void>.value(())
+		let ok = XCTestExpectation()
+		_ = context.close().done { ok.fulfill() }
+		wait(for: [ok], timeout: 2.0)
+		XCTAssertTrue(context.isClosed())
+		XCTAssertEqual(0, context.getPendingCount())
+	}
+
 	// MARK: - Fix #18: setTimeout race condition removed
 
 	func testSetTimeoutNoRaceCondition() throws {

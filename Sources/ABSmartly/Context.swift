@@ -405,6 +405,10 @@ public final class Context {
 	}
 
 	private func queueExposure(_ assignment: Assignment) {
+		if closed.load(ordering: .acquiring) || closing.load(ordering: .acquiring) {
+			return
+		}
+
 		if !assignment.exposed.compareExchange(expected: false, desired: true, ordering: .acquiringAndReleasing).0 {
 			return
 		}
@@ -573,7 +577,7 @@ public final class Context {
 							seal.fulfill(())
 						}.catch(on: DispatchQueue.global()) { [weak self] error in
 							guard let self = self else { return }
-							self.closed.store(true, ordering: .releasing)
+							// Stay open so the requeued events can be retried via publish()/close().
 							self.closing.store(false, ordering: .releasing)
 							seal.reject(error)
 						}
