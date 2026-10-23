@@ -1954,7 +1954,7 @@ final class ContextTest: XCTestCase {
 		XCTAssertEqual(0, try context.getTreatment(experimentName))
 		XCTAssertEqual(0, try context.getTreatment("not_found"))
 
-		XCTAssertEqual(3, context.getPendingCount())  // only the changed experiment re-queues an exposure (JS parity)
+		XCTAssertEqual(3, context.getPendingCount())
 	}
 
 	func testRefreshClearsAssignmentCacheForStartedExperiment() throws {
@@ -1989,7 +1989,7 @@ final class ContextTest: XCTestCase {
 		XCTAssertEqual(1, try context.getTreatment(experimentName))
 		XCTAssertEqual(0, try context.getTreatment("not_found"))
 
-		XCTAssertEqual(3, context.getPendingCount())  // only the changed experiment re-queues an exposure (JS parity)
+		XCTAssertEqual(3, context.getPendingCount())
 	}
 
 	func testRefreshClearsAssignmentCacheForFullOnExperiment() throws {
@@ -2024,7 +2024,7 @@ final class ContextTest: XCTestCase {
 		XCTAssertEqual(1, try context.getTreatment(experimentName))
 		XCTAssertEqual(0, try context.getTreatment("not_found"))
 
-		XCTAssertEqual(3, context.getPendingCount())  // only the changed experiment re-queues an exposure (JS parity)
+		XCTAssertEqual(3, context.getPendingCount())
 	}
 
 	func testRefreshClearsAssignmentCacheForTrafficSplitChange() throws {
@@ -2059,7 +2059,7 @@ final class ContextTest: XCTestCase {
 		XCTAssertEqual(2, try context.getTreatment(experimentName))
 		XCTAssertEqual(0, try context.getTreatment("not_found"))
 
-		XCTAssertEqual(3, context.getPendingCount())  // only the changed experiment re-queues an exposure (JS parity)
+		XCTAssertEqual(3, context.getPendingCount())
 	}
 
 	func testRefreshClearsAssignmentCacheForExperimentIdChange() throws {
@@ -2094,7 +2094,7 @@ final class ContextTest: XCTestCase {
 		XCTAssertEqual(2, try context.getTreatment(experimentName))
 		XCTAssertEqual(0, try context.getTreatment("not_found"))
 
-		XCTAssertEqual(3, context.getPendingCount())  // only the changed experiment re-queues an exposure (JS parity)
+		XCTAssertEqual(3, context.getPendingCount())
 	}
 
 	func testRefreshClearsAssignmentCacheForIterationChange() throws {

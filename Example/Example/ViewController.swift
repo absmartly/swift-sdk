@@ -65,7 +65,7 @@ class ViewController: UIViewController {
 
 		context = sdk!.createContext(config: contextConfig)
 		_ = context.waitUntilReady().done { context in
-			let treatment = context.getTreatment("exp_with_variables")
+			let treatment = (try? context.getTreatment("exp_with_variables")) ?? 0
 
 			DispatchQueue.main.async {
 				if treatment == 0 {
@@ -81,6 +81,10 @@ class ViewController: UIViewController {
 	}
 
 	@objc private func click() {
-		context.track("payment", properties: ["amount": 2235, "revenue": 235])
+		do {
+			try context.track("payment", properties: ["amount": 2235, "revenue": 235])
+		} catch {
+			print("ABsmartly track failed: \(error)")
+		}
 	}
 }

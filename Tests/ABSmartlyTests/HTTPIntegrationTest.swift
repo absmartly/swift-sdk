@@ -72,8 +72,8 @@ final class HTTPIntegrationTest: XCTestCase {
 		// --- PUT /context (publish a queued exposure + goal) ---
 		server.putResponseBody = "{}"
 
-		_ = try context.getTreatment("exp_test_ab")  // queue an exposure
-		try context.track("payment", properties: ["amount": 100])  // queue a goal
+		_ = try context.getTreatment("exp_test_ab")
+		try context.track("payment", properties: ["amount": 100])
 
 		let publishExpectation = expectation(description: "publish completed")
 		context.publish().done {
