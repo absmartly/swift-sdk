@@ -7,8 +7,11 @@ public enum ContextEventLoggerEvent: Equatable {
 	case publish(event: PublishEvent)
 	case exposure(exposure: Exposure)
 	case goal(goal: GoalAchievement)
-	case close
+	case finalize
 	case error(error: Error)
+
+	@available(*, deprecated, renamed: "finalize")
+	public static var close: ContextEventLoggerEvent { return .finalize }
 
 	public static func == (lhs: ContextEventLoggerEvent, rhs: ContextEventLoggerEvent) -> Bool {
 		switch (lhs, rhs) {
@@ -24,7 +27,7 @@ public enum ContextEventLoggerEvent: Equatable {
 			return lhsData == rhsData
 		case (let .error(lhsError), let .error(rhsError)):
 			return lhsError._code == rhsError._code && lhsError.localizedDescription == rhsError.localizedDescription
-		case (.close, .close):
+		case (.finalize, .finalize):
 			return true
 		default:
 			return false

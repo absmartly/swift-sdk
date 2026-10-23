@@ -93,10 +93,19 @@ public final class Context {
 		cassignments.merge(config.cassignments, uniquingKeysWith: { (_, new) in new })
 
 		attributes.reserveCapacity(config.attributes.count)
-		setAttributes(config.attributes)
+		for (name, value) in config.attributes {
+			appendAttribute(name: name, value: value)
+		}
 
 		units.reserveCapacity(config.units.count)
-		setUnits(config.units)
+		for (unitType, uid) in config.units {
+			do {
+				try putUnit(unitType: unitType, uid: uid)
+			} catch {
+				Logger.error(error.localizedDescription)
+				logError(error: error)
+			}
+		}
 
 		if promise.isResolved {
 			if let data = promise.value {
@@ -199,13 +208,17 @@ public final class Context {
 		}
 	}
 
-	public func getExperiments() -> [String] {
+	public func getExperiments() throws -> [String] {
+		try checkReady(false)
+
 		dataLock.lock()
 		defer { dataLock.unlock() }
 		return data?.experiments.map { $0.name } ?? []
 	}
 
-	public func getCustomFieldKeys() -> Set<String> {
+	public func getCustomFieldKeys() throws -> Set<String> {
+		try checkReady(true)
+
 		var keys: Set<String> = []
 
 		dataLock.lock()
@@ -224,7 +237,9 @@ public final class Context {
 		return keys
 	}
 
-	public func getCustomFieldKeys(experimentName: String) -> [String] {
+	public func getCustomFieldKeys(experimentName: String) throws -> [String] {
+		try checkReady(true)
+
 		dataLock.lock()
 		defer { dataLock.unlock() }
 
@@ -235,21 +250,27 @@ public final class Context {
 		return Array(experimentCustomFields.keys)
 	}
 
-	public func getCustomFieldValue(experimentName: String, key: String) -> Any? {
+	public func getCustomFieldValue(experimentName: String, key: String) throws -> Any? {
+		try checkReady(true)
+
 		dataLock.lock()
 		defer { dataLock.unlock() }
 
 		return customFieldValues[experimentName]?[key]?.value
 	}
 
-	public func getCustomFieldValueType(experimentName: String, key: String) -> String? {
+	public func getCustomFieldValueType(experimentName: String, key: String) throws -> String? {
+		try checkReady(true)
+
 		dataLock.lock()
 		defer { dataLock.unlock() }
 
 		return customFieldValues[experimentName]?[key]?.type
 	}
 
-	public func getContextData() -> ContextData? {
+	public func getContextData() throws -> ContextData? {
+		try checkReady(false)
+
 		dataLock.lock()
 		defer { dataLock.unlock() }
 		return data
@@ -287,8 +308,8 @@ public final class Context {
 		}
 	}
 
-	public func setCustomAssignment(experimentName: String, variant: Int) {
-		guard checkNotClosed() else { return }
+	public func setCustomAssignment(experimentName: String, variant: Int) throws {
+		try checkNotClosed()
 
 		_ = putLocked(lock: contextLock, dict: &cassignments, key: experimentName, value: variant)
 	}
@@ -297,9 +318,9 @@ public final class Context {
 		return getLocked(lock: contextLock, dict: cassignments, key: experimentName)
 	}
 
-	public func setCustomAssignments(_ assignments: [String: Int]) {
+	public func setCustomAssignments(_ assignments: [String: Int]) throws {
 		for (key, value) in assignments {
-			setCustomAssignment(experimentName: key, variant: value)
+			try setCustomAssignment(experimentName: key, variant: value)
 		}
 	}
 
@@ -309,29 +330,26 @@ public final class Context {
 
 	private static let maxUnitUIDLength = 256
 
-	public func setUnit(unitType: String, uid: String) {
-		guard !isClosed() && !isClosing() else {
-			Logger.error(isClosed() ? "ABsmartly Context is finalized." : "ABsmartly Context is closing.")
-			return
-		}
+	public func setUnit(unitType: String, uid: String) throws {
+		try checkNotClosed()
+		try putUnit(unitType: unitType, uid: uid)
+	}
 
+	private func putUnit(unitType: String, uid: String) throws {
 		let trimmed = uid.trimmingCharacters(in: .whitespacesAndNewlines)
 		guard !trimmed.isEmpty else {
-			Logger.error("Unit '\(unitType)' UID must not be blank.")
-			return
+			throw ABSmartlyError("Unit '\(unitType)' UID must not be blank.")
 		}
 
 		guard trimmed.count <= Self.maxUnitUIDLength else {
-			Logger.error("Unit '\(unitType)' UID exceeds maximum length of \(Self.maxUnitUIDLength) characters")
-			return
+			throw ABSmartlyError("Unit '\(unitType)' UID exceeds maximum length of \(Self.maxUnitUIDLength) characters")
 		}
 
 		contextLock.lock()
 		defer { contextLock.unlock() }
 
 		if let previous = units[unitType], previous != trimmed {
-			Logger.error("Unit '\(unitType)' UID already set.")
-			return
+			throw ABSmartlyError("Unit '\(unitType)' UID already set.")
 		}
 
 		units[unitType] = trimmed
@@ -344,9 +362,9 @@ public final class Context {
 		return units
 	}
 
-	public func setUnits(_ units: [String: String]) {
+	public func setUnits(_ units: [String: String]) throws {
 		for (unitType, uid) in units {
-			setUnit(unitType: unitType, uid: uid)
+			try setUnit(unitType: unitType, uid: uid)
 		}
 	}
 
@@ -363,9 +381,12 @@ public final class Context {
 		return nil
 	}
 
-	public func setAttribute(name: String, value: JSON) {
-		guard checkNotClosed() else { return }
+	public func setAttribute(name: String, value: JSON) throws {
+		try checkNotClosed()
+		appendAttribute(name: name, value: value)
+	}
 
+	private func appendAttribute(name: String, value: JSON) {
 		contextLock.lock()
 		defer { contextLock.unlock() }
 
@@ -389,13 +410,15 @@ public final class Context {
 		return result;
 	}
 
-	public func setAttributes(_ attributes: [String: JSON]) {
+	public func setAttributes(_ attributes: [String: JSON]) throws {
 		for (name, value) in attributes {
-			setAttribute(name: name, value: value)
+			try setAttribute(name: name, value: value)
 		}
 	}
 
-	public func getTreatment(_ experimentName: String) -> Int {
+	public func getTreatment(_ experimentName: String) throws -> Int {
+		try checkReady(true)
+
 		let assignment = getAssignment(experimentName)
 		if !assignment.exposed.load(ordering: .acquiring) {
 			queueExposure(assignment)
@@ -437,18 +460,24 @@ public final class Context {
 		setTimeout()
 	}
 
-	public func peekTreatment(_ experimentName: String) -> Int {
+	public func peekTreatment(_ experimentName: String) throws -> Int {
+		try checkReady(true)
+
 		return getAssignment(experimentName).variant
 	}
 
-	public func getVariableKeys() -> [String: [String]] {
+	public func getVariableKeys() throws -> [String: [String]] {
+		try checkReady(true)
+
 		dataLock.lock()
 		defer { dataLock.unlock() }
 
 		return indexVariables.mapValues { $0.map({ $0.data.name }) }
 	}
 
-	public func getVariableValue(_ key: String, defaultValue: JSON? = nil) -> JSON? {
+	public func getVariableValue(_ key: String, defaultValue: JSON? = nil) throws -> JSON? {
+		try checkReady(true)
+
 		if let assignment = getVariableAssignment(key), let variables = assignment.variables {
 			if !assignment.exposed.load(ordering: .acquiring) {
 				queueExposure(assignment)
@@ -462,7 +491,9 @@ public final class Context {
 		return defaultValue
 	}
 
-	public func peekVariableValue(_ key: String, defaultValue: JSON? = nil) -> JSON? {
+	public func peekVariableValue(_ key: String, defaultValue: JSON? = nil) throws -> JSON? {
+		try checkReady(true)
+
 		if let assignment = getVariableAssignment(key), let variables = assignment.variables {
 			if let object = variables[key] {
 				return object
@@ -472,8 +503,8 @@ public final class Context {
 		return defaultValue
 	}
 
-	public func track(_ goalName: String, properties: [String: JSON]? = nil) {
-		guard checkNotClosed() else { return }
+	public func track(_ goalName: String, properties: [String: JSON]? = nil) throws {
+		try checkNotClosed()
 
 		let achievement: GoalAchievement = GoalAchievement(
 			goalName, achievedAt: clock.millis(), properties: properties)
@@ -502,13 +533,26 @@ public final class Context {
 	}
 
 	public func publish() -> Promise<Void> {
-		guard checkNotClosed() else { return Promise<Void>.value(()) }
+		do {
+			try checkReady(true)
+		} catch {
+			return Promise<Void>(error: error)
+		}
 
 		return flush()
 	}
 
 	public func refresh() -> Promise<Void> {
-		guard checkNotClosed() else { return Promise<Void>.value(()) }
+		do {
+			try checkReady(true)
+		} catch {
+			return Promise<Void>(error: error)
+		}
+
+		// A failed context stays failed: refresh is a no-op that succeeds (JS context.ts _refresh).
+		if isFailed() {
+			return Promise<Void>.value(())
+		}
 
 		promiseLock.lock()
 		defer { promiseLock.unlock() }
@@ -545,62 +589,48 @@ public final class Context {
 	}
 
 	public func close() -> Promise<Void> {
-		if !closed.load(ordering: .acquiring) {
-			if !closing.compareExchange(expected: false, desired: true, ordering: .acquiringAndReleasing).0 {
-				promiseLock.lock()
-				let existingPromise = closePromise
-				promiseLock.unlock()
-				if let existingPromise = existingPromise {
-					return existingPromise
-				}
-				return Promise<Void>.value(())
-			}
-
-			let newClosePromise = Promise<Void> { [weak self] seal in
-				guard let self = self else {
-					seal.fulfill(())
-					return
-				}
-
-				self.clearRefreshTimer()
-
-				// Wait for publishes already in flight (a failed one re-queues its events)
-				// before deciding whether a final flush is needed.
-				self.awaitInFlightPublishes().done(on: DispatchQueue.global()) { [weak self] in
-					guard let self = self else { return }
-					if self.pendingCount.load(ordering: .acquiring) > 0 {
-						self.flush().done(on: DispatchQueue.global()) { [weak self] in
-							guard let self = self else { return }
-							self.closed.store(true, ordering: .releasing)
-							self.closing.store(false, ordering: .releasing)
-							self.logEvent(event: .close)
-							seal.fulfill(())
-						}.catch(on: DispatchQueue.global()) { [weak self] error in
-							guard let self = self else { return }
-							// Stay open so the requeued events can be retried via publish()/close().
-							self.closing.store(false, ordering: .releasing)
-							seal.reject(error)
-						}
-					} else {
-						self.closed.store(true, ordering: .releasing)
-						self.closing.store(false, ordering: .releasing)
-						self.logEvent(event: .close)
-						seal.fulfill(())
-					}
-				}
-			}
-			promiseLock.lock()
-			closePromise = newClosePromise
-			promiseLock.unlock()
-		}
-
+		// Claim the close and publish its promise in one critical section, so a concurrent
+		// caller never sees `closing` set without the promise it should join.
 		promiseLock.lock()
-		let currentClosePromise = closePromise
-		promiseLock.unlock()
-		if let closePromise = currentClosePromise {
-			return closePromise
+		if closed.load(ordering: .acquiring) || closing.load(ordering: .acquiring) {
+			let existingPromise = closePromise
+			promiseLock.unlock()
+			return existingPromise ?? Promise<Void>.value(())
 		}
-		return Promise<Void>.value(())
+		closing.store(true, ordering: .releasing)
+		let (newClosePromise, seal) = Promise<Void>.pending()
+		closePromise = newClosePromise
+		promiseLock.unlock()
+
+		clearRefreshTimer()
+
+		// Wait for publishes already in flight (a failed one re-queues its events)
+		// before deciding whether a final flush is needed.
+		awaitInFlightPublishes().done(on: DispatchQueue.global()) { [weak self] in
+			guard let self = self else {
+				seal.fulfill(())
+				return
+			}
+			if self.pendingCount.load(ordering: .acquiring) > 0 {
+				self.flush().done(on: DispatchQueue.global()) { [weak self] in
+					self?.closed.store(true, ordering: .releasing)
+					self?.closing.store(false, ordering: .releasing)
+					self?.logEvent(event: .finalize)
+					seal.fulfill(())
+				}.catch(on: DispatchQueue.global()) { [weak self] error in
+					// Stay open so the requeued events can be retried via publish()/close().
+					self?.closing.store(false, ordering: .releasing)
+					seal.reject(error)
+				}
+			} else {
+				self.closed.store(true, ordering: .releasing)
+				self.closing.store(false, ordering: .releasing)
+				self.logEvent(event: .finalize)
+				seal.fulfill(())
+			}
+		}
+
+		return newClosePromise
 	}
 
 	private func awaitInFlightPublishes() -> Promise<Void> {
@@ -718,27 +748,22 @@ public final class Context {
 		return Promise<Void>.value(())
 	}
 
-	private func checkReady(_ expectNotClosed: Bool) -> Bool {
+	private func checkReady(_ expectNotClosed: Bool) throws {
 		if !isReady() {
-			Logger.error("ABsmartly Context is not yet ready.")
-			return false
+			throw ABSmartlyError("ABsmartly Context is not yet ready.")
 		}
 		if expectNotClosed {
-			return checkNotClosed()
+			try checkNotClosed()
 		}
-		return true
 	}
 
-	private func checkNotClosed() -> Bool {
+	private func checkNotClosed() throws {
 		if isClosed() {
-			Logger.error("ABsmartly Context is finalized.")
-			return false
+			throw ABSmartlyError("ABsmartly Context is finalized.")
 		}
 		if isClosing() {
-			Logger.error("ABsmartly Context is finalizing.")
-			return false
+			throw ABSmartlyError("ABsmartly Context is finalizing.")
 		}
-		return true
 	}
 
 	private func buildAttributeMap() -> [String: JSON] {
@@ -761,7 +786,7 @@ public final class Context {
 				let attrs = buildAttributeMap()
 
 				let result = matcher.evaluate(audience, attrs)
-				let newAudienceMismatch = result != nil ? !result! : false
+				let newAudienceMismatch = result != nil ? !result! : assignment.audienceMismatch
 
 				if newAudienceMismatch != assignment.audienceMismatch {
 					return false
@@ -960,6 +985,10 @@ public final class Context {
 	private func setRefreshTimer() {
 		refreshTimerLock.lock()
 		defer { refreshTimerLock.unlock() }
+		// A refresh that lands after close() must not re-arm the timer close() cleared.
+		if isClosed() || isClosing() {
+			return
+		}
 		if refreshInterval > 0 && refreshTimer == nil {
 			refreshTimer = scheduler.scheduleWithFixedDelay(
 				after: refreshInterval, repeating: refreshInterval,
@@ -1030,8 +1059,7 @@ public final class Context {
 								value.value = nil
 							}
 						} else if fieldType.starts(with: "boolean") {
-							let lowercased = customValue.lowercased()
-							value.value = lowercased == "true" || lowercased == "1"
+							value.value = customValue == "true"
 						} else if fieldType.starts(with: "number") {
 							if let intVal = Int(customValue) {
 								value.value = intVal
@@ -1060,20 +1088,6 @@ public final class Context {
 		self.customFieldValues = customFieldValues
 		dataLock.unlock()
 
-		contextLock.lock()
-		defer { contextLock.unlock() }
-		for (experimentName, assignment) in assignmentCache {
-			if assignment.overridden {
-				continue
-			}
-			if let experiment = index[experimentName] {
-				if !experimentMatches(experiment.data, assignment) {
-					assignment.exposed.store(false, ordering: .releasing)
-				}
-			} else {
-				assignment.exposed.store(false, ordering: .releasing)
-			}
-		}
 		ready.store(true, ordering: .releasing)
 
 		setRefreshTimer()
@@ -1085,7 +1099,8 @@ public final class Context {
 
 		index = [:]
 		indexVariables = [:]
-		data = nil
+		customFieldValues = [:]
+		data = ContextData()
 		failedError = error
 		failed.store(true, ordering: .releasing)
 	}
