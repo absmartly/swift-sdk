@@ -4,7 +4,7 @@ import XCTest
 
 final class ContextDataDeserializerTest: XCTestCase {
 	func testContextDataDeserialization() throws {
-		let path = Bundle.module.path(forResource: "context", ofType: "json", inDirectory: "Resources")!
+		let path = TestResources.path(forResource: "context", ofType: "json")
 		let data = try Foundation.Data(contentsOf: URL(fileURLWithPath: path), options: .mappedIfSafe)
 		let contextData = try JSONDecoder().decode(ContextData.self, from: data)
 

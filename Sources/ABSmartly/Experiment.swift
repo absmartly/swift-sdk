@@ -19,37 +19,38 @@ public struct Experiment: Codable {
 	public let customFieldValues: [CustomFieldValue]?
 
 	public init(from decoder: Decoder) throws {
-		guard let container = try? decoder.container(keyedBy: CodingKeys.self) else {
-			throw DecodingError.dataCorrupted(
-				DecodingError.Context(codingPath: [], debugDescription: "Experiment couldn't be decoded from this data")
-			)
-		}
+		let container = try decoder.container(keyedBy: CodingKeys.self)
 
-		id = (try? container.decodeIfPresent(Int.self, forKey: .id)) ?? 0
+		name = try container.decode(String.self, forKey: .name)
 
 		do {
-			name = try container.decode(String.self, forKey: .name)
-		} catch {
+			id = try container.decodeIfPresent(Int.self, forKey: .id) ?? 0
+			unitType = try container.decodeIfPresent(String.self, forKey: .unitType)
+			iteration = try container.decodeIfPresent(Int.self, forKey: .iteration) ?? 0
+			seedHi = try container.decodeIfPresent(Int.self, forKey: .seedHi) ?? 0
+			seedLo = try container.decodeIfPresent(Int.self, forKey: .seedLo) ?? 0
+
+			split = try container.decodeIfPresent([Double].self, forKey: .split) ?? []
+			trafficSeedHi = try container.decodeIfPresent(Int.self, forKey: .trafficSeedHi) ?? 0
+			trafficSeedLo = try container.decodeIfPresent(Int.self, forKey: .trafficSeedLo) ?? 0
+
+			trafficSplit = try container.decodeIfPresent([Double].self, forKey: .trafficSplit) ?? []
+			fullOnVariant = try container.decodeIfPresent(Int.self, forKey: .fullOnVariant) ?? 0
+			audienceStrict = try container.decodeIfPresent(Bool.self, forKey: .audienceStrict) ?? false
+			audience = try container.decodeIfPresent(String.self, forKey: .audience)
+
+			applications = try container.decodeIfPresent([Application].self, forKey: .applications)
+			variants = try container.decode([ExperimentVariant].self, forKey: .variants)
+			customFieldValues = try container.decodeIfPresent([CustomFieldValue].self, forKey: .customFieldValues)
+		} catch let error as DecodingError {
 			throw error
+		} catch {
+			throw DecodingError.dataCorrupted(
+				DecodingError.Context(
+					codingPath: decoder.codingPath,
+					debugDescription: "Failed to decode Experiment '\(name)': \(error.localizedDescription)",
+					underlyingError: error))
 		}
-
-		unitType = (try? container.decodeIfPresent(String.self, forKey: .unitType)) ?? nil
-		iteration = (try? container.decodeIfPresent(Int.self, forKey: .iteration)) ?? 0
-		seedHi = (try? container.decodeIfPresent(Int.self, forKey: .seedHi)) ?? 0
-		seedLo = (try? container.decodeIfPresent(Int.self, forKey: .seedLo)) ?? 0
-
-		split = (try? container.decodeIfPresent([Double].self, forKey: .split)) ?? []
-		trafficSeedHi = (try? container.decodeIfPresent(Int.self, forKey: .trafficSeedHi)) ?? 0
-		trafficSeedLo = (try? container.decodeIfPresent(Int.self, forKey: .trafficSeedLo)) ?? 0
-
-		trafficSplit = (try? container.decodeIfPresent([Double].self, forKey: .trafficSplit)) ?? []
-		fullOnVariant = (try? container.decodeIfPresent(Int.self, forKey: .fullOnVariant)) ?? 0
-		audienceStrict = (try? container.decodeIfPresent(Bool.self, forKey: .audienceStrict)) ?? false
-		audience = (try? container.decodeIfPresent(String.self, forKey: .audience))
-
-		applications = (try? container.decode([Application].self, forKey: .applications)) ?? []
-		variants = (try? container.decode([ExperimentVariant].self, forKey: .variants)) ?? []
-		customFieldValues = (try? container.decode([CustomFieldValue].self, forKey: .customFieldValues)) ?? []
 	}
 }
 

@@ -163,6 +163,7 @@ class ContextEventLoggerMock: ContextEventLogger {
 
 	//MARK: - handleEvent
 
+	private let lock = NSLock()
 	var handleEventContextEventCallsCount = 0
 	var handleEventContextEventCalled: Bool {
 		return handleEventContextEventCallsCount > 0
@@ -172,16 +173,20 @@ class ContextEventLoggerMock: ContextEventLogger {
 	var handleEventContextEventClosure: ((Context, ContextEventLoggerEvent) -> Void)?
 
 	func handleEvent(context: Context, event: ContextEventLoggerEvent) {
+		lock.lock()
 		handleEventContextEventCallsCount += 1
 		handleEventContextEventReceivedArguments = (context: context, event: event)
 		handleEventContextEventReceivedInvocations.append((context: context, event: event))
+		lock.unlock()
 		handleEventContextEventClosure?(context, event)
 	}
 
 	func clearInvocations() {
+		lock.lock()
 		handleEventContextEventCallsCount = 0
 		handleEventContextEventReceivedArguments = nil
 		handleEventContextEventReceivedInvocations = []
+		lock.unlock()
 	}
 }
 
