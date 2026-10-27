@@ -2816,4 +2816,38 @@ final class ContextTest: XCTestCase {
 		XCTAssertEqual("YWJj", Hashing.base64UrlNoPadding(Data("abc".utf8)))
 		XCTAssertEqual("Pz8-", Hashing.base64UrlNoPadding(Data([0x3f, 0x3f, 0x3e])))
 	}
+
+	func testNumericUnitStringMatchesJavaScriptToFixed() throws {
+		XCTAssertEqual("-0", Hashing.unitString(-0.1))
+		XCTAssertEqual("0", Hashing.unitString(-0.0))
+		XCTAssertEqual("1e+21", Hashing.unitString(1e21))
+		XCTAssertEqual("-1.5e+22", Hashing.unitString(-1.5e22))
+		XCTAssertEqual("3", Hashing.unitString(2.5))
+		XCTAssertEqual("-3", Hashing.unitString(-2.5))
+
+		let contextConfig: ContextConfig = getContextConfig(withUnits: false)
+		contextConfig.setUnit(unitType: "neg_id", uid: -0.1)
+		contextConfig.setUnit(unitType: "big_id", uid: 1e21)
+		let context = try createContext(config: contextConfig)
+		_ = try context.getTreatment("exp_test_ab")
+		handler.publishEventReturnValue = Promise<Void>.value(())
+		let expectation = XCTestExpectation()
+		_ = context.publish().done { expectation.fulfill() }
+		wait(for: [expectation], timeout: 1.0)
+		let published = Dictionary(uniqueKeysWithValues: (handler.publishEventReceivedEvent?.units ?? []).map { ($0.type, $0.uid) })
+		XCTAssertEqual(Hashing.hash("-0"), published["neg_id"])
+		XCTAssertEqual(Hashing.hash("1e+21"), published["big_id"])
+	}
+
+	func testGoalTrackedInsideSynchronousReadyCallbackIsScheduled() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		contextConfig.publishDelay = 0.1
+		logger.handleEventContextEventClosure = { ctx, event in
+			if case .ready = event { try? ctx.track("goal_in_ready", properties: nil) }
+		}
+		let context = try createContext(config: contextConfig)
+
+		XCTAssertEqual(1, context.getPendingCount())
+		XCTAssertEqual(1, scheduler.scheduleAfterExecuteCallsCount)
+	}
 }

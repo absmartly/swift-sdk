@@ -114,6 +114,11 @@ public final class Context {
 				applyData(data)
 				logEvent(event: .ready(data: data))
 				markReady()
+				// Goals tracked from inside the ready callback were queued before the
+				// context was ready, so their publish timer could not start then.
+				if pendingCount.load(ordering: .acquiring) > 0 {
+					setTimeout()
+				}
 			} else if let error = promise.error {
 				applyDataFailed(error)
 				logError(error: error)

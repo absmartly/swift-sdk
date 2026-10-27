@@ -59,12 +59,25 @@ public class Hashing {
 		return Buffers.encodeUTF8(value)
 	}
 
+	/// JavaScript's `Number.prototype.toFixed(0)`: the sign is kept for any negative input
+	/// (`-0.1` gives "-0"), halves round away from zero, and magnitudes of 1e21 or more use
+	/// the exponent form of `String(number)` ("1e+21").
 	static func unitString(_ value: Double) -> String {
-		let rounded = value.rounded(.toNearestOrAwayFromZero)
-		if let exact = Int64(exactly: rounded) {
-			return String(exact)
+		if value.isNaN { return "NaN" }
+		let negative = value < 0
+		let magnitude = Swift.abs(value)
+		let body: String
+		if magnitude >= 1e21 {
+			body = magnitude.isInfinite ? "Infinity" : jsExponent(magnitude)
+		} else {
+			body = String(format: "%.0f", magnitude.rounded(.toNearestOrAwayFromZero))
 		}
-		return String(format: "%.0f", rounded)
+		return negative ? "-" + body : body
+	}
+
+	private static func jsExponent(_ magnitude: Double) -> String {
+		// Swift prints large doubles as "1e+21" / "1.5e+22", the same shortest form as JS.
+		return "\(magnitude)"
 	}
 
 	static func hashBytes(_ unit: String) -> [UInt8] {
