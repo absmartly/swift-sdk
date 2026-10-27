@@ -2869,4 +2869,37 @@ final class ContextTest: XCTestCase {
 		XCTAssertEqual(1, handler.publishEventCallsCount)
 		XCTAssertEqual("goal_on_teardown", handler.publishEventReceivedEvent?.goals.first?.name)
 	}
+
+	private func contextWithoutLogger(_ config: ContextConfig, _ data: Promise<ContextData>) -> Context {
+		return Context(
+			config: config, clock: clock, scheduler: scheduler, handler: handler, provider: provider, logger: nil,
+			parser: parser, matcher: AudienceMatcher(), promise: data)
+	}
+
+	func testWaitUntilReadySettlesAfterOwnerReleasesContext() throws {
+		let (promise, resolver) = Promise<ContextData>.pending()
+		var context: Context? = contextWithoutLogger(getContextConfig(withUnits: true), promise)
+		let ready = context!.waitUntilReady()
+		context = nil
+
+		let settled = XCTestExpectation()
+		var readyContext: Context?
+		_ = ready.done { readyContext = $0; settled.fulfill() }
+		resolver.fulfill(try getContextData())
+		wait(for: [settled], timeout: 1.0)
+		XCTAssertEqual(true, readyContext?.isReady())
+	}
+
+	func testRefreshSettlesAfterOwnerReleasesContext() throws {
+		var context: Context? = contextWithoutLogger(getContextConfig(withUnits: true), Promise.value(try getContextData()))
+		let (refreshData, refreshResolver) = Promise<ContextData>.pending()
+		provider.getContextDataReturnValue = refreshData
+		let refresh = context!.refresh()
+		context = nil
+
+		let settled = XCTestExpectation()
+		_ = refresh.done { settled.fulfill() }
+		refreshResolver.fulfill(try getContextData())
+		wait(for: [settled], timeout: 1.0)
+	}
 }

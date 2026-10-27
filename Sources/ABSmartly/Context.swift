@@ -131,8 +131,9 @@ public final class Context {
 					return
 				}
 
-					promise.done(on: DispatchQueue.global()) { [weak self] data in
-						guard let self = self else { return }
+					// Completion handlers hold the context strongly so a caller that keeps only
+					// waitUntilReady()'s promise still gets it settled.
+					promise.done(on: DispatchQueue.global()) { [self] data in
 						// Like the JS SDK, the ready event is logged before the context
 						// reports ready, so anyone who observes readiness also sees the event.
 						self.applyData(data)
@@ -146,8 +147,7 @@ public final class Context {
 							self.setTimeout()
 						}
 						seal.fulfill(())
-					}.catch(on: DispatchQueue.global()) { [weak self] error in
-						guard let self = self else { return }
+					}.catch(on: DispatchQueue.global()) { [self] error in
 						self.applyDataFailed(error)
 						Logger.error("Context initialization failed: \(error.localizedDescription)")
 						self.logError(error: error)
@@ -207,11 +207,9 @@ public final class Context {
 			if self.isReady() || currentReadyPromise == nil {
 				seal.fulfill(self)
 			} else if let ready = currentReadyPromise {
-				_ = ready.done(on: DispatchQueue.global()) { [weak self] in
-					guard let self = self else { return }
+				_ = ready.done(on: DispatchQueue.global()) { [self] in
 					seal.fulfill(self)
-				}.catch(on: DispatchQueue.global()) { [weak self] _ in
-					guard let self = self else { return }
+				}.catch(on: DispatchQueue.global()) { [self] _ in
 					seal.fulfill(self)
 				}
 			}
@@ -626,14 +624,13 @@ public final class Context {
 				return
 			}
 
-			self.provider.getContextData().done(on: DispatchQueue.global()) { [weak self] data in
-				guard let self = self else { return }
+			// Held strongly until the fetch settles, so the returned promise always settles.
+			self.provider.getContextData().done(on: DispatchQueue.global()) { [self] data in
 				self.setData(data)
 				self.refreshing.store(false, ordering: .releasing)
 				self.logEvent(event: .refresh(data: data))
 				seal.fulfill(())
-			}.catch(on: DispatchQueue.global()) { [weak self] error in
-				guard let self = self else { return }
+			}.catch(on: DispatchQueue.global()) { [self] error in
 				self.refreshing.store(false, ordering: .releasing)
 
 				Logger.error("Context refresh failed: \(error.localizedDescription)")
