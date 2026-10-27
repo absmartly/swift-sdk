@@ -37,6 +37,19 @@ final class MatchOperatorTest: OperatorTest {
 		XCTAssertEqual(JSON.null, result)
 	}
 
+	func testRejectsOtherNestedQuantifierForms() {
+		for pattern in ["(a*)*b", "((a+)b)+", "(a{1,})+", "(a+){2,}", "(?:x|a+)*"] {
+			XCTAssertEqual(JSON.null, matchOperator.evaluate(evaluator, ["test", pattern]), pattern)
+		}
+	}
+
+	func testAcceptsSequentialQuantifiers() {
+		XCTAssertEqual(JSON(true), matchOperator.evaluate(evaluator, ["ABC-123", "^([A-Z]+)-[0-9]+$"]))
+		XCTAssertEqual(JSON(true), matchOperator.evaluate(evaluator, ["ab12", "(a|b)+[0-9]{2}"]))
+		XCTAssertEqual(JSON(true), matchOperator.evaluate(evaluator, ["a+b", "(a\\+)b+"]))
+		XCTAssertEqual(JSON(true), matchOperator.evaluate(evaluator, ["aa", "([a+])+"]))
+	}
+
 	func testAcceptsNormalPatternWithinLimits() {
 		let pattern = String(repeating: "a", count: 999)
 		let input = String(repeating: "a", count: 9999)
