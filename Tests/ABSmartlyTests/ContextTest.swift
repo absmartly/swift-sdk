@@ -2932,4 +2932,13 @@ final class ContextTest: XCTestCase {
 		XCTAssertEqual("goal-1", goals.first?.name)
 		XCTAssertEqual("goal-1001", goals.last?.name)
 	}
+
+	func testCustomAssignmentAllowedAfterFinalize() throws {
+		let context = try createContext(config: getContextConfig(withUnits: true))
+		let closed = XCTestExpectation()
+		_ = context.close().done { closed.fulfill() }
+		wait(for: [closed], timeout: 1.0)
+		XCTAssertNoThrow(try context.setCustomAssignment(experimentName: "exp_test_ab", variant: 1))
+		XCTAssertEqual(1, context.getCustomAssignment(experimentName: "exp_test_ab"))
+	}
 }

@@ -315,8 +315,6 @@ public final class Context {
 	}
 
 	public func setCustomAssignment(experimentName: String, variant: Int) throws {
-		try checkNotClosed()
-
 		_ = putLocked(lock: contextLock, dict: &cassignments, key: experimentName, value: variant)
 	}
 
