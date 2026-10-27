@@ -665,20 +665,18 @@ public final class Context {
 
 		// Wait for publishes already in flight (a failed one re-queues its events)
 		// before deciding whether a final flush is needed.
-		awaitInFlightPublishes().done(on: DispatchQueue.global()) { [weak self] in
-			guard let self = self else {
-				seal.fulfill(())
-				return
-			}
+		// The closures hold the context strongly: once close() starts, the final flush must
+		// complete even if the caller drops its last reference (e.g. close() from deinit).
+		awaitInFlightPublishes().done(on: DispatchQueue.global()) { [self] in
 			if self.pendingCount.load(ordering: .acquiring) > 0 {
-				self.flush().done(on: DispatchQueue.global()) { [weak self] in
-					self?.closed.store(true, ordering: .releasing)
-					self?.closing.store(false, ordering: .releasing)
-					self?.logEvent(event: .finalize)
+				self.flush().done(on: DispatchQueue.global()) { [self] in
+					self.closed.store(true, ordering: .releasing)
+					self.closing.store(false, ordering: .releasing)
+					self.logEvent(event: .finalize)
 					seal.fulfill(())
-				}.catch(on: DispatchQueue.global()) { [weak self] error in
+				}.catch(on: DispatchQueue.global()) { [self] error in
 					// Stay open so the requeued events can be retried via publish()/close().
-					self?.closing.store(false, ordering: .releasing)
+					self.closing.store(false, ordering: .releasing)
 					seal.reject(error)
 				}
 			} else {
@@ -769,11 +767,10 @@ public final class Context {
 						localAchievements,
 						localAttributes)
 
-					let publishPromise = handler.publish(event: event).done(on: DispatchQueue.global()) { [weak self] in
-						guard let self = self else { return }
+					// Held strongly until the publish settles, so a failure is never reported as success.
+					let publishPromise = handler.publish(event: event).done(on: DispatchQueue.global()) { [self] in
 						self.logEvent(event: .publish(event: event))
-					}.recover(on: DispatchQueue.global()) { [weak self] error -> Promise<Void> in
-						guard let self = self else { return Promise.value(()) }
+					}.recover(on: DispatchQueue.global()) { [self] error -> Promise<Void> in
 						self.eventLock.lock()
 						self.exposures.insert(contentsOf: localExposures, at: 0)
 						self.achievements.insert(contentsOf: localAchievements, at: 0)

@@ -2850,4 +2850,23 @@ final class ContextTest: XCTestCase {
 		XCTAssertEqual(1, context.getPendingCount())
 		XCTAssertEqual(1, scheduler.scheduleAfterExecuteCallsCount)
 	}
+
+	func testCloseFlushesQueuedEventsAfterOwnerReleasesContext() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		contextConfig.publishDelay = -1
+		// No event logger: the logger mock would keep the context alive.
+		var context: Context? = Context(
+			config: contextConfig, clock: clock, scheduler: scheduler, handler: handler, provider: provider, logger: nil,
+			parser: parser, matcher: AudienceMatcher(), promise: Promise<ContextData>.value(try getContextData()))
+		try context?.track("goal_on_teardown", properties: nil)
+		handler.publishEventReturnValue = Promise<Void>.value(())
+
+		let closed = XCTestExpectation()
+		_ = context?.close().done { closed.fulfill() }
+		context = nil
+
+		wait(for: [closed], timeout: 1.0)
+		XCTAssertEqual(1, handler.publishEventCallsCount)
+		XCTAssertEqual("goal_on_teardown", handler.publishEventReceivedEvent?.goals.first?.name)
+	}
 }
