@@ -448,11 +448,22 @@ public final class Context {
 		defer { contextLock.unlock() }
 
 		if attributes.count >= maxAttributes {
-			attributes.removeFirst(maxAttributes / 4)
+			compactAttributes()
 		}
 
 		attributes.append(Attribute(name, value: value, setAt: clock.millis()))
 		attrsSeq += 1
+	}
+
+	// Bounds the history by dropping entries a later entry with the same name has
+	// replaced. The latest value of every name is always kept.
+	private func compactAttributes() {
+		var seen = Set<String>()
+		var kept: [Attribute] = []
+		for attribute in attributes.reversed() where seen.insert(attribute.name).inserted {
+			kept.append(attribute)
+		}
+		attributes = kept.reversed()
 	}
 
 	public func getAttributes() -> [String: JSON] {

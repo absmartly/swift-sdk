@@ -2902,4 +2902,15 @@ final class ContextTest: XCTestCase {
 		refreshResolver.fulfill(try getContextData())
 		wait(for: [settled], timeout: 1.0)
 	}
+
+	func testAttributeHistoryBoundKeepsLatestValueOfEveryName() throws {
+		let context = try createContext(config: getContextConfig(withUnits: true))
+		try context.setAttribute(name: "returning", value: true)
+		for i in 0..<1200 {
+			try context.setAttribute(name: "counter", value: JSON(i))
+		}
+		XCTAssertEqual(JSON(true), context.getAttribute(name: "returning"))
+		XCTAssertEqual(JSON(1199), context.getAttribute(name: "counter"))
+		XCTAssertEqual(["returning": JSON(true), "counter": JSON(1199)], context.getAttributes())
+	}
 }
