@@ -43,8 +43,8 @@ final class MatchOperator: BinaryOperator {
 		return JSON.null
 	}
 
-	/// True when a group that itself contains a repeating quantifier (`+`, `*`, `{n,}`)
-	/// is repeated again, e.g. `(a+)+` or `(a*){2,}`. Quantifiers on separate sequential
+	/// True when a group that itself contains an unbounded quantifier (`+`, `*`, `{n,}`)
+	/// is repeated again without bound, e.g. `(a+)+` or `(a*){2,}`. Quantifiers on separate sequential
 	/// parts, like `^([A-Z]+)-[0-9]+$`, are safe and not flagged.
 	private func hasNestedQuantifiers(_ pattern: String) -> Bool {
 		let chars = Array(pattern)
@@ -65,11 +65,9 @@ final class MatchOperator: BinaryOperator {
 					j += 1
 				}
 				guard j < chars.count else { return false }
-				let parts = body.split(separator: ",", omittingEmptySubsequences: false)
-				if parts.count == 2 {
-					return parts[1].isEmpty || (Int(parts[1]) ?? 0) > 1
-				}
-				return (Int(body) ?? 0) > 1
+				// Only an open upper bound (`{n,}`) repeats without limit; finite bounds
+				// such as `{2}` or `{1,3}` cannot backtrack catastrophically.
+				return body.hasSuffix(",")
 			default:
 				return false
 			}

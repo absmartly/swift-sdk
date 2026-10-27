@@ -48,6 +48,9 @@ final class MatchOperatorTest: OperatorTest {
 		XCTAssertEqual(JSON(true), matchOperator.evaluate(evaluator, ["ab12", "(a|b)+[0-9]{2}"]))
 		XCTAssertEqual(JSON(true), matchOperator.evaluate(evaluator, ["a+b", "(a\\+)b+"]))
 		XCTAssertEqual(JSON(true), matchOperator.evaluate(evaluator, ["aa", "([a+])+"]))
+		XCTAssertEqual(JSON(true), matchOperator.evaluate(evaluator, ["1234", "^([0-9]{2}){2}$"]))
+		XCTAssertEqual(JSON(true), matchOperator.evaluate(evaluator, ["192.168.1.1", "^([0-9]{1,3}\\.){3}[0-9]{1,3}$"]))
+		XCTAssertEqual(JSON(true), matchOperator.evaluate(evaluator, ["abab", "^(ab+){1,3}$"]))
 	}
 
 	func testAcceptsNormalPatternWithinLimits() {
