@@ -60,8 +60,6 @@ public final class Context {
 	private var nextPublishId: UInt = 0
 	private var exposures: [Exposure] = []
 	private var achievements: [GoalAchievement] = []
-	private let maxExposures = 500
-	private let maxAchievements = 500
 
 	private var publishDelay: TimeInterval = 0
 	private var refreshInterval: TimeInterval = 0
@@ -513,12 +511,6 @@ public final class Context {
 			eventLock.lock()
 			defer { eventLock.unlock() }
 
-			if exposures.count >= maxExposures {
-				let removeCount = maxExposures / 4
-				exposures.removeFirst(removeCount)
-				pendingCount.wrappingDecrement(by: UInt(removeCount), ordering: .releasing)
-			}
-
 			exposures.append(exposure)
 			pendingCount.wrappingIncrement(by: 1, ordering: .releasing)
 		}
@@ -580,12 +572,6 @@ public final class Context {
 		do {
 			eventLock.lock()
 			defer { eventLock.unlock() }
-
-			if achievements.count >= maxAchievements {
-				let removeCount = maxAchievements / 4
-				achievements.removeFirst(removeCount)
-				pendingCount.wrappingDecrement(by: UInt(removeCount), ordering: .releasing)
-			}
 
 			achievements.append(achievement)
 			pendingCount.wrappingIncrement(by: 1, ordering: .releasing)

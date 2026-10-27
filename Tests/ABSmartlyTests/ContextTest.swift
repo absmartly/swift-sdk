@@ -2913,4 +2913,23 @@ final class ContextTest: XCTestCase {
 		XCTAssertEqual(JSON(1199), context.getAttribute(name: "counter"))
 		XCTAssertEqual(["returning": JSON(true), "counter": JSON(1199)], context.getAttributes())
 	}
+
+	func testQueuedGoalsAreNeverDroppedBeforePublish() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		contextConfig.publishDelay = -1
+		let context = try createContext(config: contextConfig)
+		for i in 1...1001 {
+			try context.track("goal-\(i)", properties: nil)
+		}
+		XCTAssertEqual(1001, context.getPendingCount())
+
+		handler.publishEventReturnValue = Promise<Void>.value(())
+		let published = XCTestExpectation()
+		_ = context.publish().done { published.fulfill() }
+		wait(for: [published], timeout: 1.0)
+		let goals = handler.publishEventReceivedEvent?.goals ?? []
+		XCTAssertEqual(1001, goals.count)
+		XCTAssertEqual("goal-1", goals.first?.name)
+		XCTAssertEqual("goal-1001", goals.last?.name)
+	}
 }
