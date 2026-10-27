@@ -1,7 +1,10 @@
 import Foundation
 
 public class ContextConfig {
-	private(set) var units: [String: String] = [:]
+	private(set) var unitValues: [String: JSON] = [:]
+	var units: [String: String] {
+		return unitValues.mapValues { $0.string ?? $0.stringValue }
+	}
 	private(set) var attributes: [String: JSON] = [:]
 	private(set) var overrides: [String: Int] = [:]
 	private(set) var cassignments: [String: Int] = [:]
@@ -13,7 +16,23 @@ public class ContextConfig {
 	}
 
 	public func setUnit(unitType: String, uid: String) {
-		units[unitType] = uid
+		unitValues[unitType] = JSON(uid)
+	}
+
+	/// Sets a unit whose UID is a number. Like the JavaScript SDK, the number is kept as a
+	/// number and hashed as its value rounded to an integer (`toFixed(0)`).
+	public func setUnit(unitType: String, uid: Int) {
+		unitValues[unitType] = JSON(uid)
+	}
+
+	public func setUnit(unitType: String, uid: Double) {
+		unitValues[unitType] = JSON(uid)
+	}
+
+	/// Sets a unit from a JSON value (string or number). Other values are rejected when the
+	/// context is created, which logs an `error` event for them.
+	public func setUnit(unitType: String, value: JSON) {
+		unitValues[unitType] = value
 	}
 
 	public func setUnits(units: [String: String]) {

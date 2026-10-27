@@ -46,7 +46,9 @@ public final class Context {
 	private var assignmentCache: [String: Assignment] = [:]
 
 	private let contextLock = NSRecursiveLock()
+	// The string each unit is hashed from, and the UID as it was given (string or number).
 	private var units: [String: String] = [:]
+	private var unitValues: [String: JSON] = [:]
 	private var attributes: [Attribute] = []
 	private let maxAttributes = 500
 	private var overrides: [String: Int] = [:]
@@ -97,10 +99,10 @@ public final class Context {
 			appendAttribute(name: name, value: value)
 		}
 
-		units.reserveCapacity(config.units.count)
-		for (unitType, uid) in config.units {
+		units.reserveCapacity(config.unitValues.count)
+		for (unitType, uid) in config.unitValues {
 			do {
-				try putUnit(unitType: unitType, uid: uid)
+				try putUnit(unitType: unitType, value: uid)
 			} catch {
 				Logger.error(error.localizedDescription)
 				logError(error: error)
@@ -109,13 +111,13 @@ public final class Context {
 
 		if promise.isResolved {
 			if let data = promise.value {
-				setData(data)
-
+				applyData(data)
 				logEvent(event: .ready(data: data))
+				markReady()
 			} else if let error = promise.error {
-				setDataFailed(error)
-
+				applyDataFailed(error)
 				logError(error: error)
+				failed.store(true, ordering: .releasing)
 			}
 		} else {
 			readyPromise = Promise<Void> { [weak self] seal in
@@ -126,25 +128,28 @@ public final class Context {
 
 					promise.done(on: DispatchQueue.global()) { [weak self] data in
 						guard let self = self else { return }
-						self.setData(data)
+						// Like the JS SDK, the ready event is logged before the context
+						// reports ready, so anyone who observes readiness also sees the event.
+						self.applyData(data)
+						self.logEvent(event: .ready(data: data))
+						self.markReady()
 						self.promiseLock.lock()
 						self.readyPromise = nil
 						self.promiseLock.unlock()
 
-						self.logEvent(event: .ready(data: data))
 						if self.pendingCount.load(ordering: .acquiring) > 0 {
 							self.setTimeout()
 						}
 						seal.fulfill(())
 					}.catch(on: DispatchQueue.global()) { [weak self] error in
 						guard let self = self else { return }
-						self.setDataFailed(error)
+						self.applyDataFailed(error)
+						Logger.error("Context initialization failed: \(error.localizedDescription)")
+						self.logError(error: error)
+						self.failed.store(true, ordering: .releasing)
 						self.promiseLock.lock()
 						self.readyPromise = nil
 						self.promiseLock.unlock()
-						Logger.error("Context initialization failed: \(error.localizedDescription)")
-
-						self.logError(error: error)
 						seal.reject(error)
 					}
 				}
@@ -325,41 +330,90 @@ public final class Context {
 	}
 
 	public func getUnit(unitType: String) -> String? {
-		return getLocked(lock: contextLock, dict: units, key: unitType)
+		return getLocked(lock: contextLock, dict: unitValues, key: unitType).map { $0.string ?? $0.stringValue }
+	}
+
+	/// The UID as it was set: a JSON string or a JSON number.
+	public func getUnitValue(unitType: String) -> JSON? {
+		return getLocked(lock: contextLock, dict: unitValues, key: unitType)
+	}
+
+	public func getUnitValues() -> [String: JSON] {
+		contextLock.lock()
+		defer { contextLock.unlock() }
+		return unitValues
 	}
 
 	private static let maxUnitUIDLength = 256
 
 	public func setUnit(unitType: String, uid: String) throws {
 		try checkNotClosed()
-		try putUnit(unitType: unitType, uid: uid)
+		try putUnit(unitType: unitType, value: JSON(uid))
 	}
 
-	private func putUnit(unitType: String, uid: String) throws {
-		let trimmed = uid.trimmingCharacters(in: .whitespacesAndNewlines)
-		guard !trimmed.isEmpty else {
-			throw ABSmartlyError("Unit '\(unitType)' UID must not be blank.")
-		}
+	/// Sets a unit whose UID is a number; see `ContextConfig.setUnit(unitType:uid:)`.
+	public func setUnit(unitType: String, uid: Int) throws {
+		try checkNotClosed()
+		try putUnit(unitType: unitType, value: JSON(uid))
+	}
 
-		guard trimmed.count <= Self.maxUnitUIDLength else {
-			throw ABSmartlyError("Unit '\(unitType)' UID exceeds maximum length of \(Self.maxUnitUIDLength) characters")
+	public func setUnit(unitType: String, uid: Double) throws {
+		try checkNotClosed()
+		try putUnit(unitType: unitType, value: JSON(uid))
+	}
+
+	/// Sets a unit from a JSON value. Only strings and numbers are accepted; anything else
+	/// throws "Unit '<type>' must be a string or a number.".
+	public func setUnit(unitType: String, value: JSON) throws {
+		try checkNotClosed()
+		try putUnit(unitType: unitType, value: value)
+	}
+
+	private func putUnit(unitType: String, value: JSON) throws {
+		let stored: JSON
+		let hashSource: String
+		switch value.type {
+		case .string:
+			let trimmed = value.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+			guard !trimmed.isEmpty else {
+				throw ABSmartlyError("Unit '\(unitType)' UID must not be blank.")
+			}
+			guard trimmed.count <= Self.maxUnitUIDLength else {
+				throw ABSmartlyError("Unit '\(unitType)' UID exceeds maximum length of \(Self.maxUnitUIDLength) characters")
+			}
+			stored = JSON(trimmed)
+			hashSource = trimmed
+		case .number:
+			stored = value
+			hashSource = Hashing.unitString(value.doubleValue)
+		default:
+			throw ABSmartlyError("Unit '\(unitType)' must be a string or a number.")
 		}
 
 		contextLock.lock()
 		defer { contextLock.unlock() }
 
-		if let previous = units[unitType], previous != trimmed {
+		if let previous = unitValues[unitType], !Self.sameUID(previous, stored) {
 			throw ABSmartlyError("Unit '\(unitType)' UID already set.")
 		}
 
-		units[unitType] = trimmed
+		unitValues[unitType] = stored
+		units[unitType] = hashSource
+	}
+
+	private static func sameUID(_ a: JSON, _ b: JSON) -> Bool {
+		switch (a.type, b.type) {
+		case (.string, .string): return a.stringValue == b.stringValue
+		case (.number, .number): return a.doubleValue == b.doubleValue
+		default: return false
+		}
 	}
 
 	public func getUnits() -> [String: String] {
 		contextLock.lock()
 		defer { contextLock.unlock() }
 
-		return units
+		return unitValues.mapValues { $0.string ?? $0.stringValue }
 	}
 
 	public func setUnits(_ units: [String: String]) throws {
@@ -1012,6 +1066,16 @@ public final class Context {
 	}
 
 	public func setData(_ data: ContextData) {
+		applyData(data)
+		markReady()
+	}
+
+	private func markReady() {
+		ready.store(true, ordering: .releasing)
+		setRefreshTimer()
+	}
+
+	private func applyData(_ data: ContextData) {
 		var index: [String: ExperimentVariables] = [:]
 		var indexVariables: [String: [ExperimentVariables]] = [:]
 		var customFieldValues: [String: [String: ContextCustomFieldValue]] = [:]
@@ -1087,13 +1151,9 @@ public final class Context {
 		self.indexVariables = indexVariables
 		self.customFieldValues = customFieldValues
 		dataLock.unlock()
-
-		ready.store(true, ordering: .releasing)
-
-		setRefreshTimer()
 	}
 
-	private func setDataFailed(_ error: Error) {
+	private func applyDataFailed(_ error: Error) {
 		dataLock.lock()
 		defer { dataLock.unlock() }
 
@@ -1102,7 +1162,6 @@ public final class Context {
 		customFieldValues = [:]
 		data = ContextData()
 		failedError = error
-		failed.store(true, ordering: .releasing)
 	}
 
 	private func jsonObjectToNative(_ jsonObject: Any, topLevel: Bool = true) -> Any? {

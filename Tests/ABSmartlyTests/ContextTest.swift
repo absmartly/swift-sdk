@@ -2736,4 +2736,84 @@ final class ContextTest: XCTestCase {
 
 		wait(for: [expectation], timeout: 1.0)
 	}
+
+	func testReadyEventIsLoggedBeforeContextReportsReady() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let (promise, resolver) = Promise<ContextData>.pending()
+		let context = try createContext(config: contextConfig, data: promise)
+
+		var readyWhenLogged: Bool?
+		logger.handleEventContextEventClosure = { ctx, event in
+			if case .ready = event { readyWhenLogged = ctx.isReady() }
+		}
+
+		let expectation = XCTestExpectation()
+		_ = context.waitUntilReady().done { _ in expectation.fulfill() }
+		resolver.fulfill(try getContextData())
+		wait(for: [expectation], timeout: 1.0)
+
+		XCTAssertEqual(false, readyWhenLogged)
+		XCTAssertTrue(context.isReady())
+	}
+
+	func testErrorEventIsLoggedBeforeContextReportsFailed() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let (promise, resolver) = Promise<ContextData>.pending()
+		let context = try createContext(config: contextConfig, data: promise)
+
+		var stateWhenLogged: (ready: Bool, failed: Bool)?
+		logger.handleEventContextEventClosure = { ctx, event in
+			if case .error = event { stateWhenLogged = (ctx.isReady(), ctx.isFailed()) }
+		}
+
+		let expectation = XCTestExpectation()
+		_ = context.waitUntilReady().done { _ in expectation.fulfill() }
+		resolver.reject(ABSmartlyError("load failed"))
+		wait(for: [expectation], timeout: 1.0)
+
+		XCTAssertEqual(false, stateWhenLogged?.ready)
+		XCTAssertEqual(false, stateWhenLogged?.failed)
+		XCTAssertTrue(context.isReady())
+		XCTAssertTrue(context.isFailed())
+	}
+
+	func testNumericUnitsKeepTheirTypeAndHashLikeJavaScript() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: false)
+		contextConfig.setUnit(unitType: "user_id", uid: 125)
+		contextConfig.setUnit(unitType: "float_id", uid: 125.75)
+		let context = try createContext(config: contextConfig)
+		try context.setUnit(unitType: "session_id", uid: 12345)
+
+		XCTAssertEqual(JSON(125), context.getUnitValue(unitType: "user_id"))
+		XCTAssertEqual(.number, context.getUnitValue(unitType: "user_id")?.type)
+		XCTAssertEqual(125.75, context.getUnitValue(unitType: "float_id")?.doubleValue)
+		XCTAssertEqual(.number, context.getUnitValue(unitType: "session_id")?.type)
+		XCTAssertEqual(.number, context.getUnitValues()["float_id"]?.type)
+
+		// Same number again is not a change; a different one is.
+		XCTAssertNoThrow(try context.setUnit(unitType: "user_id", uid: 125))
+		XCTAssertThrowsError(try context.setUnit(unitType: "user_id", uid: "125"))
+
+		// JS hashes numbers with toFixed(0): 125.75 -> "126".
+		XCTAssertEqual("BpBZt--EDwx0qBTskje27A", Hashing.hash(125.75))
+		XCTAssertEqual(Hashing.hash("126"), Hashing.hash(125.75))
+		XCTAssertEqual(Hashing.hash("12345"), Hashing.hash(12345))
+
+		XCTAssertThrowsError(try context.setUnit(unitType: "flag_id", value: JSON(true))) { error in
+			XCTAssertEqual("Unit 'flag_id' must be a string or a number.", error.localizedDescription)
+		}
+		try context.setUnit(unitType: "json_id", value: JSON(7))
+		XCTAssertEqual(.number, context.getUnitValue(unitType: "json_id")?.type)
+
+		let stringConfig: ContextConfig = getContextConfig(withUnits: false)
+		stringConfig.setUnit(unitType: "float_id", uid: "126")
+		let stringContext = try createContext(config: stringConfig)
+		XCTAssertEqual(.string, stringContext.getUnitValue(unitType: "float_id")?.type)
+	}
+
+	func testHashingHelpers() {
+		XCTAssertEqual([97, 195, 167, 98, 226, 134, 147, 99], Hashing.utf8Bytes("a\u{e7}b\u{2193}c"))
+		XCTAssertEqual("YWJj", Hashing.base64UrlNoPadding(Data("abc".utf8)))
+		XCTAssertEqual("Pz8-", Hashing.base64UrlNoPadding(Data([0x3f, 0x3f, 0x3e])))
+	}
 }
