@@ -1,32 +1,43 @@
 import Foundation
 
 public class DefaultScheduledHandle: ScheduledHandle {
+	private var handle: DispatchSourceTimer?
+	private var cancelled = false
+	private let lock = NSLock()
+
 	public func cancel() {
-		if handle != nil {
-			handle!.cancel()
-		}
+		lock.lock()
+		defer { lock.unlock() }
+
+		guard let timer = handle, !cancelled else { return }
+		cancelled = true
+		timer.cancel()
+		handle = nil
 	}
 
 	public func isCancelled() -> Bool {
-		if handle != nil {
-			return handle!.isCancelled
-		}
-		return false
+		lock.lock()
+		defer { lock.unlock() }
+		return cancelled
 	}
 
 	public init(handle: DispatchSourceTimer) {
 		self.handle = handle
 	}
 
-	private let handle: DispatchSourceTimer?
+	deinit {
+		cancel()
+	}
 }
 
 public class DefaultScheduler: Scheduler {
+	private let timerQueue = DispatchQueue(label: "com.absmartly.scheduler", qos: .utility)
+
 	public init() {}
 
 	public func schedule(after: TimeInterval, execute: @escaping Work) -> ScheduledHandle {
-		let timer = DispatchSource.makeTimerSource(queue: DispatchQueue.main)
-		timer.setEventHandler(qos: .background, handler: execute)
+		let timer = DispatchSource.makeTimerSource(queue: timerQueue)
+		timer.setEventHandler(qos: .utility, handler: execute)
 		timer.schedule(deadline: .now() + after, leeway: .milliseconds(5))
 		timer.resume()
 
@@ -36,15 +47,8 @@ public class DefaultScheduler: Scheduler {
 	public func scheduleWithFixedDelay(after: TimeInterval, repeating: TimeInterval, execute: @escaping Work)
 		-> ScheduledHandle
 	{
-		let timer = DispatchSource.makeTimerSource(queue: DispatchQueue.main)
-		timer.setEventHandler(
-			qos: .background,
-			handler: {
-				timer.suspend()
-				execute()
-				timer.resume()
-			})
-
+		let timer = DispatchSource.makeTimerSource(queue: timerQueue)
+		timer.setEventHandler(qos: .utility, handler: execute)
 		timer.schedule(deadline: .now() + after, repeating: repeating, leeway: .milliseconds(5))
 		timer.resume()
 

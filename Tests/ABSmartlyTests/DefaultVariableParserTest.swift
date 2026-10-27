@@ -5,7 +5,7 @@ import XCTest
 
 final class DefaultVariableParserTest: XCTestCase {
 	func testParse() throws {
-		let path = Bundle.module.path(forResource: "variables", ofType: "json", inDirectory: "Resources")!
+		let path = TestResources.path(forResource: "variables", ofType: "json")
 		let data = try Foundation.Data(contentsOf: URL(fileURLWithPath: path), options: .mappedIfSafe)
 		let config = String(data: data, encoding: .utf8)
 
@@ -34,7 +34,7 @@ final class DefaultVariableParserTest: XCTestCase {
 	}
 
 	func testReturnsNilOnError() throws {
-		let path = Bundle.module.path(forResource: "variables", ofType: "json", inDirectory: "Resources")!
+		let path = TestResources.path(forResource: "variables", ofType: "json")
 		let data = try Foundation.Data(contentsOf: URL(fileURLWithPath: path), options: .mappedIfSafe)
 		let config = String(data: data.subdata(in: 0..<6), encoding: .utf8)
 
