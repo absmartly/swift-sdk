@@ -2982,6 +2982,45 @@ final class ContextTest: XCTestCase {
 		XCTAssertEqual(["ABsmartly Context is not yet ready."], Set(loggedErrorMessages()).sorted())
 	}
 
+	func testErrorHandlerReadingContextOnFailedLoadDoesNotRecurse() throws {
+		let (promise, resolver) = Promise<ContextData>.pending()
+		let context = try createContext(config: getContextConfig(withUnits: true), data: promise)
+
+		var nestedReads = 0
+		logger.handleEventContextEventClosure = { ctx, event in
+			guard case .error = event, nestedReads < 50 else { return }
+			nestedReads += 1
+			XCTAssertNil(ctx.getContextData())
+		}
+
+		let settled = XCTestExpectation()
+		_ = context.waitUntilReady().ensure { settled.fulfill() }
+		resolver.reject(ABSmartlyError("load failed"))
+		wait(for: [settled], timeout: 1.0)
+
+		XCTAssertEqual(1, nestedReads)
+		XCTAssertEqual(["load failed"], loggedErrorMessages())
+		XCTAssertTrue(context.isFailed())
+	}
+
+	func testErrorHandlerReadingContextBeforeReadyDoesNotRecurse() throws {
+		let (promise, _) = Promise<ContextData>.pending()
+		let context = try createContext(config: getContextConfig(withUnits: true), data: promise)
+
+		var nestedReads = 0
+		logger.handleEventContextEventClosure = { ctx, event in
+			guard case .error = event, nestedReads < 50 else { return }
+			nestedReads += 1
+			XCTAssertEqual(0, ctx.getTreatment("exp_test_ab"))
+		}
+
+		// Each top-level misuse is still reported once; only the nested one is suppressed.
+		XCTAssertNil(context.getContextData())
+		XCTAssertNil(context.getContextData())
+		XCTAssertEqual(2, nestedReads)
+		XCTAssertEqual(Array(repeating: "ABsmartly Context is not yet ready.", count: 2), loggedErrorMessages())
+	}
+
 	func testWritesAfterCloseAreIgnoredWithErrorEvent() throws {
 		let context = try createContext(config: getContextConfig(withUnits: true))
 		let closed = XCTestExpectation()

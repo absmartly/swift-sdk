@@ -1195,7 +1195,18 @@ public final class Context {
 		logger?.handleEvent(context: self, event: event)
 	}
 
+	// An error raised while this context is already delivering `.error` on the same thread
+	// (e.g. a logger reading getContextData() from its error handler before the context is
+	// ready) is not delivered again, which would recurse without bound; reportError has
+	// already written it to Logger.
 	private func logError(error: Error) {
+		let key = "ABSmartly.Context.deliveringError.\(ObjectIdentifier(self))"
+		let threadDictionary = Thread.current.threadDictionary
+		if threadDictionary[key] != nil {
+			return
+		}
+		threadDictionary[key] = true
+		defer { threadDictionary.removeObject(forKey: key) }
 		logEvent(event: .error(error: error))
 	}
 }
