@@ -1018,10 +1018,11 @@ public final class Context {
 		defer { timeoutLock.unlock() }
 
 		if timeout == nil {
+				// Held strongly until it fires (flush() then drops the handle), so goals tracked
+				// just before the caller drops its last reference are still published, as in v1.4.0.
 				timeout = scheduler.schedule(
 					after: publishDelay,
-					execute: { [weak self] in
-						guard let self = self else { return }
+					execute: { [self] in
 						self.flush().catch { error in
 							Logger.error("Auto-flush failed: \(error.localizedDescription)")
 							self.logError(error: error)

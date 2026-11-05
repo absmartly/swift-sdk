@@ -3156,4 +3156,18 @@ final class ContextTest: XCTestCase {
 		XCTAssertEqual(1, provider.getContextDataCallsCount)
 		XCTAssertEqual(1, context.getTreatment("exp_test_ab"))
 	}
+
+	func testTrackThenDropContextStillPublishes() throws {
+		var context: Context? = contextWithoutLogger(getContextConfig(withUnits: true), Promise.value(try getContextData()))
+		weak var weakContext = context
+		context!.track("goal1", properties: nil)
+		let publishTimer = try XCTUnwrap(scheduler.scheduleAfterExecuteReceivedArguments?.execute)
+		context = nil
+		XCTAssertNotNil(weakContext, "a pending publish keeps the context alive")
+
+		handler.publishEventReturnValue = Promise<Void>.value(())
+		publishTimer()
+		XCTAssertEqual(1, handler.publishEventCallsCount)
+		XCTAssertEqual(["goal1"], handler.publishEventReceivedEvent?.goals.map { $0.name })
+	}
 }
