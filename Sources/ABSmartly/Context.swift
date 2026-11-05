@@ -567,7 +567,7 @@ public final class Context {
 
 	public func publish() -> Promise<Void> {
 		do {
-			try checkReady(true)
+			try checkNotClosed()
 		} catch {
 			return Promise<Void>(error: error)
 		}
@@ -577,7 +577,7 @@ public final class Context {
 
 	public func refresh() -> Promise<Void> {
 		do {
-			try checkReady(true)
+			try checkNotClosed()
 		} catch {
 			return Promise<Void>(error: error)
 		}

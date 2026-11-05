@@ -3127,4 +3127,33 @@ final class ContextTest: XCTestCase {
 		XCTAssertEqual(1.5, context.getCustomFieldValue(experimentName: "exp", key: "float") as? Double)
 		XCTAssertEqual(true, context.getCustomFieldValue(experimentName: "exp", key: "flag") as? Bool)
 	}
+
+	func testPublishBeforeReadySendsQueuedGoals() throws {
+		let (promise, _) = Promise<ContextData>.pending()
+		let context = try createContext(config: getContextConfig(withUnits: true), data: promise)
+		context.track("goal1", properties: nil)
+		XCTAssertEqual(1, context.getPendingCount())
+
+		handler.publishEventReturnValue = Promise<Void>.value(())
+		let published = XCTestExpectation()
+		_ = context.publish().done { published.fulfill() }
+		wait(for: [published], timeout: 1.0)
+
+		XCTAssertEqual(0, context.getPendingCount())
+		XCTAssertEqual(["goal1"], handler.publishEventReceivedEvent?.goals.map { $0.name })
+		XCTAssertEqual([], loggedErrorMessages())
+	}
+
+	func testRefreshBeforeReadyFetchesData() throws {
+		let (promise, _) = Promise<ContextData>.pending()
+		let context = try createContext(config: getContextConfig(withUnits: true), data: promise)
+
+		provider.getContextDataReturnValue = Promise.value(try getContextData())
+		let refreshed = XCTestExpectation()
+		_ = context.refresh().done { refreshed.fulfill() }
+		wait(for: [refreshed], timeout: 1.0)
+
+		XCTAssertEqual(1, provider.getContextDataCallsCount)
+		XCTAssertEqual(1, context.getTreatment("exp_test_ab"))
+	}
 }
