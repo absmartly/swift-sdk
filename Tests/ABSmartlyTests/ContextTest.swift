@@ -2157,15 +2157,8 @@ final class ContextTest: XCTestCase {
 		XCTAssertEqual("US,PT,ES,DE,FR", context.getCustomFieldValue(experimentName: "exp_test_ab", key: "country") as! String)
 		XCTAssertEqual("string", context.getCustomFieldValueType(experimentName: "exp_test_ab", key: "country") as! String)
 
-		let overridesValue = context.getCustomFieldValue(experimentName: "exp_test_ab", key: "overrides")
-		if let overridesDict = overridesValue as? [String: JSON] {
-			XCTAssertEqual(["123": JSON(1), "456": JSON(0)], overridesDict)
-		} else if let overridesDict = overridesValue as? [String: Any] {
-			XCTAssertEqual(1, overridesDict["123"] as? Int ?? (overridesDict["123"] as? Bool == true ? 1 : 0))
-			XCTAssertEqual(0, overridesDict["456"] as? Int ?? (overridesDict["456"] as? Bool == true ? 1 : 0))
-		} else {
-			XCTFail("Unexpected overrides type: \(String(describing: overridesValue))")
-		}
+		let data: [String: JSON] = ["123": 1, "456": 0]
+		XCTAssertEqual(data, context.getCustomFieldValue(experimentName: "exp_test_ab", key: "overrides") as! [String: JSON])
 		XCTAssertEqual("json", context.getCustomFieldValueType(experimentName: "exp_test_ab", key: "overrides") as! String);
 
 		XCTAssertNil(context.getCustomFieldValue(experimentName: "exp_test_ab", key: "languages"));
@@ -3114,5 +3107,24 @@ final class ContextTest: XCTestCase {
 
 		XCTAssertTrue(closeLogged)
 		XCTAssertEqual(ContextEventLoggerEvent.finalize, ContextEventLoggerEvent.close)
+	}
+
+	func testCustomFieldValuesHaveTheirV140Types() throws {
+		let json = """
+			{"experiments": [{"id": 1, "name": "exp", "customFieldValues": [
+				{"name": "obj", "type": "json", "value": "{\\"a\\": [1, \\"x\\"]}"},
+				{"name": "int", "type": "number", "value": "42"},
+				{"name": "float", "type": "number", "value": "1.5"},
+				{"name": "flag", "type": "boolean", "value": "true"}
+			]}]}
+			"""
+		let contextData = try JSONDecoder().decode(ContextData.self, from: Data(json.utf8))
+		let context = try createContext(config: getContextConfig(withUnits: true), data: Promise.value(contextData))
+
+		let obj = context.getCustomFieldValue(experimentName: "exp", key: "obj") as? [String: JSON]
+		XCTAssertEqual(["a": JSON([1, "x"])], obj)
+		XCTAssertEqual(42.0, context.getCustomFieldValue(experimentName: "exp", key: "int") as? Double)
+		XCTAssertEqual(1.5, context.getCustomFieldValue(experimentName: "exp", key: "float") as? Double)
+		XCTAssertEqual(true, context.getCustomFieldValue(experimentName: "exp", key: "flag") as? Bool)
 	}
 }

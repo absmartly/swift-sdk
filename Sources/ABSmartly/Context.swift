@@ -1114,26 +1114,26 @@ public final class Context {
 
 					if let customValue = customFieldValue.value {
 						if fieldType.starts(with: "json") {
-							let data = Data(customValue.utf8)
+							// SwiftyJSON values as in v1.4.0: an object is `[String: JSON]`, other JSON a `JSON`.
 							do {
-								let jsonObject = try JSONSerialization.jsonObject(with: data, options: .fragmentsAllowed)
-								let nativeValue = jsonObjectToNative(jsonObject)
-								value.value = nativeValue
+								let json = try JSON(data: Data(customValue.utf8), options: .fragmentsAllowed)
+								switch json.type {
+								case .dictionary:
+									value.value = json.dictionaryValue
+								case .null:
+									value.value = nil
+								default:
+									value.value = json
+								}
 							} catch {
 								let truncated = customValue.count > 100 ? "\(customValue.prefix(100))..." : customValue
-							Logger.error("Failed to parse JSON custom field '\(fieldName)' for experiment '\(experiment.name)': \(error.localizedDescription). Original value: '\(truncated)'")
+								Logger.error("Failed to parse JSON custom field '\(fieldName)' for experiment '\(experiment.name)': \(error.localizedDescription). Original value: '\(truncated)'")
 								value.value = nil
 							}
 						} else if fieldType.starts(with: "boolean") {
 							value.value = customValue == "true"
 						} else if fieldType.starts(with: "number") {
-							if let intVal = Int(customValue) {
-								value.value = intVal
-							} else if let doubleVal = Double(customValue) {
-								value.value = doubleVal
-							} else {
-								value.value = nil
-							}
+							value.value = Double(customValue)
 						} else {
 							value.value = customFieldValue.value
 						}
@@ -1164,31 +1164,6 @@ public final class Context {
 		customFieldValues = [:]
 		data = ContextData()
 		failedError = error
-	}
-
-	private func jsonObjectToNative(_ jsonObject: Any, topLevel: Bool = true) -> Any? {
-		if jsonObject is NSNull {
-			return topLevel ? nil : NSNull()
-		} else if let dict = jsonObject as? [String: Any] {
-			var result: [String: Any] = [:]
-			for (key, value) in dict {
-				if let nativeValue = jsonObjectToNative(value, topLevel: false) {
-					result[key] = nativeValue
-				}
-			}
-			return result
-		} else if let array = jsonObject as? [Any] {
-			return array.compactMap { jsonObjectToNative($0, topLevel: false) }
-		} else if let string = jsonObject as? String {
-			return string
-		} else if let number = jsonObject as? NSNumber {
-			let objCType = String(cString: number.objCType)
-			if objCType == "c" || objCType == "B" {
-				return number.boolValue
-			}
-			return number
-		}
-		return jsonObject
 	}
 
 	private func logEvent(event: ContextEventLoggerEvent) {
