@@ -7,11 +7,12 @@ public enum ContextEventLoggerEvent: Equatable {
 	case publish(event: PublishEvent)
 	case exposure(exposure: Exposure)
 	case goal(goal: GoalAchievement)
-	case finalize
+	case close
 	case error(error: Error)
 
-	@available(*, deprecated, renamed: "finalize")
-	public static var close: ContextEventLoggerEvent { return .finalize }
+	/// Alias for `.close`, matching the JavaScript SDK's "finalize" event name.
+	/// `close` stays the real case so existing exhaustive switches keep compiling.
+	public static var finalize: ContextEventLoggerEvent { return .close }
 
 	public static func == (lhs: ContextEventLoggerEvent, rhs: ContextEventLoggerEvent) -> Bool {
 		switch (lhs, rhs) {
@@ -27,7 +28,7 @@ public enum ContextEventLoggerEvent: Equatable {
 			return lhsData == rhsData
 		case (let .error(lhsError), let .error(rhsError)):
 			return lhsError._code == rhsError._code && lhsError.localizedDescription == rhsError.localizedDescription
-		case (.finalize, .finalize):
+		case (.close, .close):
 			return true
 		default:
 			return false

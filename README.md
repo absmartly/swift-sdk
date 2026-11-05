@@ -297,7 +297,7 @@ context.publish().done {
 
 ### Finalizing
 
-The `close()` method will ensure all events have been published to the A/B Smartly collector, like `publish()`, and will also "seal" the context, throwing an error if any method that could generate an event is called.
+The `close()` method will ensure all events have been published to the A/B Smartly collector, like `publish()`, and will also "seal" the context, after which any method that could generate an event is ignored and logs an `error` event.
 
 ```swift
 context.close().done {

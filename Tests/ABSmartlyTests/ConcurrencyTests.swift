@@ -67,7 +67,7 @@ final class ConcurrencyTests: XCTestCase {
 			concurrentQueue.async {
 				let experimentName = experimentNames[i % experimentNames.count]
 				do {
-					XCTAssertGreaterThanOrEqual(try context.getTreatment(experimentName), 0)
+					XCTAssertGreaterThanOrEqual(context.getTreatment(experimentName), 0)
 				} catch {
 					XCTFail("Unexpected error: \(error)")
 				}
@@ -94,7 +94,7 @@ final class ConcurrencyTests: XCTestCase {
 			concurrentQueue.async {
 				let goalName = goalNames[i % goalNames.count]
 				do {
-					try context.track(goalName, properties: ["iteration": JSON(i), "timestamp": JSON(Date().timeIntervalSince1970)])
+					context.track(goalName, properties: ["iteration": JSON(i), "timestamp": JSON(Date().timeIntervalSince1970)])
 				} catch {
 					XCTFail("Unexpected error: \(error)")
 				}
@@ -120,7 +120,7 @@ final class ConcurrencyTests: XCTestCase {
 		for _ in 0..<50 {
 			concurrentQueue.async {
 				do {
-					try context.track("goal_during_init", properties: nil)
+					context.track("goal_during_init", properties: nil)
 				} catch {
 					XCTFail("Unexpected error: \(error)")
 				}
@@ -151,8 +151,8 @@ final class ConcurrencyTests: XCTestCase {
 		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
 		let context = try createContext(config: contextConfig)
 
-		try context.track("test_goal", properties: nil)
-		_ = try context.getTreatment("exp_test_ab")
+		context.track("test_goal", properties: nil)
+		_ = context.getTreatment("exp_test_ab")
 
 		let refreshExpectation = XCTestExpectation(description: "Refresh completes")
 		let publishExpectation = XCTestExpectation(description: "Publish completes")
@@ -191,17 +191,20 @@ final class ConcurrencyTests: XCTestCase {
 
 		XCTAssertFalse(context.isReady())
 
-		XCTAssertThrowsError(try context.peekTreatment("exp_test_ab")) { error in
+		XCTAssertEqual(0, context.peekTreatment("exp_test_ab"))
+		if case let .error(error) = logger.handleEventContextEventReceivedArguments?.event {
 			XCTAssertEqual((error as? ABSmartlyError)?.errorMessage, "ABsmartly Context is not yet ready.")
+		} else {
+			XCTFail("expected an error event")
 		}
 
 		context.setOverride(experimentName: "exp_test_override", variant: 5)
-		try context.setAttribute(name: "test_attr", value: JSON("test_value"))
+		context.setAttribute(name: "test_attr", value: JSON("test_value"))
 
 		resolver.fulfill(try getContextData())
 
 		_ = context.waitUntilReady().done { ctx in
-			XCTAssertEqual(try ctx.getTreatment("exp_test_ab"), 1)
+			XCTAssertEqual(ctx.getTreatment("exp_test_ab"), 1)
 
 			XCTAssertEqual(ctx.getOverride(experimentName: "exp_test_override"), 5)
 			XCTAssertEqual(ctx.getAttribute(name: "test_attr"), JSON("test_value"))
@@ -224,7 +227,7 @@ final class ConcurrencyTests: XCTestCase {
 		for i in 0..<50 {
 			concurrentQueue.async {
 				do {
-					try context.setUnit(unitType: "user_\(i)", uid: "uid_\(i)")
+					context.setUnit(unitType: "user_\(i)", uid: "uid_\(i)")
 				} catch {
 					XCTFail("Unexpected error: \(error)")
 				}
@@ -257,7 +260,7 @@ final class ConcurrencyTests: XCTestCase {
 		for i in 0..<100 {
 			concurrentQueue.async {
 				do {
-					try context.setAttribute(name: "attr_\(i)", value: JSON("value_\(i)"))
+					context.setAttribute(name: "attr_\(i)", value: JSON("value_\(i)"))
 				} catch {
 					XCTFail("Unexpected error: \(error)")
 				}

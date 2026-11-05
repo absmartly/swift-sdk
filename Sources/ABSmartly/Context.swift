@@ -50,7 +50,6 @@ public final class Context {
 	private var units: [String: String] = [:]
 	private var unitValues: [String: JSON] = [:]
 	private var attributes: [Attribute] = []
-	private let maxAttributes = 500
 	private var overrides: [String: Int] = [:]
 	private var cassignments: [String: Int] = [:]
 
@@ -102,16 +101,16 @@ public final class Context {
 			do {
 				try putUnit(unitType: unitType, value: uid)
 			} catch {
-				Logger.error(error.localizedDescription)
-				logError(error: error)
+				reportError(error)
 			}
 		}
 
 		if promise.isResolved {
 			if let data = promise.value {
 				applyData(data)
-				logEvent(event: .ready(data: data))
+				// Ready before the event, as in v1.4.0, so reads from a logger's ready handler work.
 				markReady()
+				logEvent(event: .ready(data: data))
 				// Goals tracked from inside the ready callback were queued before the
 				// context was ready, so their publish timer could not start then.
 				if pendingCount.load(ordering: .acquiring) > 0 {
@@ -132,11 +131,11 @@ public final class Context {
 					// Completion handlers hold the context strongly so a caller that keeps only
 					// waitUntilReady()'s promise still gets it settled.
 					promise.done(on: DispatchQueue.global()) { [self] data in
-						// Like the JS SDK, the ready event is logged before the context
-						// reports ready, so anyone who observes readiness also sees the event.
+						// Ready before the event, as in v1.4.0, so reads from a logger's ready
+						// handler work; the ready promise still settles only after the event.
 						self.applyData(data)
-						self.logEvent(event: .ready(data: data))
 						self.markReady()
+						self.logEvent(event: .ready(data: data))
 						self.promiseLock.lock()
 						self.readyPromise = nil
 						self.promiseLock.unlock()
@@ -214,16 +213,16 @@ public final class Context {
 		}
 	}
 
-	public func getExperiments() throws -> [String] {
-		try checkReady(false)
+	public func getExperiments() -> [String] {
+		guard ensureReady(false) else { return [] }
 
 		dataLock.lock()
 		defer { dataLock.unlock() }
 		return data?.experiments.map { $0.name } ?? []
 	}
 
-	public func getCustomFieldKeys() throws -> Set<String> {
-		try checkReady(true)
+	public func getCustomFieldKeys() -> Set<String> {
+		guard ensureReady(true) else { return [] }
 
 		var keys: Set<String> = []
 
@@ -243,8 +242,8 @@ public final class Context {
 		return keys
 	}
 
-	public func getCustomFieldKeys(experimentName: String) throws -> [String] {
-		try checkReady(true)
+	public func getCustomFieldKeys(experimentName: String) -> [String] {
+		guard ensureReady(true) else { return [] }
 
 		dataLock.lock()
 		defer { dataLock.unlock() }
@@ -256,8 +255,8 @@ public final class Context {
 		return Array(experimentCustomFields.keys)
 	}
 
-	public func getCustomFieldValue(experimentName: String, key: String) throws -> Any? {
-		try checkReady(true)
+	public func getCustomFieldValue(experimentName: String, key: String) -> Any? {
+		guard ensureReady(true) else { return nil }
 
 		dataLock.lock()
 		defer { dataLock.unlock() }
@@ -265,8 +264,8 @@ public final class Context {
 		return customFieldValues[experimentName]?[key]?.value
 	}
 
-	public func getCustomFieldValueType(experimentName: String, key: String) throws -> String? {
-		try checkReady(true)
+	public func getCustomFieldValueType(experimentName: String, key: String) -> String? {
+		guard ensureReady(true) else { return nil }
 
 		dataLock.lock()
 		defer { dataLock.unlock() }
@@ -274,8 +273,8 @@ public final class Context {
 		return customFieldValues[experimentName]?[key]?.type
 	}
 
-	public func getContextData() throws -> ContextData? {
-		try checkReady(false)
+	public func getContextData() -> ContextData? {
+		guard ensureReady(false) else { return nil }
 
 		dataLock.lock()
 		defer { dataLock.unlock() }
@@ -314,7 +313,7 @@ public final class Context {
 		}
 	}
 
-	public func setCustomAssignment(experimentName: String, variant: Int) throws {
+	public func setCustomAssignment(experimentName: String, variant: Int) {
 		_ = putLocked(lock: contextLock, dict: &cassignments, key: experimentName, value: variant)
 	}
 
@@ -322,9 +321,9 @@ public final class Context {
 		return getLocked(lock: contextLock, dict: cassignments, key: experimentName)
 	}
 
-	public func setCustomAssignments(_ assignments: [String: Int]) throws {
+	public func setCustomAssignments(_ assignments: [String: Int]) {
 		for (key, value) in assignments {
-			try setCustomAssignment(experimentName: key, variant: value)
+			setCustomAssignment(experimentName: key, variant: value)
 		}
 	}
 
@@ -343,29 +342,29 @@ public final class Context {
 		return unitValues
 	}
 
-	private static let maxUnitUIDLength = 256
-
-	public func setUnit(unitType: String, uid: String) throws {
-		try checkNotClosed()
-		try putUnit(unitType: unitType, value: JSON(uid))
+	public func setUnit(unitType: String, uid: String) {
+		setUnit(unitType: unitType, value: JSON(uid))
 	}
 
 	/// Sets a unit whose UID is a number; see `ContextConfig.setUnit(unitType:uid:)`.
-	public func setUnit(unitType: String, uid: Int) throws {
-		try checkNotClosed()
-		try putUnit(unitType: unitType, value: JSON(uid))
+	public func setUnit(unitType: String, uid: Int) {
+		setUnit(unitType: unitType, value: JSON(uid))
 	}
 
-	public func setUnit(unitType: String, uid: Double) throws {
-		try checkNotClosed()
-		try putUnit(unitType: unitType, value: JSON(uid))
+	public func setUnit(unitType: String, uid: Double) {
+		setUnit(unitType: unitType, value: JSON(uid))
 	}
 
-	/// Sets a unit from a JSON value. Only strings and numbers are accepted; anything else
-	/// throws "Unit '<type>' must be a string or a number.".
-	public func setUnit(unitType: String, value: JSON) throws {
-		try checkNotClosed()
-		try putUnit(unitType: unitType, value: value)
+	/// Sets a unit from a JSON value. Only strings and numbers are accepted. An invalid UID
+	/// (blank, not a string or number, or a change to an already set unit) or a closed context
+	/// leaves the unit unchanged and logs an `.error` event.
+	public func setUnit(unitType: String, value: JSON) {
+		guard ensureNotClosed() else { return }
+		do {
+			try putUnit(unitType: unitType, value: value)
+		} catch {
+			reportError(error)
+		}
 	}
 
 	private func putUnit(unitType: String, value: JSON) throws {
@@ -376,9 +375,6 @@ public final class Context {
 			let trimmed = value.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
 			guard !trimmed.isEmpty else {
 				throw ABSmartlyError("Unit '\(unitType)' UID must not be blank.")
-			}
-			guard trimmed.count <= Self.maxUnitUIDLength else {
-				throw ABSmartlyError("Unit '\(unitType)' UID exceeds maximum length of \(Self.maxUnitUIDLength) characters")
 			}
 			stored = JSON(trimmed)
 			hashSource = trimmed
@@ -415,9 +411,9 @@ public final class Context {
 		return unitValues.mapValues { $0.string ?? $0.stringValue }
 	}
 
-	public func setUnits(_ units: [String: String]) throws {
+	public func setUnits(_ units: [String: String]) {
 		for (unitType, uid) in units {
-			try setUnit(unitType: unitType, uid: uid)
+			setUnit(unitType: unitType, uid: uid)
 		}
 	}
 
@@ -434,8 +430,8 @@ public final class Context {
 		return nil
 	}
 
-	public func setAttribute(name: String, value: JSON) throws {
-		try checkNotClosed()
+	public func setAttribute(name: String, value: JSON) {
+		guard ensureNotClosed() else { return }
 		appendAttribute(name: name, value: value)
 	}
 
@@ -443,23 +439,8 @@ public final class Context {
 		contextLock.lock()
 		defer { contextLock.unlock() }
 
-		if attributes.count >= maxAttributes {
-			compactAttributes()
-		}
-
 		attributes.append(Attribute(name, value: value, setAt: clock.millis()))
 		attrsSeq += 1
-	}
-
-	// Bounds the history by dropping entries a later entry with the same name has
-	// replaced. The latest value of every name is always kept.
-	private func compactAttributes() {
-		var seen = Set<String>()
-		var kept: [Attribute] = []
-		for attribute in attributes.reversed() where seen.insert(attribute.name).inserted {
-			kept.append(attribute)
-		}
-		attributes = kept.reversed()
 	}
 
 	public func getAttributes() -> [String: JSON] {
@@ -474,14 +455,14 @@ public final class Context {
 		return result;
 	}
 
-	public func setAttributes(_ attributes: [String: JSON]) throws {
+	public func setAttributes(_ attributes: [String: JSON]) {
 		for (name, value) in attributes {
-			try setAttribute(name: name, value: value)
+			setAttribute(name: name, value: value)
 		}
 	}
 
-	public func getTreatment(_ experimentName: String) throws -> Int {
-		try checkReady(true)
+	public func getTreatment(_ experimentName: String) -> Int {
+		guard ensureReady(true) else { return 0 }
 
 		let assignment = getAssignment(experimentName)
 		if !assignment.exposed.load(ordering: .acquiring) {
@@ -518,14 +499,14 @@ public final class Context {
 		setTimeout()
 	}
 
-	public func peekTreatment(_ experimentName: String) throws -> Int {
-		try checkReady(true)
+	public func peekTreatment(_ experimentName: String) -> Int {
+		guard ensureReady(true) else { return 0 }
 
 		return getAssignment(experimentName).variant
 	}
 
-	public func getVariableKeys() throws -> [String: [String]] {
-		try checkReady(true)
+	public func getVariableKeys() -> [String: [String]] {
+		guard ensureReady(true) else { return [:] }
 
 		dataLock.lock()
 		defer { dataLock.unlock() }
@@ -533,8 +514,8 @@ public final class Context {
 		return indexVariables.mapValues { $0.map({ $0.data.name }) }
 	}
 
-	public func getVariableValue(_ key: String, defaultValue: JSON? = nil) throws -> JSON? {
-		try checkReady(true)
+	public func getVariableValue(_ key: String, defaultValue: JSON? = nil) -> JSON? {
+		guard ensureReady(true) else { return defaultValue }
 
 		if let assignment = getVariableAssignment(key), let variables = assignment.variables {
 			if !assignment.exposed.load(ordering: .acquiring) {
@@ -549,8 +530,8 @@ public final class Context {
 		return defaultValue
 	}
 
-	public func peekVariableValue(_ key: String, defaultValue: JSON? = nil) throws -> JSON? {
-		try checkReady(true)
+	public func peekVariableValue(_ key: String, defaultValue: JSON? = nil) -> JSON? {
+		guard ensureReady(true) else { return defaultValue }
 
 		if let assignment = getVariableAssignment(key), let variables = assignment.variables {
 			if let object = variables[key] {
@@ -561,8 +542,8 @@ public final class Context {
 		return defaultValue
 	}
 
-	public func track(_ goalName: String, properties: [String: JSON]? = nil) throws {
-		try checkNotClosed()
+	public func track(_ goalName: String, properties: [String: JSON]? = nil) {
+		guard ensureNotClosed() else { return }
 
 		let achievement: GoalAchievement = GoalAchievement(
 			goalName, achievedAt: clock.millis(), properties: properties)
@@ -664,7 +645,7 @@ public final class Context {
 				self.flush().done(on: DispatchQueue.global()) { [self] in
 					self.closed.store(true, ordering: .releasing)
 					self.closing.store(false, ordering: .releasing)
-					self.logEvent(event: .finalize)
+					self.logEvent(event: .close)
 					seal.fulfill(())
 				}.catch(on: DispatchQueue.global()) { [self] error in
 					// Stay open so the requeued events can be retried via publish()/close().
@@ -674,7 +655,7 @@ public final class Context {
 			} else {
 				self.closed.store(true, ordering: .releasing)
 				self.closing.store(false, ordering: .releasing)
-				self.logEvent(event: .finalize)
+				self.logEvent(event: .close)
 				seal.fulfill(())
 			}
 		}
@@ -812,6 +793,33 @@ public final class Context {
 		if isClosing() {
 			throw ABSmartlyError("ABsmartly Context is finalizing.")
 		}
+	}
+
+	// The public API never throws (as in v1.4.0): misuse such as reading before ready or
+	// writing after close is reported through Logger and an `.error` event instead.
+	private func ensureReady(_ expectNotClosed: Bool) -> Bool {
+		do {
+			try checkReady(expectNotClosed)
+			return true
+		} catch {
+			reportError(error)
+			return false
+		}
+	}
+
+	private func ensureNotClosed() -> Bool {
+		do {
+			try checkNotClosed()
+			return true
+		} catch {
+			reportError(error)
+			return false
+		}
+	}
+
+	private func reportError(_ error: Error) {
+		Logger.error(error.localizedDescription)
+		logError(error: error)
 	}
 
 	private func buildAttributeMap() -> [String: JSON] {
