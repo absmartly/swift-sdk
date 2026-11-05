@@ -66,11 +66,7 @@ final class ConcurrencyTests: XCTestCase {
 		for i in 0..<100 {
 			concurrentQueue.async {
 				let experimentName = experimentNames[i % experimentNames.count]
-				do {
-					XCTAssertGreaterThanOrEqual(context.getTreatment(experimentName), 0)
-				} catch {
-					XCTFail("Unexpected error: \(error)")
-				}
+				XCTAssertGreaterThanOrEqual(context.getTreatment(experimentName), 0)
 				expectation.fulfill()
 			}
 		}
@@ -93,11 +89,7 @@ final class ConcurrencyTests: XCTestCase {
 		for i in 0..<100 {
 			concurrentQueue.async {
 				let goalName = goalNames[i % goalNames.count]
-				do {
-					context.track(goalName, properties: ["iteration": JSON(i), "timestamp": JSON(Date().timeIntervalSince1970)])
-				} catch {
-					XCTFail("Unexpected error: \(error)")
-				}
+				context.track(goalName, properties: ["iteration": JSON(i), "timestamp": JSON(Date().timeIntervalSince1970)])
 				expectation.fulfill()
 			}
 		}
@@ -119,11 +111,7 @@ final class ConcurrencyTests: XCTestCase {
 
 		for _ in 0..<50 {
 			concurrentQueue.async {
-				do {
-					context.track("goal_during_init", properties: nil)
-				} catch {
-					XCTFail("Unexpected error: \(error)")
-				}
+				context.track("goal_during_init", properties: nil)
 				expectation.fulfill()
 			}
 		}
@@ -226,11 +214,7 @@ final class ConcurrencyTests: XCTestCase {
 
 		for i in 0..<50 {
 			concurrentQueue.async {
-				do {
-					context.setUnit(unitType: "user_\(i)", uid: "uid_\(i)")
-				} catch {
-					XCTFail("Unexpected error: \(error)")
-				}
+				context.setUnit(unitType: "user_\(i)", uid: "uid_\(i)")
 				expectation.fulfill()
 			}
 		}
@@ -259,11 +243,7 @@ final class ConcurrencyTests: XCTestCase {
 
 		for i in 0..<100 {
 			concurrentQueue.async {
-				do {
-					context.setAttribute(name: "attr_\(i)", value: JSON("value_\(i)"))
-				} catch {
-					XCTFail("Unexpected error: \(error)")
-				}
+				context.setAttribute(name: "attr_\(i)", value: JSON("value_\(i)"))
 				expectation.fulfill()
 			}
 		}
