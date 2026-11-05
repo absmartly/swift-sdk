@@ -1,11 +1,11 @@
 import Foundation
 
 public class ClientConfig {
-	public private(set) var apiKey: String = ""
-	public private(set) var application: String = ""
-	public private(set) var applicationVersion: String = "0"
-	public private(set) var endpoint: String = ""
-	public private(set) var environment: String = ""
+	public var apiKey: String = ""
+	public var application: String = ""
+	public var applicationVersion: String = "0"
+	public var endpoint: String = ""
+	public var environment: String = ""
 
 	public init() {
 	}

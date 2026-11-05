@@ -19,6 +19,22 @@ final class DefaultClientTest: XCTestCase {
 		}
 	}
 
+	func testClientConfigPropertiesAreSettable() throws {
+		let clientConfig = ClientConfig()
+		clientConfig.apiKey = "test"
+		clientConfig.application = "test_app"
+		clientConfig.endpoint = "https://test.absmartly.io/v1"
+		clientConfig.environment = "test"
+		clientConfig.applicationVersion = "2"
+
+		XCTAssertEqual("test", clientConfig.apiKey)
+		XCTAssertEqual("test_app", clientConfig.application)
+		XCTAssertEqual("https://test.absmartly.io/v1", clientConfig.endpoint)
+		XCTAssertEqual("test", clientConfig.environment)
+		XCTAssertEqual("2", clientConfig.applicationVersion)
+		XCTAssertNoThrow(try DefaultClient(config: clientConfig, httpClient: HTTPClientMock()))
+	}
+
 	func testThrowsWithMissingEndpoint() {
 		let clientConfig = ClientConfig(
 			apiKey: "test", application: "test_app", endpoint: "", environment: "test")
