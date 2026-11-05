@@ -53,6 +53,16 @@ final class MatchOperatorTest: OperatorTest {
 		XCTAssertEqual(JSON(true), matchOperator.evaluate(evaluator, ["abab", "^(ab+){1,3}$"]))
 	}
 
+	func testOverlappingAlternationTimesOut() {
+		// No nested quantifier, but exponential backtracking on a near-miss input.
+		let input = String(repeating: "a", count: 60) + "b"
+		let start = Date()
+		XCTAssertEqual(JSON.null, matchOperator.evaluate(evaluator, [input, "^(a|aa)+$"]))
+		XCTAssertLessThan(Date().timeIntervalSince(start), 2.0)
+
+		XCTAssertEqual(JSON(true), matchOperator.evaluate(evaluator, ["aaaa", "^(a|aa)+$"]))
+	}
+
 	func testAcceptsNormalPatternWithinLimits() {
 		let pattern = String(repeating: "a", count: 999)
 		let input = String(repeating: "a", count: 9999)

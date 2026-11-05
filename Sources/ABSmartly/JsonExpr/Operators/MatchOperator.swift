@@ -3,6 +3,8 @@ import Foundation
 final class MatchOperator: BinaryOperator {
 	private static let maxPatternLength = 1000
 	private static let maxInputLength = 10000
+	// Matching gives up after this long, e.g. on exponential backtracking from `^(a|aa)+$`.
+	private static let matchTimeout: TimeInterval = 0.1
 
 	override func binary(_ evaluator: Evaluator, _ lhs: JSON, _ rhs: JSON) -> JSON {
 		let text = evaluator.stringConvert(lhs)
@@ -32,8 +34,7 @@ final class MatchOperator: BinaryOperator {
 
 				do {
 					let matcher = try NSRegularExpression(pattern: regex, options: [])
-					let range = NSRange(string.startIndex..., in: string)
-					return JSON(matcher.firstMatch(in: string, range: range) != nil)
+					return Self.firstMatch(matcher, in: string, pattern: regex)
 				} catch {
 					Logger.error("Failed to compile regex pattern '\(regex)': \(error.localizedDescription)")
 					return JSON.null
@@ -41,6 +42,29 @@ final class MatchOperator: BinaryOperator {
 			}
 		}
 		return JSON.null
+	}
+
+	/// Like `firstMatch(in:range:)`, but returns null once matching runs past `matchTimeout`.
+	/// `.reportProgress` makes the regex engine call back periodically while it backtracks.
+	private static func firstMatch(_ matcher: NSRegularExpression, in string: String, pattern: String) -> JSON {
+		let deadline = ProcessInfo.processInfo.systemUptime + matchTimeout
+		var matched = false
+		var timedOut = false
+		let range = NSRange(string.startIndex..., in: string)
+		matcher.enumerateMatches(in: string, options: [.reportProgress], range: range) { result, _, stop in
+			if result != nil {
+				matched = true
+				stop.pointee = true
+			} else if ProcessInfo.processInfo.systemUptime > deadline {
+				timedOut = true
+				stop.pointee = true
+			}
+		}
+		if timedOut {
+			Logger.error("Regex pattern '\(pattern)' timed out after \(matchTimeout)s")
+			return JSON.null
+		}
+		return JSON(matched)
 	}
 
 	/// True when a group that itself contains an unbounded quantifier (`+`, `*`, `{n,}`)
