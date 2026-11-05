@@ -132,10 +132,10 @@ public final class Context {
 					// waitUntilReady()'s promise still gets it settled.
 					promise.done(on: DispatchQueue.global()) { [self] data in
 						// Ready before the event, as in v1.4.0, so reads from a logger's ready
-						// handler work; the ready promise still settles only after the event.
+						// handler work.
 						self.applyData(data)
 						self.markReady()
-						self.logEvent(event: .ready(data: data))
+						self.deliverOnMain { self.logEvent(event: .ready(data: data)) }
 						self.promiseLock.lock()
 						self.readyPromise = nil
 						self.promiseLock.unlock()
@@ -604,7 +604,7 @@ public final class Context {
 			self.provider.getContextData().done(on: DispatchQueue.global()) { [self] data in
 				self.setData(data)
 				self.refreshing.store(false, ordering: .releasing)
-				self.logEvent(event: .refresh(data: data))
+				self.deliverOnMain { self.logEvent(event: .refresh(data: data)) }
 				seal.fulfill(())
 			}.catch(on: DispatchQueue.global()) { [self] error in
 				self.refreshing.store(false, ordering: .releasing)
@@ -645,7 +645,7 @@ public final class Context {
 				self.flush().done(on: DispatchQueue.global()) { [self] in
 					self.closed.store(true, ordering: .releasing)
 					self.closing.store(false, ordering: .releasing)
-					self.logEvent(event: .close)
+					self.deliverOnMain { self.logEvent(event: .close) }
 					seal.fulfill(())
 				}.catch(on: DispatchQueue.global()) { [self] error in
 					// Stay open so the requeued events can be retried via publish()/close().
@@ -655,7 +655,7 @@ public final class Context {
 			} else {
 				self.closed.store(true, ordering: .releasing)
 				self.closing.store(false, ordering: .releasing)
-				self.logEvent(event: .close)
+				self.deliverOnMain { self.logEvent(event: .close) }
 				seal.fulfill(())
 			}
 		}
@@ -742,7 +742,7 @@ public final class Context {
 
 					// Held strongly until the publish settles, so a failure is never reported as success.
 					let publishPromise = handler.publish(event: event).done(on: DispatchQueue.global()) { [self] in
-						self.logEvent(event: .publish(event: event))
+						self.deliverOnMain { self.logEvent(event: .publish(event: event)) }
 					}.recover(on: DispatchQueue.global()) { [self] error -> Promise<Void> in
 						self.eventLock.lock()
 						self.exposures.insert(contentsOf: localExposures, at: 0)
@@ -1165,6 +1165,24 @@ public final class Context {
 		customFieldValues = [:]
 		data = ContextData()
 		failedError = error
+	}
+
+	// ready/refresh/publish/close events reach the logger on the main thread, as in v1.4.0, so
+	// loggers may touch UIKit; the work itself stays off the main thread and never waits for the
+	// delivery. `.error` stays synchronous so it is seen before the context reports failed.
+	// On Linux, where nothing may service the main queue, events use the completing thread.
+	#if canImport(Darwin)
+	static var deliversEventsOnMainThread = true
+	#else
+	static var deliversEventsOnMainThread = false
+	#endif
+
+	private func deliverOnMain(_ deliver: @escaping () -> Void) {
+		if !Context.deliversEventsOnMainThread || Thread.isMainThread {
+			deliver()
+		} else {
+			DispatchQueue.main.async(execute: deliver)
+		}
 	}
 
 	private func logEvent(event: ContextEventLoggerEvent) {

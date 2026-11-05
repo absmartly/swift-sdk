@@ -3170,4 +3170,44 @@ final class ContextTest: XCTestCase {
 		XCTAssertEqual(1, handler.publishEventCallsCount)
 		XCTAssertEqual(["goal1"], handler.publishEventReceivedEvent?.goals.map { $0.name })
 	}
+
+	func testCompletionEventsAreDeliveredOnTheMainThread() throws {
+		let platformDefault = Context.deliversEventsOnMainThread
+		Context.deliversEventsOnMainThread = true
+		defer { Context.deliversEventsOnMainThread = platformDefault }
+
+		var deliveredOnMain: [String: Bool] = [:]
+		let delivered = XCTestExpectation()
+		delivered.expectedFulfillmentCount = 3
+		logger.handleEventContextEventClosure = { _, event in
+			switch event {
+			case .ready: deliveredOnMain["ready"] = Thread.isMainThread
+			case .publish: deliveredOnMain["publish"] = Thread.isMainThread
+			case .refresh: deliveredOnMain["refresh"] = Thread.isMainThread
+			default: return
+			}
+			delivered.fulfill()
+		}
+
+		let (promise, resolver) = Promise<ContextData>.pending()
+		let context = try createContext(config: getContextConfig(withUnits: true), data: promise)
+		let data = try getContextData()
+		DispatchQueue.global().async { resolver.fulfill(data) }
+		let ready = XCTestExpectation()
+		_ = context.waitUntilReady().done { _ in ready.fulfill() }
+		wait(for: [ready], timeout: 1.0)
+
+		context.track("goal1", properties: nil)
+		handler.publishEventClosure = { _ in
+			Promise { seal in DispatchQueue.global().async { seal.fulfill(()) } }
+		}
+		provider.getContextDataClosure = {
+			Promise { seal in DispatchQueue.global().async { seal.fulfill(data) } }
+		}
+		_ = context.publish()
+		_ = context.refresh()
+		wait(for: [delivered], timeout: 1.0)
+
+		XCTAssertEqual(["ready": true, "publish": true, "refresh": true], deliveredOnMain)
+	}
 }
