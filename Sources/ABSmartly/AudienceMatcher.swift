@@ -7,9 +7,8 @@ public class AudienceMatcher {
 		let json = JSON(parseJSON: audience)
 		let filter = json["filter"]
 
+		// No filter (e.g. "null" or "{}") means the experiment has no audience.
 		guard filter.exists() else {
-			let truncated = audience.count > 100 ? "\(audience.prefix(100))..." : audience
-			Logger.error("Audience JSON missing 'filter' field. Audience: '\(truncated)'")
 			return nil
 		}
 

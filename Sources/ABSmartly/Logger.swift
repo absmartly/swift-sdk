@@ -4,7 +4,11 @@ import OSLog
 #endif
 
 class Logger {
+	// Test hook: sees every error message before it is written.
+	static var errorObserver: ((String) -> Void)?
+
 	static func error(_ error: String) {
+		errorObserver?(error)
 		#if canImport(OSLog)
 		if #available(macOS 11.0, iOS 14.0, tvOS 14.0, watchOS 7.0, *) {
 			let customLog = os.Logger(subsystem: "ABSmartly", category: "")
