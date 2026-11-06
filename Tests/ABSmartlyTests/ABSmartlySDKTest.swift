@@ -261,6 +261,87 @@ final class ABsmartlySDKTest: XCTestCase {
 		XCTAssertNotNil(sdk)
 	}
 
+	func testNamedParameterInitializationPassesEventLoggerToContexts() throws {
+		let customLogger = ContextEventLoggerMock()
+		let contextDataProvider = ContextDataProviderMock()
+		contextDataProvider.getContextDataReturnValue = Promise<ContextData>.value(ContextData())
+
+		let sdk = try ABsmartlySDK(
+			endpoint: "https://test.absmartly.io/v1",
+			apiKey: "test-api-key",
+			application: "test-app",
+			environment: "test",
+			contextEventLogger: customLogger,
+			contextDataProvider: contextDataProvider
+		)
+
+		let ready = XCTestExpectation(description: "ready")
+		customLogger.handleEventContextEventClosure = { _, event in
+			if case .ready = event {
+				ready.fulfill()
+			}
+		}
+
+		let contextConfig = ContextConfig()
+		contextConfig.setUnit(unitType: "session_id", uid: "test123")
+		_ = sdk.createContext(config: contextConfig)
+
+		wait(for: [ready], timeout: 1.0)
+	}
+
+	func testNamedParameterInitializationPassesEventLoggerToContextsWithData() throws {
+		let customLogger = ContextEventLoggerMock()
+
+		let sdk = try ABsmartlySDK(
+			endpoint: "https://test.absmartly.io/v1",
+			apiKey: "test-api-key",
+			application: "test-app",
+			environment: "test",
+			contextEventLogger: customLogger
+		)
+
+		let ready = XCTestExpectation(description: "ready")
+		customLogger.handleEventContextEventClosure = { _, event in
+			if case .ready = event {
+				ready.fulfill()
+			}
+		}
+
+		let contextConfig = ContextConfig()
+		contextConfig.setUnit(unitType: "session_id", uid: "test123")
+		_ = sdk.createContextWithData(config: contextConfig, contextData: ContextData())
+
+		wait(for: [ready], timeout: 1.0)
+	}
+
+	func testContextConfigEventLoggerOverridesSDKEventLogger() throws {
+		let sdkLogger = ContextEventLoggerMock()
+		let contextLogger = ContextEventLoggerMock()
+
+		let sdk = try ABsmartlySDK(
+			endpoint: "https://test.absmartly.io/v1",
+			apiKey: "test-api-key",
+			application: "test-app",
+			environment: "test",
+			contextEventLogger: sdkLogger
+		)
+
+		let ready = XCTestExpectation(description: "ready")
+		contextLogger.handleEventContextEventClosure = { _, event in
+			if case .ready = event {
+				ready.fulfill()
+			}
+		}
+
+		let contextConfig = ContextConfig()
+		contextConfig.setUnit(unitType: "session_id", uid: "test123")
+		contextConfig.eventLogger = contextLogger
+		_ = sdk.createContextWithData(config: contextConfig, contextData: ContextData())
+
+		wait(for: [ready], timeout: 1.0)
+		XCTAssertEqual(0, sdkLogger.handleEventContextEventCallsCount)
+	}
+
 	func testBackwardsCompatibility() throws {
 		let clientConfig = ClientConfig(
 			apiKey: "test-key",

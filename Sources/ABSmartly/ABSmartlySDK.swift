@@ -39,7 +39,7 @@ public final class ABsmartlySDK {
 		environment: String,
 		applicationVersion: String = "0",
 		timeout: TimeInterval = 3.0,
-		retries: UInt = 5,
+		retries: UInt = 3,
 		contextEventLogger: ContextEventLogger? = nil,
 		contextDataProvider: ContextDataProvider? = nil,
 		contextEventHandler: ContextEventHandler? = nil,
@@ -95,7 +95,7 @@ public final class ABsmartlySDK {
 	public func createContextWithData(config: ContextConfig, contextData: ContextData) -> Context {
 		return Context(
 			config: config, clock: DefaultClock(), scheduler: scheduler, handler: contextEventHandler,
-			provider: contextDataProvider, logger: config.eventLogger, parser: variableParser,
+			provider: contextDataProvider, logger: config.eventLogger ?? contextEventLogger, parser: variableParser,
 			matcher: AudienceMatcher(),
 			promise: Promise<ContextData>.value(contextData))
 	}
@@ -103,7 +103,7 @@ public final class ABsmartlySDK {
 	public func createContext(config: ContextConfig) -> Context {
 		return Context(
 			config: config, clock: DefaultClock(), scheduler: scheduler, handler: contextEventHandler,
-			provider: contextDataProvider, logger: config.eventLogger, parser: variableParser,
+			provider: contextDataProvider, logger: config.eventLogger ?? contextEventLogger, parser: variableParser,
 			matcher: AudienceMatcher(),
 			promise: contextDataProvider.getContextData())
 	}

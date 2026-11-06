@@ -84,7 +84,7 @@ let sdk = try ABsmartlySDK(
     environment: "production",
     applicationVersion: "1.0.0",
     timeout: 5.0,           // Default: 3.0 seconds
-    retries: 3              // Default: 5
+    retries: 5              // Default: 3
 )
 ```
 
@@ -115,7 +115,7 @@ let sdk = try ABsmartlySDK(config: sdkConfig)
 | environment             | `String`                          | &#9989;   | `nil`       | The environment of the platform where the SDK is installed. Environments are created on the Web Console and should match the available environments in your infrastructure.   |
 | applicationVersion      | `String`                          | &#10060;  | `"0"`       | The version of your application.                                                                                                                                              |
 | timeout                 | `TimeInterval`                    | &#10060;  | `3.0`       | Network request timeout in seconds.                                                                                                                                           |
-| retries                 | `UInt`                            | &#10060;  | `5`         | Number of retry attempts for failed network requests.                                                                                                                         |
+| retries                 | `UInt`                            | &#10060;  | `3`         | Number of retry attempts for failed network requests.                                                                                                                         |
 | contextEventLogger      | `ContextEventLogger`              | &#10060;  | `nil`       | Callback to handle SDK events (ready, exposure, goal, etc.)                                                                                                                   |
 | contextDataProvider     | `ContextDataProvider`             | &#10060;  | auto        | Custom provider for context data (advanced usage)                                                                                                                             |
 | contextPublisher        | `ContextPublisher`                | &#10060;  | auto        | Custom publisher for context events (advanced usage)                                                                                                                          |
