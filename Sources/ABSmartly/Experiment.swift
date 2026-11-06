@@ -18,7 +18,7 @@ public struct Experiment: Codable {
 	public let audience: String?
 	public let customFieldValues: [CustomFieldValue]?
 
-	// Every field except `name` decodes leniently, as in v1.4.0: a missing or wrong-typed
+	// Every field except `name` decodes leniently: a missing or wrong-typed
 	// field falls back to its default instead of failing the whole context.
 	public init(from decoder: Decoder) throws {
 		let container = try decoder.container(keyedBy: CodingKeys.self)

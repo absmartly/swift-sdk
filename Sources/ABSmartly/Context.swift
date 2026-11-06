@@ -108,7 +108,7 @@ public final class Context {
 		if promise.isResolved {
 			if let data = promise.value {
 				applyData(data)
-				// Ready before the event, as in v1.4.0, so reads from a logger's ready handler work.
+				// Mark ready before delivery so a logger's ready handler can read the context.
 				markReady()
 				logEvent(event: .ready(data: data))
 				// Goals tracked from inside the ready callback were queued before the
@@ -131,8 +131,7 @@ public final class Context {
 					// Completion handlers hold the context strongly so a caller that keeps only
 					// waitUntilReady()'s promise still gets it settled.
 					promise.done(on: DispatchQueue.global()) { [self] data in
-						// Ready before the event, as in v1.4.0, so reads from a logger's ready
-						// handler work.
+						// Mark ready before delivery so a logger's ready handler can read the context.
 						self.applyData(data)
 						self.markReady()
 						self.deliverOnMain { self.logEvent(event: .ready(data: data)) }
@@ -779,7 +778,7 @@ public final class Context {
 		}
 	}
 
-	// The public API never throws (as in v1.4.0): misuse such as reading before ready or
+	// The public API never throws: misuse such as reading before ready or
 	// writing after close is reported through Logger and an `.error` event instead.
 	private func ensureReady(_ expectNotClosed: Bool) -> Bool {
 		do {

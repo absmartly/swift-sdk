@@ -3127,7 +3127,6 @@ final class ContextTest: XCTestCase {
 		let (promise, _) = Promise<ContextData>.pending()
 		let context = try createContext(config: getContextConfig(withUnits: true), data: promise)
 
-		// v1.4.0 signatures: none of these need `try`.
 		let treatment: Int = context.getTreatment("exp_test_ab")
 		XCTAssertEqual(0, treatment)
 		XCTAssertEqual(0, context.peekTreatment("exp_test_ab"))
@@ -3261,7 +3260,6 @@ final class ContextTest: XCTestCase {
 	func testCloseEventKeepsItsCaseName() throws {
 		var closeLogged = false
 		logger.handleEventContextEventClosure = { _, event in
-			// Exhaustive switch as written against v1.4.0.
 			switch event {
 			case .ready, .refresh, .publish, .exposure, .goal, .error:
 				break
