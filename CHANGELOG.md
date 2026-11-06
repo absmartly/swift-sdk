@@ -1,9 +1,8 @@
 # Changelog
 
-## 2.0.0 (unreleased)
+## 1.5.0 (unreleased)
 
 ### BREAKING
-- Requires Swift 6.1 (Xcode 16.3) or later: the package's tools-version is 6.1 (the code still builds in the Swift 5 language mode). Minimum deployment targets are now iOS 12, tvOS 12, macOS 10.14 and watchOS 4 (were iOS 10, tvOS 10, watchOS 3; the podspec had macOS 10.10). On Linux, `swift-crypto` 3.x is required.
 - A variable key shared by several experiments resolves like the JavaScript SDK. The experiments are walked in ascending id order; `getVariableValue` exposes every experiment it visits (an unassigned one with `assigned: false`), and the value comes from the first experiment that is assigned or overridden and whose variant defines the key. v1.4.0 used the first assigned or overridden experiment even when its variant lacked the key (returning the default) and exposed only that experiment. Callers of a key whose lowest-id experiment's variant lacks it now get a later experiment's value, and more exposures can be queued. `getVariableValue` also exposes an experiment whose audience mismatch in strict mode yields the control variant, as `getTreatment` does.
 - `ContextEventHandler` renamed to `ContextPublisher`. Source-compatible: `ContextEventHandler` is a typealias and the `contextEventHandler:` init is kept. Only binary (ABI) consumers are affected.
 - Standardized error messages.
@@ -22,7 +21,7 @@
 - `publish()` and `refresh()` work before the context is ready, as in v1.4.0.
 - A pending automatic publish keeps the context alive until it is sent, so a `track()` followed by dropping the context still publishes.
 - `Context` methods keep their v1.4.0 non-throwing signatures. Misuse that used to hit a `precondition` (reading before ready, writing after close, an invalid or changed unit) no longer crashes: reads return a default (`0`, `nil`, the `defaultValue`, empty collections), writes are ignored, and an `.error` event is logged. Overrides and custom assignments (`setOverride(s)`, `setCustomAssignment(s)`) are still accepted after close, as in v1.4.0.
-- `swift-crypto` is only linked on Linux; Apple platforms keep using CommonCrypto.
+- Swift tools-version stays 5.3. `swift-crypto` (`1.0.0..<4.0.0`) is only linked on Linux; Apple platforms keep using CommonCrypto.
 
 ### Added
 - `ClientConfig.applicationVersion`.

@@ -5,16 +5,14 @@ A/B Smartly - Swift SDK for iOS and macOS applications.
 ## Compatibility
 
 The A/B Smartly Swift SDK is supported on:
-- iOS 12.0 or later
-- macOS 10.14 or later
+- iOS 10.0 or later
+- macOS 10.10 or later
 
 | Platform    | Support    | Notes                                          |
 |-------------|------------|------------------------------------------------|
-| iOS         | iOS 12+    | Full support including UIDevice integration    |
-| macOS       | 10.14+     | Full support                                   |
-| tvOS        | tvOS 12+   |                                                |
-| watchOS     | watchOS 4+ |                                                |
-| Swift       | 6.1+       | Xcode 16.3 or later; Swift Package Manager and CocoaPods supported |
+| iOS         | iOS 10+    | Full support including UIDevice integration    |
+| macOS       | 10.10+     | Full support                                   |
+| Swift       | 5.0+       | Swift Package Manager and CocoaPods supported  |
 
 ## Installation
 
@@ -35,7 +33,7 @@ To install the A/B Smartly SDK using Swift Package Manager, following these step
 To install the A/B Smartly SDK with CocoaPods, add the following lines to your `Podfile`:
 
 ```ruby
-pod 'ABSmartlySwiftSDK', '~> 2.0'
+pod 'ABSmartlySwiftSDK', '~> 1.0.2'
 ```
 
 Run the following command to update your Xcode project:

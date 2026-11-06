@@ -1,6 +1,6 @@
 Pod::Spec.new do |spec|
   spec.name = 'ABSmartlySwiftSDK'
-  spec.version = '2.0.0'
+  spec.version = '1.5.0'
   spec.summary = 'A/B Smartly Swift SDK'
   spec.description = 'A/B Smartly SDK for iOS/tvOS/watchOS'
 
@@ -10,10 +10,10 @@ Pod::Spec.new do |spec|
   spec.author = { 'ABSmartly' => 'sdk@absmartly.com' }
   spec.source = { :git => 'https://github.com/absmartly/swift-sdk.git', :tag => 'v'+spec.version.to_s }
 
-  spec.ios.deployment_target = '12.0'
-  spec.tvos.deployment_target = '12.0'
-  spec.osx.deployment_target = '10.14'
-  spec.watchos.deployment_target = '4.0'
+  spec.ios.deployment_target = '10.0'
+  spec.tvos.deployment_target = '10.0'
+  spec.osx.deployment_target = '10.10'
+  spec.watchos.deployment_target = '3.0'
   
   spec.module_name = 'ABSmartly'
   spec.source_files = 'Sources/**/*.swift'

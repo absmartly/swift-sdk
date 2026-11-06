@@ -1,13 +1,13 @@
-// swift-tools-version:6.1
+// swift-tools-version:5.3
 import PackageDescription
 
 let package = Package(
     name: "ABSmartly",
     platforms: [
-        .iOS(.v12),
-        .tvOS(.v12),
+        .iOS(.v10),
+        .tvOS(.v10),
         .macOS(.v10_14),
-        .watchOS(.v4)
+        .watchOS(.v3)
     ],
     products: [
         .library(
@@ -18,8 +18,9 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-atomics.git", .upToNextMajor(from: "1.0.2")),
         .package(url: "https://github.com/mxcl/PromiseKit.git", .upToNextMajor(from: "6.8.4")),
         .package(url: "https://github.com/SwiftyJSON/SwiftyJSON.git", .upToNextMajor(from: "5.0.0")),
-        // Only used for MD5 on Linux (Apple platforms use CommonCrypto).
-        .package(url: "https://github.com/apple/swift-crypto.git", .upToNextMajor(from: "3.0.0"))
+        // Only used for MD5 on Linux (Apple platforms use CommonCrypto). The wide range lets
+        // older toolchains resolve an older swift-crypto, whose tools-version they can read.
+        .package(url: "https://github.com/apple/swift-crypto.git", "1.0.0"..<"4.0.0")
     ],
     targets: [
         .target(
@@ -37,6 +38,6 @@ let package = Package(
             path: "Tests/ABSmartlyTests",
             resources: [.copy("Resources")]),
     ],
-    swiftLanguageModes: [.v5]
+    swiftLanguageVersions: [.v5]
 )
 
