@@ -740,7 +740,8 @@ final class ContextTest: XCTestCase {
 		let context2 = try createContext(config: contextConfig, data: Promise<ContextData>.value(contextData))
 		context2.setAttribute(name: "age", value: 19)
 		XCTAssertEqual("circle", context2.getVariableValue("icon", defaultValue: "square"))
-		XCTAssertEqual(1, context2.getPendingCount())
+		// exp_test_ab (id 1) is visited first and exposed with its control variant
+		XCTAssertEqual(2, context2.getPendingCount())
 	}
 
 	func testGetVariableValueQueuesExposureWithAudienceMismatchFalseOnAudienceMatch() throws {
@@ -824,16 +825,18 @@ final class ContextTest: XCTestCase {
 		wait(for: [expectation], timeout: 1.0)
 	}
 
-	func
-		testGetVariableValueDoesNotQueueExposureWithAudienceMismatchFalseAndControlVariantOnAudienceMismatchInStrictMode()
-		throws
-	{
+	func testGetVariableValueQueuesExposureWithControlVariantOnAudienceMismatchInStrictMode() throws {
 		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
 		let contextData = try getContextData(source: "audience_strict_context")
 		let context = try createContext(config: contextConfig, data: Promise<ContextData>.value(contextData))
 
+		logger.clearInvocations()
+
 		XCTAssertEqual("small", context.getVariableValue("banner.size", defaultValue: "small"))
-		XCTAssertEqual(0, context.getPendingCount())
+		XCTAssertEqual(1, context.getPendingCount())
+		XCTAssertEqual(
+			[Exposure(1, "exp_test_ab", "session_id", 0, clock.millis(), false, true, false, false, false, true)],
+			loggedExposures())
 	}
 
 	func testGetVariableValueCallsEventLogger() throws {
@@ -865,6 +868,137 @@ final class ContextTest: XCTestCase {
 		_ = context.getVariableValue("banner.size")
 
 		XCTAssertEqual(0, logger.handleEventContextEventCallsCount)
+	}
+
+	func sharedKeyExperiment(
+		id: Int, name: String, unitType: String = "session_id", fullOnVariant: Int = 1, configs: [String?]
+	) -> String {
+		let variants = configs.enumerated().map { (i, config) -> String in
+			let escaped = config.map { "\"" + $0.replacingOccurrences(of: "\"", with: "\\\"") + "\"" } ?? "null"
+			return "{\"name\":\"\(i)\",\"config\":\(escaped)}"
+		}
+		return """
+			{"id":\(id),"name":"\(name)","iteration":1,"unitType":"\(unitType)","seedHi":0,"seedLo":0,\
+			"split":[0.5,0.5],"trafficSeedHi":0,"trafficSeedLo":0,"trafficSplit":[0.0,1.0],\
+			"fullOnVariant":\(fullOnVariant),"applications":[{"name":"website"}],\
+			"variants":[\(variants.joined(separator: ","))],"audience":null}
+			"""
+	}
+
+	func createSharedKeyContext(_ experiments: [String]) throws -> Context {
+		let json = "{\"experiments\":[\(experiments.joined(separator: ","))]}"
+		let data = try JSONDecoder().decode(ContextData.self, from: json.data(using: .utf8)!)
+		let context = try createContext(
+			config: getContextConfig(withUnits: true), data: Promise<ContextData>.value(data))
+		logger.clearInvocations()
+		return context
+	}
+
+	func loggedExposures() -> [Exposure] {
+		return logger.handleEventContextEventReceivedInvocations.compactMap {
+			if case let .exposure(exposure) = $0.event { return exposure }
+			return nil
+		}
+	}
+
+	func sharedKeyBothAssigned(lowestFirst: Bool) -> [String] {
+		let one = sharedKeyExperiment(id: 1, name: "exp_one", configs: [nil, "{\"icon\":\"one\"}"])
+		let two = sharedKeyExperiment(id: 2, name: "exp_two", configs: [nil, "{\"icon\":\"two\"}"])
+		return lowestFirst ? [one, two] : [two, one]
+	}
+
+	// exp_one is not assigned: its unit type has no unit in the context.
+	func sharedKeyFirstUnassigned() -> [String] {
+		return [
+			sharedKeyExperiment(
+				id: 1, name: "exp_one", unitType: "device_id", fullOnVariant: 0,
+				configs: ["{\"icon\":\"zero\"}", "{\"icon\":\"one\"}"]),
+			sharedKeyExperiment(id: 2, name: "exp_two", configs: [nil, "{\"icon\":\"two\"}"]),
+		]
+	}
+
+	// exp_one is assigned variant 1, which does not define the key.
+	func sharedKeyAssignedVariantLacksKey() -> [String] {
+		return [
+			sharedKeyExperiment(id: 1, name: "exp_one", configs: ["{\"icon\":\"zero\"}", "{\"other\":1}"]),
+			sharedKeyExperiment(id: 2, name: "exp_two", configs: [nil, "{\"icon\":\"two\"}"]),
+		]
+	}
+
+	func testGetVariableValueSharedKeyBothAssignedLowestIdWins() throws {
+		let context = try createSharedKeyContext(sharedKeyBothAssigned(lowestFirst: true))
+
+		XCTAssertEqual("one", context.getVariableValue("icon", defaultValue: "default"))
+		XCTAssertEqual(
+			[Exposure(1, "exp_one", "session_id", 1, clock.millis(), true, true, false, true, false, false)],
+			loggedExposures())
+	}
+
+	func testGetVariableValueSharedKeyHigherIdFirstInPayloadLowestIdWins() throws {
+		let context = try createSharedKeyContext(sharedKeyBothAssigned(lowestFirst: false))
+
+		XCTAssertEqual("one", context.getVariableValue("icon", defaultValue: "default"))
+		XCTAssertEqual(
+			[Exposure(1, "exp_one", "session_id", 1, clock.millis(), true, true, false, true, false, false)],
+			loggedExposures())
+	}
+
+	func testGetVariableValueSharedKeyFirstUnassignedFallsThroughAndExposesBoth() throws {
+		let context = try createSharedKeyContext(sharedKeyFirstUnassigned())
+
+		XCTAssertEqual("two", context.getVariableValue("icon", defaultValue: "default"))
+		XCTAssertEqual(
+			[
+				Exposure(1, "exp_one", "device_id", 0, clock.millis(), false, true, false, false, false, false),
+				Exposure(2, "exp_two", "session_id", 1, clock.millis(), true, true, false, true, false, false),
+			],
+			loggedExposures())
+		XCTAssertEqual(2, context.getPendingCount())
+	}
+
+	func testGetVariableValueSharedKeyFirstUnassignedButOverriddenWins() throws {
+		let context = try createSharedKeyContext(sharedKeyFirstUnassigned())
+		context.setOverride(experimentName: "exp_one", variant: 1)
+
+		XCTAssertEqual("one", context.getVariableValue("icon", defaultValue: "default"))
+		XCTAssertEqual(
+			[Exposure(1, "exp_one", "device_id", 1, clock.millis(), false, true, true, false, false, false)],
+			loggedExposures())
+	}
+
+	func testGetVariableValueSharedKeyAssignedVariantLackingKeyFallsThrough() throws {
+		let context = try createSharedKeyContext(sharedKeyAssignedVariantLacksKey())
+
+		XCTAssertEqual("two", context.getVariableValue("icon", defaultValue: "default"))
+		XCTAssertEqual(
+			[
+				Exposure(1, "exp_one", "session_id", 1, clock.millis(), true, true, false, true, false, false),
+				Exposure(2, "exp_two", "session_id", 1, clock.millis(), true, true, false, true, false, false),
+			],
+			loggedExposures())
+	}
+
+	func testPeekVariableValueSharedKeyMatchesGetAndQueuesNothing() throws {
+		let scenarios: [([String], String?, JSON)] = [
+			(sharedKeyBothAssigned(lowestFirst: true), nil, "one"),
+			(sharedKeyBothAssigned(lowestFirst: false), nil, "one"),
+			(sharedKeyFirstUnassigned(), nil, "two"),
+			(sharedKeyFirstUnassigned(), "exp_one", "one"),
+			(sharedKeyAssignedVariantLacksKey(), nil, "two"),
+		]
+
+		for (experiments, override, expected) in scenarios {
+			let context = try createSharedKeyContext(experiments)
+			if let override = override {
+				context.setOverride(experimentName: override, variant: 1)
+			}
+
+			XCTAssertEqual(expected, context.peekVariableValue("icon", defaultValue: "default"))
+			XCTAssertEqual(0, context.getPendingCount())
+			XCTAssertEqual([], loggedExposures())
+
+			XCTAssertEqual(expected, context.getVariableValue("icon", defaultValue: "default"))
+		}
 	}
 
 	func testGetVariableKeys() throws {

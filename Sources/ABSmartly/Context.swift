@@ -517,29 +517,13 @@ public final class Context {
 	public func getVariableValue(_ key: String, defaultValue: JSON? = nil) -> JSON? {
 		guard ensureReady(true) else { return defaultValue }
 
-		if let assignment = getVariableAssignment(key), let variables = assignment.variables {
-			if !assignment.exposed.load(ordering: .acquiring) {
-				queueExposure(assignment)
-			}
-
-			if let object = variables[key] {
-				return object
-			}
-		}
-
-		return defaultValue
+		return resolveVariableValue(key, defaultValue: defaultValue, peek: false)
 	}
 
 	public func peekVariableValue(_ key: String, defaultValue: JSON? = nil) -> JSON? {
 		guard ensureReady(true) else { return defaultValue }
 
-		if let assignment = getVariableAssignment(key), let variables = assignment.variables {
-			if let object = variables[key] {
-				return object
-			}
-		}
-
-		return defaultValue
+		return resolveVariableValue(key, defaultValue: defaultValue, peek: true)
 	}
 
 	public func track(_ goalName: String, properties: [String: JSON]? = nil) {
@@ -966,19 +950,28 @@ public final class Context {
 		return assignment
 	}
 
-	private func getVariableAssignment(_ key: String) -> Assignment? {
+	// Experiments sharing a key are walked in ascending id order, like the JavaScript SDK: each
+	// one visited is exposed (unless peeking), and the first that is assigned or overridden
+	// and whose variant defines the key provides the value.
+	private func resolveVariableValue(_ key: String, defaultValue: JSON?, peek: Bool) -> JSON? {
 		guard let keyExperimentVariables = getVariableExperiments(key) else {
-			return nil
+			return defaultValue
 		}
 
 		for experimentVariables in keyExperimentVariables {
 			let assignment = getAssignment(experimentVariables.data.name)
-			if assignment.assigned || assignment.overridden {
-				return assignment
+			if let variables = assignment.variables {
+				if !peek && !assignment.exposed.load(ordering: .acquiring) {
+					queueExposure(assignment)
+				}
+
+				if let value = variables[key], assignment.assigned || assignment.overridden {
+					return value
+				}
 			}
 		}
 
-		return nil
+		return defaultValue
 	}
 
 	private func getVariableExperiments(_ experimentName: String) -> [ExperimentVariables]? {
