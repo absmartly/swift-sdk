@@ -1115,12 +1115,12 @@ public final class Context {
 
 					if let customValue = customFieldValue.value {
 						if fieldType.starts(with: "json") {
-							// SwiftyJSON values as in v1.4.0: an object is `[String: JSON]`, other JSON a `JSON`.
+							// As in v1.4.0, an object goes through the configured VariableParser; other JSON is a `JSON`.
 							do {
 								let json = try JSON(data: Data(customValue.utf8), options: .fragmentsAllowed)
 								switch json.type {
 								case .dictionary:
-									value.value = json.dictionaryValue
+									value.value = parser.parse(experimentName: experiment.name, config: customValue)
 								case .null:
 									value.value = nil
 								default:

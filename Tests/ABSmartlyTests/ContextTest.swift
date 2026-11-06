@@ -2490,6 +2490,24 @@ final class ContextTest: XCTestCase {
 		XCTAssertNotNil(context.getContextData())
 	}
 
+	func testJsonCustomFieldObjectUsesConfiguredVariableParser() throws {
+		class RecordingParser: VariableParser {
+			var configs: [String] = []
+			func parse(experimentName: String, config: String) -> [String: JSON]? {
+				configs.append(config)
+				return ["parsed_by": "custom"]
+			}
+		}
+		let recording = RecordingParser()
+		parser = recording
+		let context = try createContext(config: getContextConfig(withUnits: true))
+
+		XCTAssertEqual(
+			["parsed_by": "custom"],
+			context.getCustomFieldValue(experimentName: "exp_test_ab", key: "overrides") as? [String: JSON])
+		XCTAssertTrue(recording.configs.contains("{\"123\":1,\"456\":0}"))
+	}
+
 	// MARK: - Fix #2: Flush events restored on publish failure
 
 	func testFlushRestoresEventsOnPublishFailure() throws {
