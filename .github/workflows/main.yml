@@ -8,9 +8,25 @@ on:
 
 jobs:
   test:
-    runs-on: macos-latest
+    name: test (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Swift 6.1, the oldest supported toolchain
+          - name: swift-6.1
+            runs-on: macos-15
+            xcode: /Applications/Xcode_16.3.app
+          - name: latest
+            runs-on: macos-latest
+            xcode: ""
+    runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        if: matrix.xcode != ''
+        run: sudo xcode-select -s "${{ matrix.xcode }}"
 
       - name: Show Swift version
         run: swift --version
