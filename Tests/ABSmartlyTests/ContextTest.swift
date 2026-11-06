@@ -3245,5 +3245,20 @@ final class ContextTest: XCTestCase {
 		wait(for: [delivered], timeout: 1.0)
 
 		XCTAssertEqual(["ready": true, "publish": true, "refresh": true], deliveredOnMain)
+
+		// close() with queued events flushes first, then delivers `.close` on main too.
+		var closeDeliveredOnMain: Bool?
+		let closeDelivered = XCTestExpectation()
+		logger.handleEventContextEventClosure = { _, event in
+			if case .close = event {
+				closeDeliveredOnMain = Thread.isMainThread
+				closeDelivered.fulfill()
+			}
+		}
+		context.track("goal2", properties: nil)
+		_ = context.close()
+		wait(for: [closeDelivered], timeout: 1.0)
+
+		XCTAssertEqual(true, closeDeliveredOnMain)
 	}
 }

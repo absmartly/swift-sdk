@@ -55,10 +55,23 @@ final class MatchOperatorTest: OperatorTest {
 
 	func testOverlappingAlternationTimesOut() {
 		// No nested quantifier, but exponential backtracking on a near-miss input.
+		// Evaluated off the test thread with an outer deadline, so a regression fails instead of hanging.
 		let input = String(repeating: "a", count: 60) + "b"
-		let start = Date()
-		XCTAssertEqual(JSON.null, matchOperator.evaluate(evaluator, [input, "^(a|aa)+$"]))
-		XCTAssertLessThan(Date().timeIntervalSince(start), 2.0)
+		let matchOperator = self.matchOperator
+		let evaluator = self.evaluator
+		let finished = XCTestExpectation(description: "evaluate returns")
+		var result: JSON?
+		var elapsed: TimeInterval = 0
+		DispatchQueue.global().async {
+			let start = Date()
+			let value = matchOperator.evaluate(evaluator, [input, "^(a|aa)+$"])
+			elapsed = Date().timeIntervalSince(start)
+			result = value
+			finished.fulfill()
+		}
+		XCTAssertEqual(.completed, XCTWaiter().wait(for: [finished], timeout: 5.0))
+		XCTAssertEqual(JSON.null, result)
+		XCTAssertLessThan(elapsed, 2.0)
 
 		XCTAssertEqual(JSON(true), matchOperator.evaluate(evaluator, ["aaaa", "^(a|aa)+$"]))
 	}
