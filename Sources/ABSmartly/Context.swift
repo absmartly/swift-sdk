@@ -1023,9 +1023,9 @@ public final class Context {
 				timeout = scheduler.schedule(
 					after: publishDelay,
 					execute: { [self] in
-						self.flush().catch { error in
+						// flush() already reports the failure as one `.error` event.
+						self.flush().catch(on: DispatchQueue.global()) { error in
 							Logger.error("Auto-flush failed: \(error.localizedDescription)")
-							self.logError(error: error)
 						}
 					})
 		}

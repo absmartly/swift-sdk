@@ -2508,6 +2508,24 @@ final class ContextTest: XCTestCase {
 		XCTAssertTrue(recording.configs.contains("{\"123\":1,\"456\":0}"))
 	}
 
+	func testFailedAutoPublishLogsOneError() throws {
+		let context = try createContext(config: getContextConfig(withUnits: true))
+		context.track("goal1", properties: nil)
+
+		let failed = XCTestExpectation()
+		logger.handleEventContextEventClosure = { _, event in
+			if case .error = event { failed.fulfill() }
+		}
+		handler.publishEventReturnValue = Promise<Void>(error: ABSmartlyError("publish failure"))
+		scheduler.scheduleAfterExecuteReceivedArguments?.execute()
+
+		wait(for: [failed], timeout: 1.0)
+		// Let the timer's own catch handler run (on any queue, including main) before counting.
+		RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+		XCTAssertEqual(1, handler.publishEventCallsCount)
+		XCTAssertEqual(["publish failure"], loggedErrorMessages())
+	}
+
 	// MARK: - Fix #2: Flush events restored on publish failure
 
 	func testFlushRestoresEventsOnPublishFailure() throws {
