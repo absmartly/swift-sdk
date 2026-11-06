@@ -1172,10 +1172,24 @@ public final class Context {
 	// delivery. `.error` stays synchronous so it is seen before the context reports failed.
 	// On Linux, where nothing may service the main queue, events use the completing thread.
 	#if canImport(Darwin)
-	static var deliversEventsOnMainThread = true
+	private static var deliversEventsOnMainThreadValue = true
 	#else
-	static var deliversEventsOnMainThread = false
+	private static var deliversEventsOnMainThreadValue = false
 	#endif
+	private static let deliversEventsOnMainThreadLock = NSLock()
+
+	static var deliversEventsOnMainThread: Bool {
+		get {
+			deliversEventsOnMainThreadLock.lock()
+			defer { deliversEventsOnMainThreadLock.unlock() }
+			return deliversEventsOnMainThreadValue
+		}
+		set {
+			deliversEventsOnMainThreadLock.lock()
+			defer { deliversEventsOnMainThreadLock.unlock() }
+			deliversEventsOnMainThreadValue = newValue
+		}
+	}
 
 	private func deliverOnMain(_ deliver: @escaping () -> Void) {
 		if !Context.deliversEventsOnMainThread || Thread.isMainThread {

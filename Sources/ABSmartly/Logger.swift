@@ -5,7 +5,21 @@ import OSLog
 
 class Logger {
 	// Test hook: sees every error message before it is written.
-	static var errorObserver: ((String) -> Void)?
+	private static var errorObserverValue: ((String) -> Void)?
+	private static let errorObserverLock = NSLock()
+
+	static var errorObserver: ((String) -> Void)? {
+		get {
+			errorObserverLock.lock()
+			defer { errorObserverLock.unlock() }
+			return errorObserverValue
+		}
+		set {
+			errorObserverLock.lock()
+			defer { errorObserverLock.unlock() }
+			errorObserverValue = newValue
+		}
+	}
 
 	static func error(_ error: String) {
 		errorObserver?(error)
