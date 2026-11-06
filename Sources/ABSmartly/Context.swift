@@ -1068,7 +1068,7 @@ public final class Context {
 		refreshTimer = nil
 	}
 
-	public func setData(_ data: ContextData) {
+	internal func setData(_ data: ContextData) {
 		applyData(data)
 		markReady()
 	}
