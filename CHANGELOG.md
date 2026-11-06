@@ -11,7 +11,7 @@
 - A failed context: `getContextData()` returns an empty `ContextData` instead of `nil`, and `refresh()` succeeds without fetching (v1.4.0 fetched again).
 
 ### Compatibility
-- `getCustomFieldValue` returns the v1.4.0 types: `[String: JSON]` for a `json` object (other JSON values as `JSON`), `Double` for `number`, `Bool` for `boolean`.
+- `getCustomFieldValue` returns the v1.4.0 types: `[String: JSON]` from the configured `VariableParser` for a `json` object (other JSON values as `JSON`), `Double` for `number`, `Bool` for `boolean`.
 - `ready`, `refresh`, `publish` and `close` events reach the `ContextEventLogger` on the main thread on Apple platforms, as in v1.4.0. The work itself runs off the main thread.
 - `publish()` and `refresh()` work before the context is ready, as in v1.4.0.
 - A pending automatic publish keeps the context alive until it is sent, so a `track()` followed by dropping the context still publishes.
@@ -27,7 +27,7 @@
 
 ### Fixed
 - The `error` event for a failed load is logged before the context reports failed, like the JavaScript SDK. The `ready` event is still logged after the context is ready, so reads from a logger's `ready` handler work.
-- No exposures after close; failed final flush keeps the context retryable; refresh joins in-flight promise; close awaits in-flight publishes.
+- No exposures after close; refresh joins in-flight promise; close awaits in-flight publishes.
 - An audience of `null` or `{}` is treated as no audience without logging an error.
 - `match` gives up after 100ms (returning null) on patterns that backtrack exponentially, e.g. `^(a|aa)+$`, and rejects nested unbounded quantifiers such as `(a+)+`.
-- Request timeout; HTTP retry and publish recovery off the main queue; numeric 0/1 coercion in JSON custom fields; astral/multibyte hashing.
+- Request timeout; HTTP retry and publish recovery off the main queue; astral/multibyte hashing.
