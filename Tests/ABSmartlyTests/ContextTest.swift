@@ -873,8 +873,8 @@ final class ContextTest: XCTestCase {
 	func sharedKeyExperiment(
 		id: Int, name: String, unitType: String = "session_id", fullOnVariant: Int = 1, configs: [String?]
 	) -> String {
-		let variants = configs.enumerated().map { (i, config) -> String in
-			let escaped = config.map { "\"" + $0.replacingOccurrences(of: "\"", with: "\\\"") + "\"" } ?? "null"
+		let variants = configs.indices.map { i -> String in
+			let escaped = configs[i].map { "\"" + $0.replacingOccurrences(of: "\"", with: "\\\"") + "\"" } ?? "null"
 			return "{\"name\":\"\(i)\",\"config\":\(escaped)}"
 		}
 		return """
