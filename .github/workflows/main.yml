@@ -13,7 +13,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Swift 6.1, the oldest supported toolchain
+          # Swift 6.1 provides additional toolchain coverage
           - name: swift-6.1
             runs-on: macos-15
             xcode: /Applications/Xcode_16.3.app

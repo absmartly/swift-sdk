@@ -1107,7 +1107,7 @@ public final class Context {
 
 					if let customValue = customFieldValue.value {
 						if fieldType.starts(with: "json") {
-							// As in v1.4.0, an object goes through the configured VariableParser; other JSON is a `JSON`.
+							// An object goes through the configured VariableParser; other JSON is a `JSON`.
 							do {
 								let json = try JSON(data: Data(customValue.utf8), options: .fragmentsAllowed)
 								switch json.type {
