@@ -11,6 +11,16 @@ final class AudienceMatcherTest: XCTestCase {
 		XCTAssertNil(matcher.evaluate("null", [:]))
 	}
 
+	func testEmptyAudienceIsNotLoggedAsAnError() {
+		var errors: [String] = []
+		Logger.errorObserver = { errors.append($0) }
+		defer { Logger.errorObserver = nil }
+
+		XCTAssertNil(matcher.evaluate("null", [:]))
+		XCTAssertNil(matcher.evaluate("{}", [:]))
+		XCTAssertEqual([], errors)
+	}
+
 	func testEvaluateReturnsNullIfFilterNotMapOrList() {
 		XCTAssertNil(matcher.evaluate("{\"filter\":null}", [:]))
 		XCTAssertNil(matcher.evaluate("{\"filter\":false}", [:]))

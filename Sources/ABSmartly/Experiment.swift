@@ -18,22 +18,15 @@ public struct Experiment: Codable {
 	public let audience: String?
 	public let customFieldValues: [CustomFieldValue]?
 
+	// Every field except `name` decodes leniently: a missing or wrong-typed
+	// field falls back to its default instead of failing the whole context.
 	public init(from decoder: Decoder) throws {
-		guard let container = try? decoder.container(keyedBy: CodingKeys.self) else {
-			throw DecodingError.dataCorrupted(
-				DecodingError.Context(codingPath: [], debugDescription: "Experiment couldn't be decoded from this data")
-			)
-		}
+		let container = try decoder.container(keyedBy: CodingKeys.self)
+
+		name = try container.decode(String.self, forKey: .name)
 
 		id = (try? container.decodeIfPresent(Int.self, forKey: .id)) ?? 0
-
-		do {
-			name = try container.decode(String.self, forKey: .name)
-		} catch {
-			throw error
-		}
-
-		unitType = (try? container.decodeIfPresent(String.self, forKey: .unitType)) ?? nil
+		unitType = try? container.decodeIfPresent(String.self, forKey: .unitType)
 		iteration = (try? container.decodeIfPresent(Int.self, forKey: .iteration)) ?? 0
 		seedHi = (try? container.decodeIfPresent(Int.self, forKey: .seedHi)) ?? 0
 		seedLo = (try? container.decodeIfPresent(Int.self, forKey: .seedLo)) ?? 0
@@ -45,7 +38,7 @@ public struct Experiment: Codable {
 		trafficSplit = (try? container.decodeIfPresent([Double].self, forKey: .trafficSplit)) ?? []
 		fullOnVariant = (try? container.decodeIfPresent(Int.self, forKey: .fullOnVariant)) ?? 0
 		audienceStrict = (try? container.decodeIfPresent(Bool.self, forKey: .audienceStrict)) ?? false
-		audience = (try? container.decodeIfPresent(String.self, forKey: .audience))
+		audience = try? container.decodeIfPresent(String.self, forKey: .audience)
 
 		applications = (try? container.decode([Application].self, forKey: .applications)) ?? []
 		variants = (try? container.decode([ExperimentVariant].self, forKey: .variants)) ?? []

@@ -7,10 +7,17 @@ public class DefaultVariableParser: VariableParser {
 		let data = Data(config.utf8)
 		do {
 			let parsed = try JSON(data: data, options: .mutableContainers)
-			return parsed.dictionary
+			if let dictionary = parsed.dictionary {
+				return dictionary
+			} else {
+				let truncated = config.count > 100 ? "\(config.prefix(100))..." : config
+				Logger.error("Variant config for experiment '\(experimentName)' is not a valid JSON object. Config: '\(truncated)'")
+				return nil
+			}
 		} catch {
-			Logger.error(error.localizedDescription)
+			let truncated = config.count > 100 ? "\(config.prefix(100))..." : config
+			Logger.error("Failed to parse variant config for experiment '\(experimentName)': \(error.localizedDescription). Config: '\(truncated)'")
+			return nil
 		}
-		return nil
 	}
 }

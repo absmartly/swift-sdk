@@ -1,7 +1,10 @@
 import Foundation
 
 public class ContextConfig {
-	private(set) var units: [String: String] = [:]
+	private(set) var unitValues: [String: JSON] = [:]
+	var units: [String: String] {
+		return unitValues.mapValues { $0.string ?? $0.stringValue }
+	}
 	private(set) var attributes: [String: JSON] = [:]
 	private(set) var overrides: [String: Int] = [:]
 	private(set) var cassignments: [String: Int] = [:]
@@ -13,11 +16,29 @@ public class ContextConfig {
 	}
 
 	public func setUnit(unitType: String, uid: String) {
-		units[unitType] = uid
+		unitValues[unitType] = JSON(uid)
+	}
+
+	/// Sets a unit whose UID is a number. Like the JavaScript SDK, the number is kept as a
+	/// number and hashed as its value rounded to an integer (`toFixed(0)`).
+	public func setUnit(unitType: String, uid: Int) {
+		unitValues[unitType] = JSON(uid)
+	}
+
+	public func setUnit(unitType: String, uid: Double) {
+		unitValues[unitType] = JSON(uid)
+	}
+
+	/// Sets a unit from a JSON value (string or number). Other values are rejected when the
+	/// context is created, which logs an `error` event for them.
+	public func setUnit(unitType: String, value: JSON) {
+		unitValues[unitType] = value
 	}
 
 	public func setUnits(units: [String: String]) {
-		units.forEach { setUnit(unitType: $0.key, uid: $0.value) }
+		for (unitType, uid) in units {
+			setUnit(unitType: unitType, uid: uid)
+		}
 	}
 
 	public func setAttribute(name: String, value: JSON) {
@@ -25,7 +46,9 @@ public class ContextConfig {
 	}
 
 	public func setAttributes(attributes: [String: JSON]) {
-		attributes.forEach { setAttribute(name: $0.key, value: $0.value) }
+		for (name, value) in attributes {
+			setAttribute(name: name, value: value)
+		}
 	}
 
 	public func setOverride(experimentName: String, variant: Int) {
@@ -33,7 +56,9 @@ public class ContextConfig {
 	}
 
 	public func setOverrides(overrides: [String: Int]) {
-		overrides.forEach { setOverride(experimentName: $0.key, variant: $0.value) }
+		for (experimentName, variant) in overrides {
+			setOverride(experimentName: experimentName, variant: variant)
+		}
 	}
 
 	public func setCustomAssignment(experimentName: String, variant: Int) {
@@ -41,6 +66,8 @@ public class ContextConfig {
 	}
 
 	public func setCustomAssignments(assignments: [String: Int]) {
-		assignments.forEach { setCustomAssignment(experimentName: $0.key, variant: $0.value) }
+		for (experimentName, variant) in assignments {
+			setCustomAssignment(experimentName: experimentName, variant: variant)
+		}
 	}
 }

@@ -16,10 +16,10 @@ extension ABSmartlyHTTPError: LocalizedError {
 	}
 }
 
-class ABSmartlyError: Error {
-	let errorMessage: String
+public class ABSmartlyError: Error {
+	public let errorMessage: String
 
-	init(_ errorMessage: String) {
+	public init(_ errorMessage: String) {
 		self.errorMessage = errorMessage
 	}
 }

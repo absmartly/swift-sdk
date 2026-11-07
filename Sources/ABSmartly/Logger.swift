@@ -1,8 +1,29 @@
 import Foundation
+#if canImport(OSLog)
 import OSLog
+#endif
 
 class Logger {
+	// Test hook: sees every error message before it is written.
+	private static var errorObserverValue: ((String) -> Void)?
+	private static let errorObserverLock = NSLock()
+
+	static var errorObserver: ((String) -> Void)? {
+		get {
+			errorObserverLock.lock()
+			defer { errorObserverLock.unlock() }
+			return errorObserverValue
+		}
+		set {
+			errorObserverLock.lock()
+			defer { errorObserverLock.unlock() }
+			errorObserverValue = newValue
+		}
+	}
+
 	static func error(_ error: String) {
+		errorObserver?(error)
+		#if canImport(OSLog)
 		if #available(macOS 11.0, iOS 14.0, tvOS 14.0, watchOS 7.0, *) {
 			let customLog = os.Logger(subsystem: "ABSmartly", category: "")
 			customLog.error("\(error)")
@@ -12,9 +33,13 @@ class Logger {
 		} else {
 			print("ABSmartly Error: " + error)
 		}
+		#else
+		print("ABSmartly Error: " + error)
+		#endif
 	}
 
 	static func notice(_ note: String) {
+		#if canImport(OSLog)
 		if #available(macOS 11.0, iOS 14.0, tvOS 14.0, watchOS 7.0, *) {
 			let customLog = os.Logger(subsystem: "ABSmartly", category: "")
 			customLog.notice("\(note)")
@@ -24,5 +49,8 @@ class Logger {
 		} else {
 			print("ABSmartly Note: " + note)
 		}
+		#else
+		print("ABSmartly Note: " + note)
+		#endif
 	}
 }
