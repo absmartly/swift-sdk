@@ -5,7 +5,7 @@ import UIKit
 
 class ViewController: UIViewController {
 	private let button = UIButton()
-	private var sdk: ABSmartlySDK?
+	private var sdk: ABsmartlySDK?
 	private var context: Context!
 
 	override func viewDidLoad() {
@@ -48,8 +48,8 @@ class ViewController: UIViewController {
 		do {
 			let client = try DefaultClient(config: clientConfig)
 
-			let sdkConfig = ABSmartlyConfig(client: client)
-			sdk = try ABSmartlySDK(config: sdkConfig)
+			let sdkConfig = ABsmartlyConfig(client: client)
+			sdk = try ABsmartlySDK(config: sdkConfig)
 		} catch {
 			print(error.localizedDescription)
 			return
@@ -57,8 +57,9 @@ class ViewController: UIViewController {
 
 		let contextConfig = ContextConfig()
 		contextConfig.refreshInterval = 5
+		let deviceId = UIDevice.current.identifierForVendor?.uuidString ?? UUID().uuidString
 		contextConfig.setUnit(
-			unitType: "anonymous_id", uid: UIDevice.current.identifierForVendor!.uuidString + "1")
+			unitType: "anonymous_id", uid: deviceId + "1")
 
 		self.button.addTarget(self, action: #selector(click), for: .touchUpInside)
 

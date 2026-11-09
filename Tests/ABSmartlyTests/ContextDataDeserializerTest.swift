@@ -4,7 +4,7 @@ import XCTest
 
 final class ContextDataDeserializerTest: XCTestCase {
 	func testContextDataDeserialization() throws {
-		let path = Bundle.module.path(forResource: "context", ofType: "json", inDirectory: "Resources")!
+		let path = TestResources.path(forResource: "context", ofType: "json")
 		let data = try Foundation.Data(contentsOf: URL(fileURLWithPath: path), options: .mappedIfSafe)
 		let contextData = try JSONDecoder().decode(ContextData.self, from: data)
 
@@ -134,5 +134,45 @@ final class ContextDataDeserializerTest: XCTestCase {
 				"Unexpect Variants count, expect 4 but given \(String(describing: contextData.experiments[3].variants.count))"
 			)
 		}
+	}
+
+	func testOneMalformedExperimentDoesNotFailTheWholeContext() throws {
+		let json = """
+			{"experiments": [
+				{"id": 1, "name": "exp_bad", "iteration": "1", "unitType": "session_id",
+				 "customFieldValues": "oops", "applications": 7},
+				{"id": 2, "name": "exp_good", "iteration": 3, "unitType": "session_id", "split": [0.5, 0.5],
+				 "variants": [{"name": "A", "config": null}, {"name": "B", "config": null}]}
+			]}
+			"""
+		let contextData = try JSONDecoder().decode(ContextData.self, from: Data(json.utf8))
+
+		XCTAssertEqual(["exp_bad", "exp_good"], contextData.experiments.map { $0.name })
+		let bad = contextData.experiments[0]
+		XCTAssertEqual(1, bad.id)
+		XCTAssertEqual(0, bad.iteration)
+		XCTAssertEqual("session_id", bad.unitType)
+		XCTAssertEqual([], bad.variants)
+		XCTAssertEqual([], bad.customFieldValues)
+		XCTAssertEqual([], bad.applications)
+		XCTAssertEqual(3, contextData.experiments[1].iteration)
+		XCTAssertEqual(2, contextData.experiments[1].variants.count)
+	}
+
+	func testExperimentWithoutNameStillFailsToDecode() {
+		let json = "{\"experiments\": [{\"id\": 1}]}"
+		XCTAssertThrowsError(try JSONDecoder().decode(ContextData.self, from: Data(json.utf8)))
+	}
+
+	func testApplicationIsAReferenceType() throws {
+		func requiresClass<T: AnyObject>(_ value: T) -> T { return value }
+
+		let path = TestResources.path(forResource: "context", ofType: "json")
+		let data = try Foundation.Data(contentsOf: URL(fileURLWithPath: path), options: .mappedIfSafe)
+		let contextData = try JSONDecoder().decode(ContextData.self, from: data)
+		let application = try XCTUnwrap(contextData.experiments[0].applications?.first)
+
+		XCTAssertTrue(requiresClass(application) === application)
+		XCTAssertEqual(Application("website"), application)
 	}
 }

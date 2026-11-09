@@ -10,6 +10,10 @@ public enum ContextEventLoggerEvent: Equatable {
 	case close
 	case error(error: Error)
 
+	/// Alias for `.close`, matching the JavaScript SDK's "finalize" event name.
+	/// `close` stays the real case so existing exhaustive switches keep compiling.
+	public static var finalize: ContextEventLoggerEvent { return .close }
+
 	public static func == (lhs: ContextEventLoggerEvent, rhs: ContextEventLoggerEvent) -> Bool {
 		switch (lhs, rhs) {
 		case (let .ready(lhsData), let .ready(rhsData)):

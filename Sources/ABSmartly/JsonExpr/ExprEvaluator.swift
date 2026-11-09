@@ -73,10 +73,9 @@ final class ExprEvaluator: Evaluator {
 		case .bool:
 			return JSON(x.boolValue ? "true" : "false")
 		case .number:
-			if let string = formatter.string(from: x.number!) {
+			if let number = x.number, let string = formatter.string(from: number) {
 				return JSON(string)
 			}
-			break
 		default:
 			break
 		}
@@ -95,10 +94,8 @@ final class ExprEvaluator: Evaluator {
 				if let index = Int(frag) {
 					value = target[index]
 				}
-				break
 			case .dictionary:
 				value = target[String(frag)]
-				break
 			default:
 				break
 			}

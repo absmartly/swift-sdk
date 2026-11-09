@@ -63,7 +63,7 @@ final class ContextTest: XCTestCase {
 	].sorted(by: { $0.type != $1.type ? $0.type < $1.type : $0.uid < $0.uid })
 
 	func getContextData(source: String = "context") throws -> ContextData {
-		let path = Bundle.module.path(forResource: source, ofType: "json", inDirectory: "Resources")!
+		let path = TestResources.path(forResource: source, ofType: "json")
 		let data = try Foundation.Data(contentsOf: URL(fileURLWithPath: path), options: .mappedIfSafe)
 		return try JSONDecoder().decode(ContextData.self, from: data)
 	}
@@ -74,6 +74,13 @@ final class ContextTest: XCTestCase {
 			config: config, clock: clock, scheduler: scheduler, handler: handler, provider: provider, logger: logger,
 			parser: parser, matcher: AudienceMatcher(),
 			promise: data)
+	}
+
+	func loggedErrorMessages() -> [String] {
+		return logger.handleEventContextEventReceivedInvocations.compactMap {
+			if case let .error(error) = $0.event { return error.localizedDescription }
+			return nil
+		}
 	}
 
 	func getContextConfig(withUnits: Bool = false) -> ContextConfig {
@@ -126,6 +133,19 @@ final class ContextTest: XCTestCase {
 		XCTAssertTrue(context.isFailed())
 	}
 
+	func testFailedContextHoldsEmptyDataAndReturnsDefaults() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let context = try createContext(
+			config: contextConfig, data: Promise<ContextData>.init(error: ABSmartlyError("test")))
+		XCTAssertTrue(context.isReady())
+		XCTAssertTrue(context.isFailed())
+		let data = context.getContextData()
+		XCTAssertNotNil(data)
+		XCTAssertEqual(0, data?.experiments.count)
+		XCTAssertEqual(0, context.getTreatment("exp_test_ab"))
+		XCTAssertEqual(17, context.getVariableValue("banner.size", defaultValue: 17))
+	}
+
 	func testBecomesReadyAndFailedWithErrorPromise() throws {
 		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
 		let (promise, resolver) = Promise<ContextData>.pending()
@@ -142,6 +162,40 @@ final class ContextTest: XCTestCase {
 		}
 
 		resolver.reject(ABSmartlyError("test"))
+
+		wait(for: [expectation], timeout: 1.0)
+	}
+
+	func testReadyErrorReturnsNilOnSuccess() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let context = try createContext(config: contextConfig)
+		XCTAssertNil(context.readyError())
+	}
+
+	func testReadyErrorReturnsErrorOnFulfilledFailure() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let error = ABSmartlyError("test")
+		let context = try createContext(
+			config: contextConfig, data: Promise<ContextData>.init(error: error))
+		XCTAssertTrue(context.isFailed())
+		XCTAssertNotNil(context.readyError())
+	}
+
+	func testReadyErrorReturnsErrorOnAsyncFailure() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let (promise, resolver) = Promise<ContextData>.pending()
+		let context = try createContext(config: contextConfig, data: promise)
+
+		let expectation = XCTestExpectation()
+		let error = ABSmartlyError("test")
+
+		_ = context.waitUntilReady().done { ctx in
+			XCTAssertTrue(ctx.isFailed())
+			XCTAssertNotNil(ctx.readyError())
+			expectation.fulfill()
+		}
+
+		resolver.reject(error)
 
 		wait(for: [expectation], timeout: 1.0)
 	}
@@ -461,20 +515,20 @@ final class ContextTest: XCTestCase {
 		let overrides: [String: Int] = ["exp_test_new": 3, "exp_test_new_2": 5]
 		context.setOverrides(overrides)
 
-		overrides.forEach { XCTAssertEqual($0.value, context.getTreatment($0.key)) }
+		for (key, value) in overrides { XCTAssertEqual(value, context.getTreatment(key)) }
 		XCTAssertEqual(UInt(overrides.count), context.getPendingCount())
 
 		// overriding again with the same variant shouldn't clear assignment cache
-		overrides.forEach {
-			context.setOverride(experimentName: $0.key, variant: $0.value)
-			XCTAssertEqual($0.value, context.getTreatment($0.key))
+		for (key, value) in overrides {
+			context.setOverride(experimentName: key, variant: value)
+			XCTAssertEqual(value, context.getTreatment(key))
 		}
 		XCTAssertEqual(UInt(overrides.count), context.getPendingCount())
 
 		// overriding with the different variant should clear assignment cache
-		overrides.forEach {
-			context.setOverride(experimentName: $0.key, variant: $0.value + 11)
-			XCTAssertEqual($0.value + 11, context.getTreatment($0.key))
+		for (key, value) in overrides {
+			context.setOverride(experimentName: key, variant: value + 11)
+			XCTAssertEqual(value + 11, context.getTreatment(key))
 		}
 
 		XCTAssertEqual(2 * UInt(overrides.count), context.getPendingCount())
@@ -544,28 +598,28 @@ final class ContextTest: XCTestCase {
 
 		let cassignments: [String: Int] = ["exp_test_ab": 2, "exp_test_abc": 3]
 
-		cassignments.forEach { XCTAssertEqual(expectedVariants[$0.key], context.getTreatment($0.key)) }
+		for (key, _) in cassignments { XCTAssertEqual(expectedVariants[key], context.getTreatment(key)) }
 		XCTAssertEqual(UInt(cassignments.count), context.getPendingCount())
 
 		context.setCustomAssignments(cassignments)
 
-		cassignments.forEach {
-			context.setCustomAssignment(experimentName: $0.key, variant: $0.value)
-			XCTAssertEqual($0.value, context.getTreatment($0.key))
+		for (key, value) in cassignments {
+			context.setCustomAssignment(experimentName: key, variant: value)
+			XCTAssertEqual(value, context.getTreatment(key))
 		}
 		XCTAssertEqual(2 * UInt(cassignments.count), context.getPendingCount())
 
 		// overriding with the same variant shouldn't clear assignment cache
-		cassignments.forEach {
-			context.setCustomAssignment(experimentName: $0.key, variant: $0.value)
-			XCTAssertEqual($0.value, context.getTreatment($0.key))
+		for (key, value) in cassignments {
+			context.setCustomAssignment(experimentName: key, variant: value)
+			XCTAssertEqual(value, context.getTreatment(key))
 		}
 		XCTAssertEqual(2 * UInt(cassignments.count), context.getPendingCount())
 
 		// overriding with the different variant should clear assignment cache
-		cassignments.forEach {
-			context.setCustomAssignment(experimentName: $0.key, variant: $0.value + 11)
-			XCTAssertEqual($0.value + 11, context.getTreatment($0.key))
+		for (key, value) in cassignments {
+			context.setCustomAssignment(experimentName: key, variant: value + 11)
+			XCTAssertEqual(value + 11, context.getTreatment(key))
 		}
 
 		XCTAssertEqual(3 * UInt(cassignments.count), context.getPendingCount())
@@ -576,8 +630,8 @@ final class ContextTest: XCTestCase {
 		let contextData = try getContextData()
 		let context = try createContext(config: contextConfig, data: Promise<ContextData>.value(contextData))
 
-		contextData.experiments.forEach {
-			XCTAssertEqual(expectedVariants[$0.name], context.peekTreatment($0.name))
+		for element in contextData.experiments {
+			XCTAssertEqual(expectedVariants[element.name], context.peekTreatment(element.name))
 		}
 
 		XCTAssertEqual(0, context.peekTreatment("no_found"))
@@ -589,7 +643,7 @@ final class ContextTest: XCTestCase {
 		let contextData = try getContextData()
 		let context = try createContext(config: contextConfig, data: Promise<ContextData>.value(contextData))
 
-		variableExperiments.forEach { variableName, experimentNames in
+		for (variableName, experimentNames) in variableExperiments {
 			let actual = context.peekVariableValue(variableName, defaultValue: 17)
 			let eligible = experimentNames[0] != "exp_test_not_eligible"
 
@@ -654,7 +708,7 @@ final class ContextTest: XCTestCase {
 		let contextData = try getContextData()
 		let context = try createContext(config: contextConfig, data: Promise<ContextData>.value(contextData))
 
-		variableExperiments.forEach { variableName, experimentNames in
+		for (variableName, experimentNames) in variableExperiments {
 			let actual = context.getVariableValue(variableName, defaultValue: 17)
 			let eligible = experimentNames[0] != "exp_test_not_eligible"
 
@@ -686,7 +740,8 @@ final class ContextTest: XCTestCase {
 		let context2 = try createContext(config: contextConfig, data: Promise<ContextData>.value(contextData))
 		context2.setAttribute(name: "age", value: 19)
 		XCTAssertEqual("circle", context2.getVariableValue("icon", defaultValue: "square"))
-		XCTAssertEqual(1, context2.getPendingCount())
+		// exp_test_ab (id 1) is visited first and exposed with its control variant
+		XCTAssertEqual(2, context2.getPendingCount())
 	}
 
 	func testGetVariableValueQueuesExposureWithAudienceMismatchFalseOnAudienceMatch() throws {
@@ -770,16 +825,18 @@ final class ContextTest: XCTestCase {
 		wait(for: [expectation], timeout: 1.0)
 	}
 
-	func
-		testGetVariableValueDoesNotQueueExposureWithAudienceMismatchFalseAndControlVariantOnAudienceMismatchInStrictMode()
-		throws
-	{
+	func testGetVariableValueQueuesExposureWithControlVariantOnAudienceMismatchInStrictMode() throws {
 		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
 		let contextData = try getContextData(source: "audience_strict_context")
 		let context = try createContext(config: contextConfig, data: Promise<ContextData>.value(contextData))
 
+		logger.clearInvocations()
+
 		XCTAssertEqual("small", context.getVariableValue("banner.size", defaultValue: "small"))
-		XCTAssertEqual(0, context.getPendingCount())
+		XCTAssertEqual(1, context.getPendingCount())
+		XCTAssertEqual(
+			[Exposure(1, "exp_test_ab", "session_id", 0, clock.millis(), false, true, false, false, false, true)],
+			loggedExposures())
 	}
 
 	func testGetVariableValueCallsEventLogger() throws {
@@ -813,6 +870,137 @@ final class ContextTest: XCTestCase {
 		XCTAssertEqual(0, logger.handleEventContextEventCallsCount)
 	}
 
+	func sharedKeyExperiment(
+		id: Int, name: String, unitType: String = "session_id", fullOnVariant: Int = 1, configs: [String?]
+	) -> String {
+		let variants = configs.indices.map { i -> String in
+			let escaped = configs[i].map { "\"" + $0.replacingOccurrences(of: "\"", with: "\\\"") + "\"" } ?? "null"
+			return "{\"name\":\"\(i)\",\"config\":\(escaped)}"
+		}
+		return """
+			{"id":\(id),"name":"\(name)","iteration":1,"unitType":"\(unitType)","seedHi":0,"seedLo":0,\
+			"split":[0.5,0.5],"trafficSeedHi":0,"trafficSeedLo":0,"trafficSplit":[0.0,1.0],\
+			"fullOnVariant":\(fullOnVariant),"applications":[{"name":"website"}],\
+			"variants":[\(variants.joined(separator: ","))],"audience":null}
+			"""
+	}
+
+	func createSharedKeyContext(_ experiments: [String]) throws -> Context {
+		let json = "{\"experiments\":[\(experiments.joined(separator: ","))]}"
+		let data = try JSONDecoder().decode(ContextData.self, from: json.data(using: .utf8)!)
+		let context = try createContext(
+			config: getContextConfig(withUnits: true), data: Promise<ContextData>.value(data))
+		logger.clearInvocations()
+		return context
+	}
+
+	func loggedExposures() -> [Exposure] {
+		return logger.handleEventContextEventReceivedInvocations.compactMap {
+			if case let .exposure(exposure) = $0.event { return exposure }
+			return nil
+		}
+	}
+
+	func sharedKeyBothAssigned(lowestFirst: Bool) -> [String] {
+		let one = sharedKeyExperiment(id: 1, name: "exp_one", configs: [nil, "{\"icon\":\"one\"}"])
+		let two = sharedKeyExperiment(id: 2, name: "exp_two", configs: [nil, "{\"icon\":\"two\"}"])
+		return lowestFirst ? [one, two] : [two, one]
+	}
+
+	// exp_one is not assigned: its unit type has no unit in the context.
+	func sharedKeyFirstUnassigned() -> [String] {
+		return [
+			sharedKeyExperiment(
+				id: 1, name: "exp_one", unitType: "device_id", fullOnVariant: 0,
+				configs: ["{\"icon\":\"zero\"}", "{\"icon\":\"one\"}"]),
+			sharedKeyExperiment(id: 2, name: "exp_two", configs: [nil, "{\"icon\":\"two\"}"]),
+		]
+	}
+
+	// exp_one is assigned variant 1, which does not define the key.
+	func sharedKeyAssignedVariantLacksKey() -> [String] {
+		return [
+			sharedKeyExperiment(id: 1, name: "exp_one", configs: ["{\"icon\":\"zero\"}", "{\"other\":1}"]),
+			sharedKeyExperiment(id: 2, name: "exp_two", configs: [nil, "{\"icon\":\"two\"}"]),
+		]
+	}
+
+	func testGetVariableValueSharedKeyBothAssignedLowestIdWins() throws {
+		let context = try createSharedKeyContext(sharedKeyBothAssigned(lowestFirst: true))
+
+		XCTAssertEqual("one", context.getVariableValue("icon", defaultValue: "default"))
+		XCTAssertEqual(
+			[Exposure(1, "exp_one", "session_id", 1, clock.millis(), true, true, false, true, false, false)],
+			loggedExposures())
+	}
+
+	func testGetVariableValueSharedKeyHigherIdFirstInPayloadLowestIdWins() throws {
+		let context = try createSharedKeyContext(sharedKeyBothAssigned(lowestFirst: false))
+
+		XCTAssertEqual("one", context.getVariableValue("icon", defaultValue: "default"))
+		XCTAssertEqual(
+			[Exposure(1, "exp_one", "session_id", 1, clock.millis(), true, true, false, true, false, false)],
+			loggedExposures())
+	}
+
+	func testGetVariableValueSharedKeyFirstUnassignedFallsThroughAndExposesBoth() throws {
+		let context = try createSharedKeyContext(sharedKeyFirstUnassigned())
+
+		XCTAssertEqual("two", context.getVariableValue("icon", defaultValue: "default"))
+		XCTAssertEqual(
+			[
+				Exposure(1, "exp_one", "device_id", 0, clock.millis(), false, true, false, false, false, false),
+				Exposure(2, "exp_two", "session_id", 1, clock.millis(), true, true, false, true, false, false),
+			],
+			loggedExposures())
+		XCTAssertEqual(2, context.getPendingCount())
+	}
+
+	func testGetVariableValueSharedKeyFirstUnassignedButOverriddenWins() throws {
+		let context = try createSharedKeyContext(sharedKeyFirstUnassigned())
+		context.setOverride(experimentName: "exp_one", variant: 1)
+
+		XCTAssertEqual("one", context.getVariableValue("icon", defaultValue: "default"))
+		XCTAssertEqual(
+			[Exposure(1, "exp_one", "device_id", 1, clock.millis(), false, true, true, false, false, false)],
+			loggedExposures())
+	}
+
+	func testGetVariableValueSharedKeyAssignedVariantLackingKeyFallsThrough() throws {
+		let context = try createSharedKeyContext(sharedKeyAssignedVariantLacksKey())
+
+		XCTAssertEqual("two", context.getVariableValue("icon", defaultValue: "default"))
+		XCTAssertEqual(
+			[
+				Exposure(1, "exp_one", "session_id", 1, clock.millis(), true, true, false, true, false, false),
+				Exposure(2, "exp_two", "session_id", 1, clock.millis(), true, true, false, true, false, false),
+			],
+			loggedExposures())
+	}
+
+	func testPeekVariableValueSharedKeyMatchesGetAndQueuesNothing() throws {
+		let scenarios: [([String], String?, JSON)] = [
+			(sharedKeyBothAssigned(lowestFirst: true), nil, "one"),
+			(sharedKeyBothAssigned(lowestFirst: false), nil, "one"),
+			(sharedKeyFirstUnassigned(), nil, "two"),
+			(sharedKeyFirstUnassigned(), "exp_one", "one"),
+			(sharedKeyAssignedVariantLacksKey(), nil, "two"),
+		]
+
+		for (experiments, override, expected) in scenarios {
+			let context = try createSharedKeyContext(experiments)
+			if let override = override {
+				context.setOverride(experimentName: override, variant: 1)
+			}
+
+			XCTAssertEqual(expected, context.peekVariableValue("icon", defaultValue: "default"))
+			XCTAssertEqual(0, context.getPendingCount())
+			XCTAssertEqual([], loggedExposures())
+
+			XCTAssertEqual(expected, context.getVariableValue("icon", defaultValue: "default"))
+		}
+	}
+
 	func testGetVariableKeys() throws {
 		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
 		let contextData = try getContextData(source: "refreshed")
@@ -829,17 +1017,17 @@ final class ContextTest: XCTestCase {
 		context.setOverrides(expectedVariants.mapValues { 11 + $0 })
 		context.setOverride(experimentName: "not_found", variant: 3)
 
-		contextData.experiments.forEach {
-			if let variant = expectedVariants[$0.name] {
-				XCTAssertEqual(variant + 11, context.peekTreatment($0.name))
+		for element in contextData.experiments {
+			if let variant = expectedVariants[element.name] {
+				XCTAssertEqual(variant + 11, context.peekTreatment(element.name))
 			}
 		}
 		XCTAssertEqual(3, context.peekTreatment("not_found"))
 
 		// call again
-		contextData.experiments.forEach {
-			if let variant = expectedVariants[$0.name] {
-				XCTAssertEqual(variant + 11, context.peekTreatment($0.name))
+		for element in contextData.experiments {
+			if let variant = expectedVariants[element.name] {
+				XCTAssertEqual(variant + 11, context.peekTreatment(element.name))
 			}
 		}
 		XCTAssertEqual(3, context.peekTreatment("not_found"))
@@ -867,9 +1055,9 @@ final class ContextTest: XCTestCase {
 		let contextData = try getContextData()
 		let context = try createContext(config: contextConfig, data: Promise<ContextData>.value(contextData))
 
-		contextData.experiments.forEach {
-			if let variant = expectedVariants[$0.name] {
-				XCTAssertEqual(variant, context.getTreatment($0.name))
+		for element in contextData.experiments {
+			if let variant = expectedVariants[element.name] {
+				XCTAssertEqual(variant, context.getTreatment(element.name))
 			}
 		}
 		XCTAssertEqual(0, context.getTreatment("not_found"))
@@ -939,9 +1127,9 @@ final class ContextTest: XCTestCase {
 		context.setOverrides(expectedVariants.mapValues { 11 + $0 })
 		context.setOverride(experimentName: "not_found", variant: 3)
 
-		contextData.experiments.forEach {
-			if let variant = expectedVariants[$0.name] {
-				XCTAssertEqual(variant + 11, context.getTreatment($0.name))
+		for element in contextData.experiments {
+			if let variant = expectedVariants[element.name] {
+				XCTAssertEqual(variant + 11, context.getTreatment(element.name))
 			}
 		}
 		XCTAssertEqual(3, context.getTreatment("not_found"))
@@ -985,18 +1173,18 @@ final class ContextTest: XCTestCase {
 		let contextData = try getContextData()
 		let context = try createContext(config: contextConfig, data: Promise<ContextData>.value(contextData))
 
-		contextData.experiments.forEach {
-			if let variant = expectedVariants[$0.name] {
-				XCTAssertEqual(variant, context.getTreatment($0.name))
+		for element in contextData.experiments {
+			if let variant = expectedVariants[element.name] {
+				XCTAssertEqual(variant, context.getTreatment(element.name))
 			}
 		}
 		XCTAssertEqual(0, context.getTreatment("not_found"))
 		XCTAssertEqual(1 + UInt(contextData.experiments.count), context.getPendingCount())
 
 		// call again
-		contextData.experiments.forEach {
-			if let variant = expectedVariants[$0.name] {
-				XCTAssertEqual(variant, context.getTreatment($0.name))
+		for element in contextData.experiments {
+			if let variant = expectedVariants[element.name] {
+				XCTAssertEqual(variant, context.getTreatment(element.name))
 			}
 		}
 		XCTAssertEqual(0, context.getTreatment("not_found"))
@@ -1345,7 +1533,7 @@ final class ContextTest: XCTestCase {
 			XCTAssertEqual(1, logger.handleEventContextEventCallsCount)
 			XCTAssertTrue(context === logger.handleEventContextEventReceivedArguments!.context)
 			XCTAssertEqual(
-				ContextEventLoggerEvent.publish(event: expected), logger.handleEventContextEventReceivedArguments!.event
+				try ContextEventLoggerEvent.publish(event: expected), logger.handleEventContextEventReceivedArguments!.event
 			)
 
 			expectation.fulfill()
@@ -1725,7 +1913,7 @@ final class ContextTest: XCTestCase {
 			XCTAssertEqual(1, logger.handleEventContextEventCallsCount)
 			XCTAssertTrue(context === logger.handleEventContextEventReceivedArguments!.context)
 			XCTAssertEqual(
-				ContextEventLoggerEvent.refresh(data: refreshedContextData),
+				try ContextEventLoggerEvent.refresh(data: refreshedContextData),
 				logger.handleEventContextEventReceivedArguments!.event)
 
 			expectation.fulfill()
@@ -1790,7 +1978,7 @@ final class ContextTest: XCTestCase {
 		let context = try createContext(config: contextConfig, data: Promise<ContextData>.value(contextData))
 		XCTAssertTrue(context.isReady())
 
-		contextData.experiments.forEach { _ = context.getTreatment($0.name) }
+		for exp in contextData.experiments { _ = context.getTreatment(exp.name) }
 		_ = context.getTreatment("not_found")
 
 		XCTAssertEqual(1 + UInt(contextData.experiments.count), context.getPendingCount())
@@ -1812,7 +2000,7 @@ final class ContextTest: XCTestCase {
 
 		wait(for: [expectation], timeout: 1.0)
 
-		contextData.experiments.forEach { _ = context.getTreatment($0.name) }
+		for exp in contextData.experiments { _ = context.getTreatment(exp.name) }
 		_ = context.getTreatment("not_found")
 
 		XCTAssertEqual(1 + UInt(contextData.experiments.count), context.getPendingCount())
@@ -1907,7 +2095,7 @@ final class ContextTest: XCTestCase {
 		XCTAssertEqual(0, context.getTreatment(experimentName))
 		XCTAssertEqual(0, context.getTreatment("not_found"))
 
-		XCTAssertEqual(3, context.getPendingCount())  // stopped experiment triggered a new exposure
+		XCTAssertEqual(3, context.getPendingCount())
 	}
 
 	func testRefreshClearsAssignmentCacheForStartedExperiment() throws {
@@ -1942,7 +2130,7 @@ final class ContextTest: XCTestCase {
 		XCTAssertEqual(1, context.getTreatment(experimentName))
 		XCTAssertEqual(0, context.getTreatment("not_found"))
 
-		XCTAssertEqual(3, context.getPendingCount())  // started experiment triggered a new exposure
+		XCTAssertEqual(3, context.getPendingCount())
 	}
 
 	func testRefreshClearsAssignmentCacheForFullOnExperiment() throws {
@@ -1977,7 +2165,7 @@ final class ContextTest: XCTestCase {
 		XCTAssertEqual(1, context.getTreatment(experimentName))
 		XCTAssertEqual(0, context.getTreatment("not_found"))
 
-		XCTAssertEqual(3, context.getPendingCount())  // full-on experiment triggered a new exposure
+		XCTAssertEqual(3, context.getPendingCount())
 	}
 
 	func testRefreshClearsAssignmentCacheForTrafficSplitChange() throws {
@@ -2012,7 +2200,7 @@ final class ContextTest: XCTestCase {
 		XCTAssertEqual(2, context.getTreatment(experimentName))
 		XCTAssertEqual(0, context.getTreatment("not_found"))
 
-		XCTAssertEqual(3, context.getPendingCount())  // newly eligible experiment triggered a new exposure
+		XCTAssertEqual(3, context.getPendingCount())
 	}
 
 	func testRefreshClearsAssignmentCacheForExperimentIdChange() throws {
@@ -2047,7 +2235,42 @@ final class ContextTest: XCTestCase {
 		XCTAssertEqual(2, context.getTreatment(experimentName))
 		XCTAssertEqual(0, context.getTreatment("not_found"))
 
-		XCTAssertEqual(3, context.getPendingCount())  // newly eligible experiment triggered a new exposure
+		XCTAssertEqual(3, context.getPendingCount())
+	}
+
+	func testRefreshClearsAssignmentCacheForIterationChange() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let contextData = try getContextData()
+		let context = try createContext(config: contextConfig, data: Promise<ContextData>.value(contextData))
+		XCTAssertTrue(context.isReady())
+
+		let experimentName = "exp_test_abc"
+		XCTAssertEqual(2, context.getTreatment(experimentName))
+		XCTAssertEqual(0, context.getTreatment("not_found"))
+
+		XCTAssertEqual(2, context.getPendingCount())
+
+		let refreshedContextData = try getContextData(source: "refreshed_iteration")
+		let (promise, resolver) = Promise<ContextData>.pending()
+		provider.getContextDataReturnValue = promise
+
+		let expectation = XCTestExpectation()
+
+		_ = context.refresh().done { [self] in
+			XCTAssertEqual(1, provider.getContextDataCallsCount)
+			XCTAssertEqual(refreshedContextData.experiments.map { $0.name }, context.getExperiments())
+
+			expectation.fulfill()
+		}
+
+		resolver.fulfill(refreshedContextData)
+
+		wait(for: [expectation], timeout: 1.0)
+
+		XCTAssertEqual(2, context.getTreatment(experimentName))
+		XCTAssertEqual(0, context.getTreatment("not_found"))
+
+		XCTAssertEqual(3, context.getPendingCount())
 	}
 
 	func testGetCustomFieldKeys() throws {
@@ -2068,8 +2291,8 @@ final class ContextTest: XCTestCase {
 		XCTAssertEqual("US,PT,ES,DE,FR", context.getCustomFieldValue(experimentName: "exp_test_ab", key: "country") as! String)
 		XCTAssertEqual("string", context.getCustomFieldValueType(experimentName: "exp_test_ab", key: "country") as! String)
 
-		let data: [String: JSON] = ["123":  1, "456": 0]
-		XCTAssertEqual(data, context.getCustomFieldValue(experimentName: "exp_test_ab", key: "overrides") as! [String: JSON]);
+		let data: [String: JSON] = ["123": 1, "456": 0]
+		XCTAssertEqual(data, context.getCustomFieldValue(experimentName: "exp_test_ab", key: "overrides") as! [String: JSON])
 		XCTAssertEqual("json", context.getCustomFieldValueType(experimentName: "exp_test_ab", key: "overrides") as! String);
 
 		XCTAssertNil(context.getCustomFieldValue(experimentName: "exp_test_ab", key: "languages"));
@@ -2088,5 +2311,1086 @@ final class ContextTest: XCTestCase {
 		XCTAssertNil(context.getCustomFieldValueType(experimentName: "exp_test_no_custom_fields", key: "overrides"));
 		XCTAssertNil(context.getCustomFieldValue(experimentName: "exp_test_no_custom_fields", key: "languages"));
 		XCTAssertNil(context.getCustomFieldValueType(experimentName: "exp_test_no_custom_fields", key: "languages"));
+	}
+
+	func testRecoveryAfterPublishFailure() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let context = try createContext(config: contextConfig)
+
+		context.track("goal1", properties: ["amount": 125])
+
+		XCTAssertEqual(1, context.getPendingCount())
+
+		let failExpectation = XCTestExpectation(description: "Publish fails")
+
+		let (failPromise, failResolver) = Promise<Void>.pending()
+		handler.publishEventReturnValue = failPromise
+
+		_ = context.publish().catch { error in
+			XCTAssertTrue(error is ABSmartlyError)
+			failExpectation.fulfill()
+		}
+
+		failResolver.reject(ABSmartlyError("test publish failure"))
+
+		wait(for: [failExpectation], timeout: 1.0)
+
+		XCTAssertTrue(context.isReady())
+		XCTAssertFalse(context.isClosed())
+		XCTAssertFalse(context.isFailed())
+
+		context.track("goal2", properties: ["value": 200])
+		XCTAssertEqual(2, context.getPendingCount())
+
+		let treatment = context.getTreatment("exp_test_ab")
+		XCTAssertEqual(1, treatment)
+		XCTAssertEqual(3, context.getPendingCount())
+
+		let successExpectation = XCTestExpectation(description: "Publish succeeds")
+
+		handler.publishEventReturnValue = Promise.value(())
+
+		_ = context.publish().done {
+			successExpectation.fulfill()
+		}
+
+		wait(for: [successExpectation], timeout: 1.0)
+
+		XCTAssertEqual(0, context.getPendingCount())
+	}
+
+	func testRecoveryAfterRefreshFailure() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let context = try createContext(config: contextConfig)
+		XCTAssertTrue(context.isReady())
+
+		let failExpectation = XCTestExpectation(description: "Refresh fails")
+
+		let (failPromise, failResolver) = Promise<ContextData>.pending()
+		provider.getContextDataReturnValue = failPromise
+
+		_ = context.refresh().catch { error in
+			XCTAssertTrue(error is ABSmartlyError)
+			failExpectation.fulfill()
+		}
+
+		failResolver.reject(ABSmartlyError("test refresh failure"))
+
+		wait(for: [failExpectation], timeout: 1.0)
+
+		XCTAssertTrue(context.isReady())
+		XCTAssertFalse(context.isFailed())
+		XCTAssertFalse(context.isClosed())
+
+		let treatment = context.getTreatment("exp_test_ab")
+		XCTAssertEqual(1, treatment)
+
+		context.track("goal_after_refresh_failure", properties: nil)
+		XCTAssertEqual(2, context.getPendingCount())
+
+		let successExpectation = XCTestExpectation(description: "Refresh succeeds")
+
+		let refreshedContextData = try getContextData(source: "refreshed")
+		provider.getContextDataReturnValue = Promise.value(refreshedContextData)
+
+		_ = context.refresh().done {
+			successExpectation.fulfill()
+		}
+
+		wait(for: [successExpectation], timeout: 1.0)
+
+		XCTAssertTrue(context.isReady())
+		XCTAssertEqual(refreshedContextData.experiments.map { $0.name }, context.getExperiments())
+	}
+
+	func testGracefulDegradationNoNetwork() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let (promise, resolver) = Promise<ContextData>.pending()
+		let context = try createContext(config: contextConfig, data: promise)
+		XCTAssertFalse(context.isReady())
+
+		let expectation = XCTestExpectation(description: "Context handles network failure")
+
+		resolver.reject(ABSmartlyError("Network connection failed"))
+
+		_ = context.waitUntilReady().done { ctx in
+			XCTAssertTrue(ctx.isReady())
+			XCTAssertTrue(ctx.isFailed())
+
+			let treatment = ctx.getTreatment("exp_test_ab")
+			XCTAssertEqual(0, treatment)
+
+			ctx.track("goal_offline", properties: nil)
+			XCTAssertEqual(2, ctx.getPendingCount())
+
+			ctx.setOverride(experimentName: "exp_test_ab", variant: 5)
+			XCTAssertEqual(5, ctx.getTreatment("exp_test_ab"))
+
+			expectation.fulfill()
+		}
+
+		wait(for: [expectation], timeout: 1.0)
+
+		let publishExpectation = XCTestExpectation(description: "Publish completes without calling handler")
+
+		_ = context.publish().done { [self] in
+			XCTAssertEqual(0, handler.publishEventCallsCount)
+			publishExpectation.fulfill()
+		}
+
+		wait(for: [publishExpectation], timeout: 1.0)
+	}
+
+	func testRetryMechanismActivation() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let context = try createContext(config: contextConfig)
+
+		context.track("goal1", properties: nil)
+
+		var publishAttempts = 0
+		let maxAttempts = 3
+
+		let expectation = XCTestExpectation(description: "Retry mechanism test")
+
+		handler.publishEventClosure = { _ in
+			publishAttempts += 1
+			if publishAttempts < maxAttempts {
+				return Promise(error: ABSmartlyError("Transient failure \(publishAttempts)"))
+			} else {
+				return Promise.value(())
+			}
+		}
+
+		_ = context.publish().done {
+			expectation.fulfill()
+		}.catch { _ in
+			expectation.fulfill()
+		}
+
+		wait(for: [expectation], timeout: 5.0)
+
+		XCTAssertGreaterThanOrEqual(publishAttempts, 1)
+	}
+
+	func testFailedToReadyTransition() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let context = try createContext(
+			config: contextConfig, data: Promise<ContextData>.init(error: ABSmartlyError("initial failure")))
+
+		XCTAssertTrue(context.isReady())
+		XCTAssertTrue(context.isFailed())
+
+		let treatment = context.getTreatment("exp_test_ab")
+		XCTAssertEqual(0, treatment)
+
+		context.track("goal_while_failed", properties: nil)
+		XCTAssertEqual(2, context.getPendingCount())
+
+		XCTAssertEqual(0, handler.publishEventCallsCount)
+	}
+
+	func testRapidCloseReopenCycle() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let context = try createContext(config: contextConfig)
+
+		context.track("goal1", properties: nil)
+
+		handler.publishEventReturnValue = Promise.value(())
+
+		let closeExpectation = XCTestExpectation(description: "Close completes")
+
+		_ = context.close().done {
+			closeExpectation.fulfill()
+		}
+
+		wait(for: [closeExpectation], timeout: 1.0)
+
+		XCTAssertTrue(context.isClosed())
+
+		let context2 = try createContext(config: contextConfig)
+		XCTAssertTrue(context2.isReady())
+		XCTAssertFalse(context2.isClosed())
+
+		let treatment = context2.getTreatment("exp_test_ab")
+		XCTAssertEqual(1, treatment)
+	}
+
+	func testAllStateTransitionPaths() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let (promise, resolver) = Promise<ContextData>.pending()
+		let context = try createContext(config: contextConfig, data: promise)
+
+		XCTAssertFalse(context.isReady())
+		XCTAssertFalse(context.isFailed())
+		XCTAssertFalse(context.isClosing())
+		XCTAssertFalse(context.isClosed())
+
+		let readyExpectation = XCTestExpectation(description: "Ready state reached")
+
+		resolver.fulfill(try getContextData())
+
+		_ = context.waitUntilReady().done { ctx in
+			XCTAssertTrue(ctx.isReady())
+			XCTAssertFalse(ctx.isFailed())
+			XCTAssertFalse(ctx.isClosing())
+			XCTAssertFalse(ctx.isClosed())
+			readyExpectation.fulfill()
+		}
+
+		wait(for: [readyExpectation], timeout: 1.0)
+
+		context.track("goal1", properties: nil)
+
+		let (publishPromise, publishResolver) = Promise<Void>.pending()
+		handler.publishEventReturnValue = publishPromise
+
+		let closePromise = context.close()
+
+		XCTAssertTrue(context.isClosing())
+		XCTAssertFalse(context.isClosed())
+
+		let closeExpectation = XCTestExpectation(description: "Close state reached")
+
+		_ = closePromise.done {
+			closeExpectation.fulfill()
+		}
+
+		publishResolver.fulfill(())
+
+		wait(for: [closeExpectation], timeout: 1.0)
+
+		XCTAssertTrue(context.isClosed())
+		XCTAssertFalse(context.isClosing())
+	}
+
+	func testCustomFieldValueAllTypes() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let contextData = try getContextData()
+		let context = try createContext(config: contextConfig, data: Promise<ContextData>.value(contextData))
+		XCTAssertTrue(context.isReady())
+
+		let stringValue = context.getCustomFieldValue(experimentName: "exp_test_ab", key: "country")
+		XCTAssertNotNil(stringValue)
+		XCTAssertTrue(stringValue is String)
+		XCTAssertEqual("string", context.getCustomFieldValueType(experimentName: "exp_test_ab", key: "country"))
+
+		let jsonValue = context.getCustomFieldValue(experimentName: "exp_test_ab", key: "overrides")
+		XCTAssertNotNil(jsonValue)
+		XCTAssertEqual("json", context.getCustomFieldValueType(experimentName: "exp_test_ab", key: "overrides"))
+	}
+
+	func testCustomFieldNullHandling() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let contextData = try getContextData()
+		let context = try createContext(config: contextConfig, data: Promise<ContextData>.value(contextData))
+		XCTAssertTrue(context.isReady())
+
+		let missingExperimentValue = context.getCustomFieldValue(experimentName: "non_existent_experiment", key: "any_key")
+		XCTAssertNil(missingExperimentValue)
+		XCTAssertNil(context.getCustomFieldValueType(experimentName: "non_existent_experiment", key: "any_key"))
+
+		let missingKeyValue = context.getCustomFieldValue(experimentName: "exp_test_ab", key: "non_existent_key")
+		XCTAssertNil(missingKeyValue)
+		XCTAssertNil(context.getCustomFieldValueType(experimentName: "exp_test_ab", key: "non_existent_key"))
+
+		let existingValue = context.getCustomFieldValue(experimentName: "exp_test_ab", key: "languages")
+		XCTAssertNil(existingValue)
+	}
+
+	func testCustomFieldTypeCoercion() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let contextData = try getContextData()
+		let context = try createContext(config: contextConfig, data: Promise<ContextData>.value(contextData))
+		XCTAssertTrue(context.isReady())
+
+		let keys = context.getCustomFieldKeys()
+		XCTAssertTrue(keys.contains("country"))
+		XCTAssertTrue(keys.contains("languages"))
+		XCTAssertTrue(keys.contains("overrides"))
+
+		let experimentKeys = context.getCustomFieldKeys(experimentName: "exp_test_ab")
+		XCTAssertTrue(experimentKeys.contains("country"))
+		XCTAssertTrue(experimentKeys.contains("overrides"))
+	}
+
+	// MARK: - Fix #1: setData visibility is internal
+
+	func testSetDataIsNotPublic() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let context = try createContext(config: contextConfig)
+		XCTAssertTrue(context.isReady())
+		let data = try getContextData()
+		context.setData(data)
+		XCTAssertNotNil(context.getContextData())
+	}
+
+	func testJsonCustomFieldObjectUsesConfiguredVariableParser() throws {
+		class RecordingParser: VariableParser {
+			var configs: [String] = []
+			func parse(experimentName: String, config: String) -> [String: JSON]? {
+				configs.append(config)
+				return ["parsed_by": "custom"]
+			}
+		}
+		let recording = RecordingParser()
+		parser = recording
+		let context = try createContext(config: getContextConfig(withUnits: true))
+
+		XCTAssertEqual(
+			["parsed_by": "custom"],
+			context.getCustomFieldValue(experimentName: "exp_test_ab", key: "overrides") as? [String: JSON])
+		XCTAssertTrue(recording.configs.contains("{\"123\":1,\"456\":0}"))
+	}
+
+	func testFailedAutoPublishLogsOneError() throws {
+		let context = try createContext(config: getContextConfig(withUnits: true))
+		context.track("goal1", properties: nil)
+
+		let failed = XCTestExpectation()
+		logger.handleEventContextEventClosure = { _, event in
+			if case .error = event { failed.fulfill() }
+		}
+		handler.publishEventReturnValue = Promise<Void>(error: ABSmartlyError("publish failure"))
+		scheduler.scheduleAfterExecuteReceivedArguments?.execute()
+
+		wait(for: [failed], timeout: 1.0)
+		// Let the timer's own catch handler run (on any queue, including main) before counting.
+		RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+		XCTAssertEqual(1, handler.publishEventCallsCount)
+		XCTAssertEqual(["publish failure"], loggedErrorMessages())
+	}
+
+	// MARK: - Fix #2: Flush events restored on publish failure
+
+	func testFlushRestoresEventsOnPublishFailure() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let context = try createContext(config: contextConfig)
+
+		context.track("goal1", properties: ["amount": 125])
+		context.track("goal2", properties: ["value": 200])
+
+		XCTAssertEqual(2, context.getPendingCount())
+
+		let failExpectation = XCTestExpectation(description: "Publish fails")
+
+		let (failPromise, failResolver) = Promise<Void>.pending()
+		handler.publishEventReturnValue = failPromise
+
+		_ = context.publish().catch { error in
+			XCTAssertTrue(error is ABSmartlyError)
+			failExpectation.fulfill()
+		}
+
+		failResolver.reject(ABSmartlyError("publish failure"))
+
+		wait(for: [failExpectation], timeout: 1.0)
+
+		XCTAssertEqual(2, context.getPendingCount())
+
+		let successExpectation = XCTestExpectation(description: "Publish succeeds with restored events")
+
+		handler.publishEventReturnValue = Promise.value(())
+
+		_ = context.publish().done { [self] in
+			XCTAssertEqual(2, handler.publishEventCallsCount)
+			let event = handler.publishEventReceivedInvocations.last!
+			XCTAssertEqual(2, event.goals.count)
+			successExpectation.fulfill()
+		}
+
+		wait(for: [successExpectation], timeout: 1.0)
+
+		XCTAssertEqual(0, context.getPendingCount())
+	}
+
+	func testFlushRestoresExposuresOnPublishFailure() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let context = try createContext(config: contextConfig)
+
+		_ = context.getTreatment("exp_test_ab")
+		XCTAssertEqual(1, context.getPendingCount())
+
+		let failExpectation = XCTestExpectation(description: "Publish fails")
+
+		let (failPromise, failResolver) = Promise<Void>.pending()
+		handler.publishEventReturnValue = failPromise
+
+		_ = context.publish().catch { _ in
+			failExpectation.fulfill()
+		}
+
+		failResolver.reject(ABSmartlyError("publish failure"))
+
+		wait(for: [failExpectation], timeout: 1.0)
+
+		XCTAssertEqual(1, context.getPendingCount())
+	}
+
+	// MARK: - Fix #6: Refresh only resets exposure for changed experiments
+
+	func testRefreshDoesNotResetExposureForUnchangedExperiments() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let contextData = try getContextData()
+		let context = try createContext(config: contextConfig, data: Promise<ContextData>.value(contextData))
+
+		_ = context.getTreatment("exp_test_ab")
+		XCTAssertEqual(1, context.getPendingCount())
+
+		let (promise, resolver) = Promise<ContextData>.pending()
+		provider.getContextDataReturnValue = promise
+
+		let expectation = XCTestExpectation()
+
+		_ = context.refresh().done {
+			_ = context.getTreatment("exp_test_ab")
+			XCTAssertEqual(1, context.getPendingCount())
+			expectation.fulfill()
+		}
+
+		resolver.fulfill(contextData)
+
+		wait(for: [expectation], timeout: 1.0)
+	}
+
+	func testRefreshResetsExposureForChangedExperiments() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let contextData = try getContextData()
+		let context = try createContext(config: contextConfig, data: Promise<ContextData>.value(contextData))
+
+		_ = context.getTreatment("exp_test_abc")
+		XCTAssertEqual(1, context.getPendingCount())
+
+		let refreshedContextData = try getContextData(source: "refreshed_iteration")
+		let (promise, resolver) = Promise<ContextData>.pending()
+		provider.getContextDataReturnValue = promise
+
+		let expectation = XCTestExpectation()
+
+		_ = context.refresh().done {
+			_ = context.getTreatment("exp_test_abc")
+			XCTAssertEqual(2, context.getPendingCount())
+			expectation.fulfill()
+		}
+
+		resolver.fulfill(refreshedContextData)
+
+		wait(for: [expectation], timeout: 1.0)
+	}
+
+	// MARK: - Fix #14/16: contextLock in flush uses defer
+
+	func testFlushContextLockUsesDefer() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let context = try createContext(config: contextConfig)
+
+		context.track("goal1", properties: nil)
+		XCTAssertEqual(1, context.getPendingCount())
+
+		handler.publishEventReturnValue = Promise.value(())
+
+		let expectation = XCTestExpectation()
+
+		_ = context.publish().done {
+			context.track("goal2", properties: nil)
+			XCTAssertEqual(1, context.getPendingCount())
+			expectation.fulfill()
+		}
+
+		wait(for: [expectation], timeout: 1.0)
+	}
+
+	// MARK: - Fix #17: refreshPromise/closePromise protected by promiseLock
+
+	func testConcurrentRefreshReturnsSamePromise() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let context = try createContext(config: contextConfig)
+
+		let (promise, resolver) = Promise<ContextData>.pending()
+		provider.getContextDataReturnValue = promise
+
+		let refreshPromise1 = context.refresh()
+		let refreshPromise2 = context.refresh()
+
+		XCTAssertEqual(1, provider.getContextDataCallsCount)
+
+		let expectation = XCTestExpectation()
+		expectation.expectedFulfillmentCount = 2
+
+		_ = refreshPromise1.done { expectation.fulfill() }
+		_ = refreshPromise2.done { expectation.fulfill() }
+
+		resolver.fulfill(try getContextData())
+
+		wait(for: [expectation], timeout: 1.0)
+	}
+
+	func testCloseWaitsForInFlightPublish() throws {
+		let context = try createContext(config: getContextConfig(withUnits: true))
+		context.track("goal1", properties: nil)
+
+		let (pending, resolver) = Promise<Void>.pending()
+		handler.publishEventReturnValue = pending
+
+		_ = context.publish()
+		let closeDone = XCTestExpectation(description: "close resolved")
+		closeDone.isInverted = true
+		_ = context.close().done { closeDone.fulfill() }
+		wait(for: [closeDone], timeout: 0.3)
+
+		let closeResolved = XCTestExpectation(description: "close resolved after publish")
+		_ = context.close().done { closeResolved.fulfill() }
+		resolver.fulfill(())
+		wait(for: [closeResolved], timeout: 2.0)
+		XCTAssertTrue(context.isClosed())
+	}
+
+	func testGetTreatmentAfterCloseDoesNotEnqueueExposure() throws {
+		let context = try createContext(config: getContextConfig(withUnits: true))
+		handler.publishEventReturnValue = Promise<Void>.value(())
+		let closed = XCTestExpectation()
+		_ = context.close().done { closed.fulfill() }
+		wait(for: [closed], timeout: 2.0)
+
+		XCTAssertEqual(0, context.getTreatment("exp_test_ab"))
+		XCTAssertEqual(["ABsmartly Context is finalized."], loggedErrorMessages())
+		XCTAssertEqual(0, context.getPendingCount())
+	}
+
+	func testFailedCloseIsRetryable() throws {
+		let context = try createContext(config: getContextConfig(withUnits: true))
+		context.track("goal1", properties: nil)
+
+		handler.publishEventReturnValue = Promise<Void>(error: NSError(domain: "t", code: 1))
+		let failed = XCTestExpectation()
+		_ = context.close().catch { _ in failed.fulfill() }
+		wait(for: [failed], timeout: 2.0)
+		XCTAssertFalse(context.isClosed())
+		XCTAssertEqual(1, context.getPendingCount())
+
+		handler.publishEventReturnValue = Promise<Void>.value(())
+		let ok = XCTestExpectation()
+		_ = context.close().done { ok.fulfill() }
+		wait(for: [ok], timeout: 2.0)
+		XCTAssertTrue(context.isClosed())
+		XCTAssertEqual(0, context.getPendingCount())
+	}
+
+	// MARK: - Fix #18: setTimeout race condition removed
+
+	func testSetTimeoutNoRaceCondition() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let context = try createContext(config: contextConfig)
+
+		_ = context.getTreatment("exp_test_ab")
+		XCTAssertTrue(scheduler.scheduleAfterExecuteCalled)
+
+		context.track("goal1", properties: nil)
+		XCTAssertEqual(1, scheduler.scheduleAfterExecuteCallsCount)
+	}
+
+	// MARK: - Fix 4.1: setOverride succeeds after close
+
+	func testSetOverrideSucceedsAfterClose() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let context = try createContext(config: contextConfig)
+
+		handler.publishEventReturnValue = Promise.value(())
+
+		let expectation = XCTestExpectation()
+		_ = context.close().done {
+			context.setOverride(experimentName: "exp_test", variant: 2)
+			XCTAssertEqual(2, context.getOverride(experimentName: "exp_test"))
+			expectation.fulfill()
+		}
+
+		wait(for: [expectation], timeout: 1.0)
+	}
+
+	func testContextIsReadyWhenReadyEventIsLogged() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let (promise, resolver) = Promise<ContextData>.pending()
+		let context = try createContext(config: contextConfig, data: promise)
+
+		var readyWhenLogged: Bool?
+		logger.handleEventContextEventClosure = { ctx, event in
+			if case .ready = event { readyWhenLogged = ctx.isReady() }
+		}
+
+		let expectation = XCTestExpectation()
+		_ = context.waitUntilReady().done { _ in expectation.fulfill() }
+		resolver.fulfill(try getContextData())
+		wait(for: [expectation], timeout: 1.0)
+
+		XCTAssertEqual(true, readyWhenLogged)
+		XCTAssertTrue(context.isReady())
+	}
+
+	func testErrorEventIsLoggedBeforeContextReportsFailed() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		let (promise, resolver) = Promise<ContextData>.pending()
+		let context = try createContext(config: contextConfig, data: promise)
+
+		var stateWhenLogged: (ready: Bool, failed: Bool)?
+		logger.handleEventContextEventClosure = { ctx, event in
+			if case .error = event { stateWhenLogged = (ctx.isReady(), ctx.isFailed()) }
+		}
+
+		let expectation = XCTestExpectation()
+		_ = context.waitUntilReady().done { _ in expectation.fulfill() }
+		resolver.reject(ABSmartlyError("load failed"))
+		wait(for: [expectation], timeout: 1.0)
+
+		XCTAssertEqual(false, stateWhenLogged?.ready)
+		XCTAssertEqual(false, stateWhenLogged?.failed)
+		XCTAssertTrue(context.isReady())
+		XCTAssertTrue(context.isFailed())
+	}
+
+	func testNumericUnitsKeepTheirTypeAndHashLikeJavaScript() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: false)
+		contextConfig.setUnit(unitType: "user_id", uid: 125)
+		contextConfig.setUnit(unitType: "float_id", uid: 125.75)
+		let context = try createContext(config: contextConfig)
+		context.setUnit(unitType: "session_id", uid: 12345)
+
+		XCTAssertEqual(JSON(125), context.getUnitValue(unitType: "user_id"))
+		XCTAssertEqual(.number, context.getUnitValue(unitType: "user_id")?.type)
+		XCTAssertEqual(125.75, context.getUnitValue(unitType: "float_id")?.doubleValue)
+		XCTAssertEqual(.number, context.getUnitValue(unitType: "session_id")?.type)
+		XCTAssertEqual(.number, context.getUnitValues()["float_id"]?.type)
+
+		// Same number again is not a change; a different one is.
+		context.setUnit(unitType: "user_id", uid: 125)
+		XCTAssertEqual([], loggedErrorMessages())
+		context.setUnit(unitType: "user_id", uid: "125")
+		XCTAssertEqual(["Unit 'user_id' UID already set."], loggedErrorMessages())
+		XCTAssertEqual(JSON(125), context.getUnitValue(unitType: "user_id"))
+
+		// JS hashes numbers with toFixed(0): 125.75 -> "126".
+		XCTAssertEqual("BpBZt--EDwx0qBTskje27A", Hashing.hash(125.75))
+		XCTAssertEqual(Hashing.hash("126"), Hashing.hash(125.75))
+		XCTAssertEqual(Hashing.hash("12345"), Hashing.hash(12345))
+
+		context.setUnit(unitType: "flag_id", value: JSON(true))
+		XCTAssertEqual("Unit 'flag_id' must be a string or a number.", loggedErrorMessages().last)
+		XCTAssertNil(context.getUnitValue(unitType: "flag_id"))
+		context.setUnit(unitType: "json_id", value: JSON(7))
+		XCTAssertEqual(.number, context.getUnitValue(unitType: "json_id")?.type)
+
+		let stringConfig: ContextConfig = getContextConfig(withUnits: false)
+		stringConfig.setUnit(unitType: "float_id", uid: "126")
+		let stringContext = try createContext(config: stringConfig)
+		XCTAssertEqual(.string, stringContext.getUnitValue(unitType: "float_id")?.type)
+	}
+
+	func testHashingHelpers() {
+		XCTAssertEqual([97, 195, 167, 98, 226, 134, 147, 99], Hashing.utf8Bytes("a\u{e7}b\u{2193}c"))
+		XCTAssertEqual("YWJj", Hashing.base64UrlNoPadding(Data("abc".utf8)))
+		XCTAssertEqual("Pz8-", Hashing.base64UrlNoPadding(Data([0x3f, 0x3f, 0x3e])))
+	}
+
+	func testNumericUnitStringMatchesJavaScriptToFixed() throws {
+		XCTAssertEqual("-0", Hashing.unitString(-0.1))
+		XCTAssertEqual("0", Hashing.unitString(-0.0))
+		XCTAssertEqual("1e+21", Hashing.unitString(1e21))
+		XCTAssertEqual("-1.5e+22", Hashing.unitString(-1.5e22))
+		XCTAssertEqual("3", Hashing.unitString(2.5))
+		XCTAssertEqual("-3", Hashing.unitString(-2.5))
+
+		let contextConfig: ContextConfig = getContextConfig(withUnits: false)
+		contextConfig.setUnit(unitType: "neg_id", uid: -0.1)
+		contextConfig.setUnit(unitType: "big_id", uid: 1e21)
+		let context = try createContext(config: contextConfig)
+		_ = context.getTreatment("exp_test_ab")
+		handler.publishEventReturnValue = Promise<Void>.value(())
+		let expectation = XCTestExpectation()
+		_ = context.publish().done { expectation.fulfill() }
+		wait(for: [expectation], timeout: 1.0)
+		let published = Dictionary(uniqueKeysWithValues: (handler.publishEventReceivedEvent?.units ?? []).map { ($0.type, $0.uid) })
+		XCTAssertEqual(Hashing.hash("-0"), published["neg_id"])
+		XCTAssertEqual(Hashing.hash("1e+21"), published["big_id"])
+	}
+
+	func testGoalTrackedInsideSynchronousReadyCallbackIsScheduled() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		contextConfig.publishDelay = 0.1
+		logger.handleEventContextEventClosure = { ctx, event in
+			if case .ready = event { try? ctx.track("goal_in_ready", properties: nil) }
+		}
+		let context = try createContext(config: contextConfig)
+
+		XCTAssertEqual(1, context.getPendingCount())
+		XCTAssertEqual(1, scheduler.scheduleAfterExecuteCallsCount)
+	}
+
+	func testCloseFlushesQueuedEventsAfterOwnerReleasesContext() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		contextConfig.publishDelay = -1
+		// No event logger: the logger mock would keep the context alive.
+		var context: Context? = Context(
+			config: contextConfig, clock: clock, scheduler: scheduler, handler: handler, provider: provider, logger: nil,
+			parser: parser, matcher: AudienceMatcher(), promise: Promise<ContextData>.value(try getContextData()))
+		context?.track("goal_on_teardown", properties: nil)
+		handler.publishEventReturnValue = Promise<Void>.value(())
+
+		let closed = XCTestExpectation()
+		_ = context?.close().done { closed.fulfill() }
+		context = nil
+
+		wait(for: [closed], timeout: 1.0)
+		XCTAssertEqual(1, handler.publishEventCallsCount)
+		XCTAssertEqual("goal_on_teardown", handler.publishEventReceivedEvent?.goals.first?.name)
+	}
+
+	private func contextWithoutLogger(_ config: ContextConfig, _ data: Promise<ContextData>) -> Context {
+		return Context(
+			config: config, clock: clock, scheduler: scheduler, handler: handler, provider: provider, logger: nil,
+			parser: parser, matcher: AudienceMatcher(), promise: data)
+	}
+
+	func testWaitUntilReadySettlesAfterOwnerReleasesContext() throws {
+		let (promise, resolver) = Promise<ContextData>.pending()
+		var context: Context? = contextWithoutLogger(getContextConfig(withUnits: true), promise)
+		let ready = context!.waitUntilReady()
+		context = nil
+
+		let settled = XCTestExpectation()
+		var readyContext: Context?
+		_ = ready.done { readyContext = $0; settled.fulfill() }
+		resolver.fulfill(try getContextData())
+		wait(for: [settled], timeout: 1.0)
+		XCTAssertEqual(true, readyContext?.isReady())
+	}
+
+	func testRefreshSettlesAfterOwnerReleasesContext() throws {
+		var context: Context? = contextWithoutLogger(getContextConfig(withUnits: true), Promise.value(try getContextData()))
+		let (refreshData, refreshResolver) = Promise<ContextData>.pending()
+		provider.getContextDataReturnValue = refreshData
+		let refresh = context!.refresh()
+		context = nil
+
+		let settled = XCTestExpectation()
+		_ = refresh.done { settled.fulfill() }
+		refreshResolver.fulfill(try getContextData())
+		wait(for: [settled], timeout: 1.0)
+	}
+
+	func testFullAttributeHistoryIsPublished() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		contextConfig.publishDelay = -1
+		let context = try createContext(config: contextConfig)
+		context.setAttribute(name: "returning", value: true)
+		for i in 0..<600 {
+			context.setAttribute(name: "counter", value: JSON(i))
+		}
+		XCTAssertEqual(JSON(true), context.getAttribute(name: "returning"))
+		XCTAssertEqual(JSON(599), context.getAttribute(name: "counter"))
+		XCTAssertEqual(["returning": JSON(true), "counter": JSON(599)], context.getAttributes())
+
+		context.track("goal1", properties: nil)
+		handler.publishEventReturnValue = Promise<Void>.value(())
+		let published = XCTestExpectation()
+		_ = context.publish().done { published.fulfill() }
+		wait(for: [published], timeout: 1.0)
+		XCTAssertEqual(601, handler.publishEventReceivedEvent?.attributes.count)
+	}
+
+	func testQueuedGoalsAreNeverDroppedBeforePublish() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		contextConfig.publishDelay = -1
+		let context = try createContext(config: contextConfig)
+		for i in 1...1001 {
+			context.track("goal-\(i)", properties: nil)
+		}
+		XCTAssertEqual(1001, context.getPendingCount())
+
+		handler.publishEventReturnValue = Promise<Void>.value(())
+		let published = XCTestExpectation()
+		_ = context.publish().done { published.fulfill() }
+		wait(for: [published], timeout: 1.0)
+		let goals = handler.publishEventReceivedEvent?.goals ?? []
+		XCTAssertEqual(1001, goals.count)
+		XCTAssertEqual("goal-1", goals.first?.name)
+		XCTAssertEqual("goal-1001", goals.last?.name)
+	}
+
+	func testCustomAssignmentAllowedAfterFinalize() throws {
+		let context = try createContext(config: getContextConfig(withUnits: true))
+		let closed = XCTestExpectation()
+		_ = context.close().done { closed.fulfill() }
+		wait(for: [closed], timeout: 1.0)
+		XCTAssertNoThrow(context.setCustomAssignment(experimentName: "exp_test_ab", variant: 1))
+		XCTAssertEqual(1, context.getCustomAssignment(experimentName: "exp_test_ab"))
+	}
+
+	func testPublicApiDoesNotThrowAndReturnsDefaultsBeforeReady() throws {
+		let (promise, _) = Promise<ContextData>.pending()
+		let context = try createContext(config: getContextConfig(withUnits: true), data: promise)
+
+		let treatment: Int = context.getTreatment("exp_test_ab")
+		XCTAssertEqual(0, treatment)
+		XCTAssertEqual(0, context.peekTreatment("exp_test_ab"))
+		XCTAssertEqual(JSON(5), context.getVariableValue("banner.size", defaultValue: JSON(5)))
+		XCTAssertEqual(JSON(5), context.peekVariableValue("banner.size", defaultValue: JSON(5)))
+		XCTAssertEqual([:], context.getVariableKeys())
+		XCTAssertEqual([], context.getExperiments())
+		XCTAssertEqual([], context.getCustomFieldKeys())
+		XCTAssertNil(context.getCustomFieldValue(experimentName: "exp_test_ab", key: "country"))
+		XCTAssertNil(context.getCustomFieldValueType(experimentName: "exp_test_ab", key: "country"))
+		XCTAssertNil(context.getContextData())
+		XCTAssertEqual(0, context.getPendingCount())
+
+		XCTAssertEqual(10, loggedErrorMessages().count)
+		XCTAssertEqual(["ABsmartly Context is not yet ready."], Set(loggedErrorMessages()).sorted())
+	}
+
+	func testErrorHandlerReadingContextOnFailedLoadDoesNotRecurse() throws {
+		let (promise, resolver) = Promise<ContextData>.pending()
+		let context = try createContext(config: getContextConfig(withUnits: true), data: promise)
+
+		var nestedReads = 0
+		logger.handleEventContextEventClosure = { ctx, event in
+			guard case .error = event, nestedReads < 50 else { return }
+			nestedReads += 1
+			XCTAssertNil(ctx.getContextData())
+		}
+
+		let settled = XCTestExpectation()
+		_ = context.waitUntilReady().ensure { settled.fulfill() }
+		resolver.reject(ABSmartlyError("load failed"))
+		wait(for: [settled], timeout: 1.0)
+
+		XCTAssertEqual(1, nestedReads)
+		XCTAssertEqual(["load failed"], loggedErrorMessages())
+		XCTAssertTrue(context.isFailed())
+	}
+
+	func testErrorHandlerReadingContextBeforeReadyDoesNotRecurse() throws {
+		let (promise, _) = Promise<ContextData>.pending()
+		let context = try createContext(config: getContextConfig(withUnits: true), data: promise)
+
+		var nestedReads = 0
+		logger.handleEventContextEventClosure = { ctx, event in
+			guard case .error = event, nestedReads < 50 else { return }
+			nestedReads += 1
+			XCTAssertEqual(0, ctx.getTreatment("exp_test_ab"))
+		}
+
+		// Each top-level misuse is still reported once; only the nested one is suppressed.
+		XCTAssertNil(context.getContextData())
+		XCTAssertNil(context.getContextData())
+		XCTAssertEqual(2, nestedReads)
+		XCTAssertEqual(Array(repeating: "ABsmartly Context is not yet ready.", count: 2), loggedErrorMessages())
+	}
+
+	func testWritesAfterCloseAreIgnoredWithErrorEvent() throws {
+		let context = try createContext(config: getContextConfig(withUnits: true))
+		let closed = XCTestExpectation()
+		_ = context.close().done { closed.fulfill() }
+		wait(for: [closed], timeout: 1.0)
+
+		context.track("goal1", properties: nil)
+		context.setAttribute(name: "attr", value: JSON(1))
+		context.setUnit(unitType: "device_id", uid: "abc")
+
+		XCTAssertEqual(0, context.getPendingCount())
+		XCTAssertNil(context.getAttribute(name: "attr"))
+		XCTAssertNil(context.getUnit(unitType: "device_id"))
+		XCTAssertEqual(Array(repeating: "ABsmartly Context is finalized.", count: 3), loggedErrorMessages())
+	}
+
+	func testReadsInsideReadyHandlerSeeTheData() throws {
+		var treatmentInHandler: Int?
+		var variableInHandler: JSON?
+		logger.handleEventContextEventClosure = { ctx, event in
+			if case .ready = event {
+				treatmentInHandler = ctx.getTreatment("exp_test_ab")
+				variableInHandler = ctx.getVariableValue("banner.size", defaultValue: nil)
+			}
+		}
+
+		let context = try createContext(config: getContextConfig(withUnits: true))
+		XCTAssertTrue(context.isReady())
+		XCTAssertEqual(1, treatmentInHandler)
+		XCTAssertEqual(JSON("large"), variableInHandler)
+		XCTAssertEqual([], loggedErrorMessages())
+	}
+
+	func testReadsInsideReadyHandlerSeeTheDataWhenLoadedAsynchronously() throws {
+		var treatmentInHandler: Int?
+		logger.handleEventContextEventClosure = { ctx, event in
+			if case .ready = event { treatmentInHandler = ctx.getTreatment("exp_test_ab") }
+		}
+
+		let (promise, resolver) = Promise<ContextData>.pending()
+		let context = try createContext(config: getContextConfig(withUnits: true), data: promise)
+		let expectation = XCTestExpectation()
+		_ = context.waitUntilReady().done { _ in expectation.fulfill() }
+		resolver.fulfill(try getContextData())
+		wait(for: [expectation], timeout: 1.0)
+
+		XCTAssertEqual(1, treatmentInHandler)
+		XCTAssertEqual([], loggedErrorMessages())
+	}
+
+	func testLongUnitUIDIsAcceptedAndAssigned() throws {
+		let longUID = String(repeating: "a", count: 300)
+		let contextConfig: ContextConfig = getContextConfig(withUnits: false)
+		contextConfig.setUnit(unitType: "session_id", uid: longUID)
+		contextConfig.publishDelay = -1
+		let context = try createContext(config: contextConfig)
+		context.setUnit(unitType: "user_id", uid: String(repeating: "b", count: 1000))
+
+		XCTAssertEqual(longUID, context.getUnit(unitType: "session_id"))
+		XCTAssertEqual(1000, context.getUnit(unitType: "user_id")?.count)
+		XCTAssertEqual([], loggedErrorMessages())
+
+		_ = context.getTreatment("exp_test_ab")
+		handler.publishEventReturnValue = Promise<Void>.value(())
+		let published = XCTestExpectation()
+		_ = context.publish().done { published.fulfill() }
+		wait(for: [published], timeout: 1.0)
+
+		let event = handler.publishEventReceivedEvent
+		XCTAssertEqual(["session_id", "user_id"], event?.units.map { $0.type }.sorted())
+		XCTAssertEqual(Hashing.hash(longUID), event?.units.first { $0.type == "session_id" }?.uid)
+		XCTAssertEqual(true, event?.exposures.first?.assigned)
+	}
+
+	func testCloseEventKeepsItsCaseName() throws {
+		var closeLogged = false
+		logger.handleEventContextEventClosure = { _, event in
+			switch event {
+			case .ready, .refresh, .publish, .exposure, .goal, .error:
+				break
+			case .close:
+				closeLogged = true
+			}
+		}
+
+		let context = try createContext(config: getContextConfig(withUnits: true))
+		let closed = XCTestExpectation()
+		_ = context.close().done { closed.fulfill() }
+		wait(for: [closed], timeout: 1.0)
+
+		XCTAssertTrue(closeLogged)
+		XCTAssertEqual(ContextEventLoggerEvent.finalize, ContextEventLoggerEvent.close)
+	}
+
+	func testCustomFieldValuesHaveTheirV140Types() throws {
+		let json = """
+			{"experiments": [{"id": 1, "name": "exp", "customFieldValues": [
+				{"name": "obj", "type": "json", "value": "{\\"a\\": [1, \\"x\\"]}"},
+				{"name": "int", "type": "number", "value": "42"},
+				{"name": "float", "type": "number", "value": "1.5"},
+				{"name": "flag", "type": "boolean", "value": "true"}
+			]}]}
+			"""
+		let contextData = try JSONDecoder().decode(ContextData.self, from: Data(json.utf8))
+		let context = try createContext(config: getContextConfig(withUnits: true), data: Promise.value(contextData))
+
+		let obj = context.getCustomFieldValue(experimentName: "exp", key: "obj") as? [String: JSON]
+		XCTAssertEqual(["a": JSON([1, "x"])], obj)
+		XCTAssertEqual(42.0, context.getCustomFieldValue(experimentName: "exp", key: "int") as? Double)
+		XCTAssertEqual(1.5, context.getCustomFieldValue(experimentName: "exp", key: "float") as? Double)
+		XCTAssertEqual(true, context.getCustomFieldValue(experimentName: "exp", key: "flag") as? Bool)
+	}
+
+	func testPublishBeforeReadySendsQueuedGoals() throws {
+		let (promise, _) = Promise<ContextData>.pending()
+		let context = try createContext(config: getContextConfig(withUnits: true), data: promise)
+		context.track("goal1", properties: nil)
+		XCTAssertEqual(1, context.getPendingCount())
+
+		handler.publishEventReturnValue = Promise<Void>.value(())
+		let published = XCTestExpectation()
+		_ = context.publish().done { published.fulfill() }
+		wait(for: [published], timeout: 1.0)
+
+		XCTAssertEqual(0, context.getPendingCount())
+		XCTAssertEqual(["goal1"], handler.publishEventReceivedEvent?.goals.map { $0.name })
+		XCTAssertEqual([], loggedErrorMessages())
+	}
+
+	func testRefreshBeforeReadyFetchesData() throws {
+		let (promise, _) = Promise<ContextData>.pending()
+		let context = try createContext(config: getContextConfig(withUnits: true), data: promise)
+
+		provider.getContextDataReturnValue = Promise.value(try getContextData())
+		let refreshed = XCTestExpectation()
+		_ = context.refresh().done { refreshed.fulfill() }
+		wait(for: [refreshed], timeout: 1.0)
+
+		XCTAssertEqual(1, provider.getContextDataCallsCount)
+		XCTAssertEqual(1, context.getTreatment("exp_test_ab"))
+	}
+
+	func testTrackThenDropContextStillPublishes() throws {
+		var context: Context? = contextWithoutLogger(getContextConfig(withUnits: true), Promise.value(try getContextData()))
+		weak var weakContext = context
+		context!.track("goal1", properties: nil)
+		let publishTimer = try XCTUnwrap(scheduler.scheduleAfterExecuteReceivedArguments?.execute)
+		context = nil
+		XCTAssertNotNil(weakContext, "a pending publish keeps the context alive")
+
+		handler.publishEventReturnValue = Promise<Void>.value(())
+		publishTimer()
+		XCTAssertEqual(1, handler.publishEventCallsCount)
+		XCTAssertEqual(["goal1"], handler.publishEventReceivedEvent?.goals.map { $0.name })
+	}
+
+	func testCompletionEventsAreDeliveredOnTheMainThread() throws {
+		let platformDefault = Context.deliversEventsOnMainThread
+		Context.deliversEventsOnMainThread = true
+		defer { Context.deliversEventsOnMainThread = platformDefault }
+
+		var deliveredOnMain: [String: Bool] = [:]
+		let delivered = XCTestExpectation()
+		delivered.expectedFulfillmentCount = 3
+		logger.handleEventContextEventClosure = { _, event in
+			switch event {
+			case .ready: deliveredOnMain["ready"] = Thread.isMainThread
+			case .publish: deliveredOnMain["publish"] = Thread.isMainThread
+			case .refresh: deliveredOnMain["refresh"] = Thread.isMainThread
+			default: return
+			}
+			delivered.fulfill()
+		}
+
+		let (promise, resolver) = Promise<ContextData>.pending()
+		let context = try createContext(config: getContextConfig(withUnits: true), data: promise)
+		let data = try getContextData()
+		DispatchQueue.global().async { resolver.fulfill(data) }
+		let ready = XCTestExpectation()
+		_ = context.waitUntilReady().done { _ in ready.fulfill() }
+		wait(for: [ready], timeout: 1.0)
+
+		context.track("goal1", properties: nil)
+		handler.publishEventClosure = { _ in
+			Promise { seal in DispatchQueue.global().async { seal.fulfill(()) } }
+		}
+		provider.getContextDataClosure = {
+			Promise { seal in DispatchQueue.global().async { seal.fulfill(data) } }
+		}
+		_ = context.publish()
+		_ = context.refresh()
+		wait(for: [delivered], timeout: 1.0)
+
+		XCTAssertEqual(["ready": true, "publish": true, "refresh": true], deliveredOnMain)
+
+		// close() with queued events flushes first, then delivers `.close` on main too.
+		var closeDeliveredOnMain: Bool?
+		let closeDelivered = XCTestExpectation()
+		logger.handleEventContextEventClosure = { _, event in
+			if case .close = event {
+				closeDeliveredOnMain = Thread.isMainThread
+				closeDelivered.fulfill()
+			}
+		}
+		context.track("goal2", properties: nil)
+		_ = context.close()
+		wait(for: [closeDelivered], timeout: 1.0)
+
+		XCTAssertEqual(true, closeDeliveredOnMain)
 	}
 }

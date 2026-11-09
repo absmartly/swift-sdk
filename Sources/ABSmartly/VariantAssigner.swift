@@ -27,8 +27,8 @@ class VariantAssigner {
 	static func chooseVariant(_ split: [Double], _ prob: Double) -> Int {
 		var cumSum: Double = 0
 
-		for (i, _) in split.enumerated() {
-			cumSum += split[i]
+		for (i, splitValue) in split.enumerated() {
+			cumSum += splitValue
 
 			if prob < cumSum {
 				return i
