@@ -3428,7 +3428,6 @@ final class ContextTest: XCTestCase {
 
 	// MARK: - System attributes (application / environment) in audience evaluation
 
-	// 1. A strict audience on the configured environment matches and serves variant 1.
 	func testStrictAudienceMatchesConfiguredEnvironment() throws {
 		let data = try strictAudienceContextData(
 			filter: "[{\"eq\":[{\"var\":\"environment\"},{\"value\":\"production\"}]}]")
@@ -3442,7 +3441,6 @@ final class ContextTest: XCTestCase {
 		XCTAssertEqual("large", context.getVariableValue("banner.size", defaultValue: "default"))
 	}
 
-	// 2. A strict audience on the configured application matches and serves variant 1.
 	func testStrictAudienceMatchesConfiguredApplication() throws {
 		let data = try strictAudienceContextData(
 			filter: "[{\"eq\":[{\"var\":\"application\"},{\"value\":\"website\"}]}]")
@@ -3455,7 +3453,6 @@ final class ContextTest: XCTestCase {
 			loggedExposures())
 	}
 
-	// 3. A strict audience naming another environment is an audience mismatch and serves variant 0.
 	func testStrictAudienceMismatchOnOtherEnvironment() throws {
 		let data = try strictAudienceContextData(
 			filter: "[{\"eq\":[{\"var\":\"environment\"},{\"value\":\"staging\"}]}]")
@@ -3506,7 +3503,7 @@ final class ContextTest: XCTestCase {
 			loggedExposures())
 	}
 
-	// 5. Assignment-rule conditions read the same attribute map. The Swift SDK evaluates all
+	// Assignment-rule conditions read the same attribute map. The Swift SDK evaluates all
 	// conditions through `audience`, so a condition on the configured environment matches.
 	func testAudienceConditionMatchesConfiguredEnvironment() throws {
 		let data = try strictAudienceContextData(
@@ -3517,7 +3514,7 @@ final class ContextTest: XCTestCase {
 		XCTAssertEqual(1, context.getTreatment("exp_test_ab"))
 	}
 
-	// 6. With no environment configured, the key is absent from the map: no crash, and a filter on
+	// With no environment configured, the key is absent from the map: no crash, and a filter on
 	// `environment` does not match.
 	func testMissingEnvironmentConfigLeavesKeyOut() throws {
 		let data = try strictAudienceContextData(
@@ -3552,7 +3549,7 @@ final class ContextTest: XCTestCase {
 		XCTAssertEqual(1, context.getTreatment("exp_test_ab"))
 	}
 
-	// 7. Nothing extra is published: the serialized payload carries no `application`/`environment`/
+	// Nothing extra is published: the serialized payload carries no `application`/`environment`/
 	// `app_version` attribute beyond the user-set ones.
 	func testSystemAttributesAreNotPublished() throws {
 		let data = try strictAudienceContextData(
@@ -3589,7 +3586,7 @@ final class ContextTest: XCTestCase {
 		wait(for: [expectation], timeout: 1.0)
 	}
 
-	// 8. `app_version` is never injected: a filter on it does not match, even with an application
+	// `app_version` is never injected: a filter on it does not match, even with an application
 	// version configured on the client.
 	func testAppVersionIsNotInjectedIntoEvaluation() throws {
 		let data = try strictAudienceContextData(
@@ -3603,7 +3600,6 @@ final class ContextTest: XCTestCase {
 			loggedExposures())
 	}
 
-	// An `app_version` the user sets explicitly is still evaluated.
 	func testUserSetAppVersionIsEvaluated() throws {
 		let data = try strictAudienceContextData(
 			filter: "[{\"eq\":[{\"var\":\"app_version\"},{\"value\":\"1.2.3\"}]}]")
@@ -3614,7 +3610,6 @@ final class ContextTest: XCTestCase {
 		XCTAssertEqual(1, context.getTreatment("exp_test_ab"))
 	}
 
-	// System attributes are not reported as user attributes.
 	func testSystemAttributesAreNotReportedAsUserAttributes() throws {
 		let context = try createSystemContext(config: getContextConfig(withUnits: true))
 		context.setAttribute(name: "age", value: 25)
