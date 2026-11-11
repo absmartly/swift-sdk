@@ -35,6 +35,23 @@ final class DefaultClientTest: XCTestCase {
 		XCTAssertNoThrow(try DefaultClient(config: clientConfig, httpClient: HTTPClientMock()))
 	}
 
+	func testGetApplicationAndEnvironmentReturnConfiguredNames() throws {
+		let clientConfig = ClientConfig(
+			apiKey: "test", application: "website", endpoint: "https://test.absmartly.io/v1",
+			environment: "production")
+		let client = try DefaultClient(config: clientConfig, httpClient: HTTPClientMock())
+
+		XCTAssertEqual("website", client.getApplication())
+		XCTAssertEqual("production", client.getEnvironment())
+
+		// Captured at init, like the HTTP metadata: mutating the config afterwards does not change
+		// the names audiences evaluate against, so evaluation stays consistent with context fetches.
+		clientConfig.application = "mobile"
+		clientConfig.environment = "staging"
+		XCTAssertEqual("website", client.getApplication())
+		XCTAssertEqual("production", client.getEnvironment())
+	}
+
 	func testThrowsWithMissingEndpoint() {
 		let clientConfig = ClientConfig(
 			apiKey: "test", application: "test_app", endpoint: "", environment: "test")
