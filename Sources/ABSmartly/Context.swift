@@ -64,11 +64,18 @@ public final class Context {
 	private var refreshInterval: TimeInterval = 0
 	private var attrsSeq: Int = 0
 
+	// Non-empty `application`/`environment` names from the client config, which the collector also
+	// attaches to every exposure server-side. They seed the evaluation map so audiences and
+	// assignment-rule conditions can target them; a user-set attribute of the same name wins.
+	private let systemAttributes: [String: JSON]
+
 	init(
 		config: ContextConfig, clock: Clock, scheduler: Scheduler, handler: ContextEventHandler,
 		provider: ContextDataProvider, logger: ContextEventLogger?, parser: VariableParser,
 		matcher: AudienceMatcher,
-		promise: Promise<ContextData>
+		promise: Promise<ContextData>,
+		application: String? = nil,
+		environment: String? = nil
 	) {
 		self.clock = clock
 		self.scheduler = scheduler
@@ -78,6 +85,15 @@ public final class Context {
 		self.parser = parser
 		self.matcher = matcher
 		self.promise = promise
+
+		var systemAttributes: [String: JSON] = [:]
+		if let application = application, !application.isEmpty {
+			systemAttributes["application"] = JSON(application)
+		}
+		if let environment = environment, !environment.isEmpty {
+			systemAttributes["environment"] = JSON(environment)
+		}
+		self.systemAttributes = systemAttributes
 
 		publishDelay = config.publishDelay
 		refreshInterval = config.refreshInterval
@@ -805,8 +821,11 @@ public final class Context {
 		logError(error: error)
 	}
 
+	// System values first, then user attributes overlaid on top, so a user-set value always wins —
+	// including one set after an assignment was cached (the `attrsSeq` bump invalidates it). A
+	// user value of `null`/empty still overwrites the system key, matching the JavaScript SDK.
 	private func buildAttributeMap() -> [String: JSON] {
-		var attrs: [String: JSON] = [:]
+		var attrs: [String: JSON] = systemAttributes
 		for attr in attributes {
 			attrs[attr.name] = attr.value
 		}

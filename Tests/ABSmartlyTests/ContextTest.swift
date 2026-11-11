@@ -76,6 +76,38 @@ final class ContextTest: XCTestCase {
 			promise: data)
 	}
 
+	// A context seeded with the application/environment names the client would supply, so audiences
+	// and assignment-rule conditions can target them.
+	func createSystemContext(
+		config: ContextConfig, data: Promise<ContextData>? = nil, application: String? = "website",
+		environment: String? = "production"
+	) throws -> Context {
+		let data = try data ?? Promise<ContextData>.value(try getContextData())
+		return Context(
+			config: config, clock: clock, scheduler: scheduler, handler: handler, provider: provider, logger: logger,
+			parser: parser, matcher: AudienceMatcher(),
+			promise: data, application: application, environment: environment)
+	}
+
+	// exp_test_ab with a strict audience and a 0/100 split to variant 1, so a match yields 1 and a
+	// mismatch (strict) yields the control variant 0. `filter` is the plain-JSON filter array text,
+	// e.g. `[{"eq":[{"var":"environment"},{"value":"production"}]}]`.
+	func strictAudienceContextData(filter: String) throws -> ContextData {
+		let audience = "{\"filter\":\(filter)}"
+		let escapedAudience = audience
+			.replacingOccurrences(of: "\\", with: "\\\\")
+			.replacingOccurrences(of: "\"", with: "\\\"")
+		let json = """
+			{"experiments":[{"id":1,"name":"exp_test_ab","iteration":1,"unitType":"session_id",\
+			"seedHi":3603515,"seedLo":233373850,"split":[0.0,1.0],"trafficSeedHi":449867249,\
+			"trafficSeedLo":455443629,"trafficSplit":[0.0,1.0],"fullOnVariant":0,\
+			"applications":[{"name":"website"}],"variants":[{"name":"A","config":null},\
+			{"name":"B","config":"{\\"banner.border\\":1,\\"banner.size\\":\\"large\\"}"}],\
+			"audienceStrict":true,"audience":"\(escapedAudience)"}]}
+			"""
+		return try JSONDecoder().decode(ContextData.self, from: json.data(using: .utf8)!)
+	}
+
 	func loggedErrorMessages() -> [String] {
 		return logger.handleEventContextEventReceivedInvocations.compactMap {
 			if case let .error(error) = $0.event { return error.localizedDescription }
@@ -3392,5 +3424,203 @@ final class ContextTest: XCTestCase {
 		wait(for: [closeDelivered], timeout: 1.0)
 
 		XCTAssertEqual(true, closeDeliveredOnMain)
+	}
+
+	// MARK: - System attributes (application / environment) in audience evaluation
+
+	// 1. A strict audience on the configured environment matches and serves variant 1.
+	func testStrictAudienceMatchesConfiguredEnvironment() throws {
+		let data = try strictAudienceContextData(
+			filter: "[{\"eq\":[{\"var\":\"environment\"},{\"value\":\"production\"}]}]")
+		let context = try createSystemContext(
+			config: getContextConfig(withUnits: true), data: Promise<ContextData>.value(data))
+
+		XCTAssertEqual(1, context.getTreatment("exp_test_ab"))
+		XCTAssertEqual(
+			[Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false, false)],
+			loggedExposures())
+		XCTAssertEqual("large", context.getVariableValue("banner.size", defaultValue: "default"))
+	}
+
+	// 2. A strict audience on the configured application matches and serves variant 1.
+	func testStrictAudienceMatchesConfiguredApplication() throws {
+		let data = try strictAudienceContextData(
+			filter: "[{\"eq\":[{\"var\":\"application\"},{\"value\":\"website\"}]}]")
+		let context = try createSystemContext(
+			config: getContextConfig(withUnits: true), data: Promise<ContextData>.value(data))
+
+		XCTAssertEqual(1, context.getTreatment("exp_test_ab"))
+		XCTAssertEqual(
+			[Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false, false)],
+			loggedExposures())
+	}
+
+	// 3. A strict audience naming another environment is an audience mismatch and serves variant 0.
+	func testStrictAudienceMismatchOnOtherEnvironment() throws {
+		let data = try strictAudienceContextData(
+			filter: "[{\"eq\":[{\"var\":\"environment\"},{\"value\":\"staging\"}]}]")
+		let context = try createSystemContext(
+			config: getContextConfig(withUnits: true), data: Promise<ContextData>.value(data))
+
+		XCTAssertEqual(0, context.getTreatment("exp_test_ab"))
+		XCTAssertEqual(
+			[Exposure(1, "exp_test_ab", "session_id", 0, clock.millis(), false, true, false, false, false, true)],
+			loggedExposures())
+	}
+
+	// 4. A user-set attribute wins over the configured value, even set after creation, and
+	// invalidates an assignment cached before it was set.
+	func testUserSetEnvironmentOverridesConfiguredValue() throws {
+		let data = try strictAudienceContextData(
+			filter: "[{\"eq\":[{\"var\":\"environment\"},{\"value\":\"staging\"}]}]")
+		let context = try createSystemContext(
+			config: getContextConfig(withUnits: true), data: Promise<ContextData>.value(data))
+
+		// Cached before the attribute is set: production ≠ staging, strict mismatch → 0.
+		XCTAssertEqual(0, context.peekTreatment("exp_test_ab"))
+
+		context.setAttribute(name: "environment", value: "staging")
+
+		// The cached assignment is invalidated and re-evaluated: staging now matches → 1.
+		XCTAssertEqual(1, context.peekTreatment("exp_test_ab"))
+		XCTAssertEqual(1, context.getTreatment("exp_test_ab"))
+		XCTAssertEqual(
+			[Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false, false)],
+			loggedExposures())
+	}
+
+	// A user value also loses the match once it overrides a configured value that matched.
+	func testUserSetEnvironmentOverridesMatchingConfiguredValue() throws {
+		let data = try strictAudienceContextData(
+			filter: "[{\"eq\":[{\"var\":\"environment\"},{\"value\":\"production\"}]}]")
+		let context = try createSystemContext(
+			config: getContextConfig(withUnits: true), data: Promise<ContextData>.value(data))
+
+		XCTAssertEqual(1, context.peekTreatment("exp_test_ab"))
+
+		context.setAttribute(name: "environment", value: "staging")
+
+		XCTAssertEqual(0, context.getTreatment("exp_test_ab"))
+		XCTAssertEqual(
+			[Exposure(1, "exp_test_ab", "session_id", 0, clock.millis(), false, true, false, false, false, true)],
+			loggedExposures())
+	}
+
+	// 5. Assignment-rule conditions read the same attribute map. The Swift SDK evaluates all
+	// conditions through `audience`, so a condition on the configured environment matches.
+	func testAudienceConditionMatchesConfiguredEnvironment() throws {
+		let data = try strictAudienceContextData(
+			filter: "{\"and\":[{\"eq\":[{\"var\":\"environment\"},{\"value\":\"production\"}]}]}")
+		let context = try createSystemContext(
+			config: getContextConfig(withUnits: true), data: Promise<ContextData>.value(data))
+
+		XCTAssertEqual(1, context.getTreatment("exp_test_ab"))
+	}
+
+	// 6. With no environment configured, the key is absent from the map: no crash, and a filter on
+	// `environment` does not match.
+	func testMissingEnvironmentConfigLeavesKeyOut() throws {
+		let data = try strictAudienceContextData(
+			filter: "[{\"eq\":[{\"var\":\"environment\"},{\"value\":\"production\"}]}]")
+		let context = try createSystemContext(
+			config: getContextConfig(withUnits: true), data: Promise<ContextData>.value(data),
+			environment: nil)
+
+		XCTAssertEqual(0, context.getTreatment("exp_test_ab"))
+		XCTAssertEqual(
+			[Exposure(1, "exp_test_ab", "session_id", 0, clock.millis(), false, true, false, false, false, true)],
+			loggedExposures())
+	}
+
+	// A `null` filter on a missing environment matches, confirming the key is absent (not null/"").
+	func testMissingEnvironmentConfigMatchesNullFilter() throws {
+		let data = try strictAudienceContextData(filter: "[{\"null\":{\"var\":\"environment\"}}]")
+		let context = try createSystemContext(
+			config: getContextConfig(withUnits: true), data: Promise<ContextData>.value(data),
+			environment: nil)
+
+		XCTAssertEqual(1, context.getTreatment("exp_test_ab"))
+	}
+
+	// An empty environment name is treated the same as unconfigured: the key is left out.
+	func testEmptyEnvironmentConfigLeavesKeyOut() throws {
+		let data = try strictAudienceContextData(filter: "[{\"null\":{\"var\":\"environment\"}}]")
+		let context = try createSystemContext(
+			config: getContextConfig(withUnits: true), data: Promise<ContextData>.value(data),
+			environment: "")
+
+		XCTAssertEqual(1, context.getTreatment("exp_test_ab"))
+	}
+
+	// 7. Nothing extra is published: the serialized payload carries no `application`/`environment`/
+	// `app_version` attribute beyond the user-set ones.
+	func testSystemAttributesAreNotPublished() throws {
+		let data = try strictAudienceContextData(
+			filter: "[{\"eq\":[{\"var\":\"environment\"},{\"value\":\"production\"}]}]")
+		let context = try createSystemContext(
+			config: getContextConfig(withUnits: true), data: Promise<ContextData>.value(data))
+		context.setAttribute(name: "custom_attr", value: "custom_value")
+
+		XCTAssertEqual(1, context.getTreatment("exp_test_ab"))
+
+		let expectation = XCTestExpectation()
+		let (promise, resolver) = Promise<Void>.pending()
+		handler.publishEventReturnValue = promise
+
+		_ = context.publish().done { [self] in
+			let event = handler.publishEventReceivedEvent
+			XCTAssertNotNil(event)
+			do {
+				let payload = try JSONEncoder().encode(event!)
+				let object = try JSONSerialization.jsonObject(with: payload) as? [String: Any]
+				let attributes = (object?["attributes"] as? [[String: Any]]) ?? []
+				let names = attributes.compactMap { $0["name"] as? String }
+				XCTAssertEqual(["custom_attr"], names)
+				XCTAssertFalse(names.contains("application"))
+				XCTAssertFalse(names.contains("environment"))
+				XCTAssertFalse(names.contains("app_version"))
+			} catch {
+				XCTFail(error.localizedDescription)
+			}
+			expectation.fulfill()
+		}
+
+		resolver.fulfill(())
+		wait(for: [expectation], timeout: 1.0)
+	}
+
+	// 8. `app_version` is never injected: a filter on it does not match, even with an application
+	// version configured on the client.
+	func testAppVersionIsNotInjectedIntoEvaluation() throws {
+		let data = try strictAudienceContextData(
+			filter: "[{\"eq\":[{\"var\":\"app_version\"},{\"value\":\"1.2.3\"}]}]")
+		let context = try createSystemContext(
+			config: getContextConfig(withUnits: true), data: Promise<ContextData>.value(data))
+
+		XCTAssertEqual(0, context.getTreatment("exp_test_ab"))
+		XCTAssertEqual(
+			[Exposure(1, "exp_test_ab", "session_id", 0, clock.millis(), false, true, false, false, false, true)],
+			loggedExposures())
+	}
+
+	// An `app_version` the user sets explicitly is still evaluated.
+	func testUserSetAppVersionIsEvaluated() throws {
+		let data = try strictAudienceContextData(
+			filter: "[{\"eq\":[{\"var\":\"app_version\"},{\"value\":\"1.2.3\"}]}]")
+		let context = try createSystemContext(
+			config: getContextConfig(withUnits: true), data: Promise<ContextData>.value(data))
+		context.setAttribute(name: "app_version", value: "1.2.3")
+
+		XCTAssertEqual(1, context.getTreatment("exp_test_ab"))
+	}
+
+	// System attributes are not reported as user attributes.
+	func testSystemAttributesAreNotReportedAsUserAttributes() throws {
+		let context = try createSystemContext(config: getContextConfig(withUnits: true))
+		context.setAttribute(name: "age", value: 25)
+
+		XCTAssertEqual(["age": JSON(25)], context.getAttributes())
+		XCTAssertNil(context.getAttribute(name: "environment"))
+		XCTAssertNil(context.getAttribute(name: "application"))
 	}
 }

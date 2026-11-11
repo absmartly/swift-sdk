@@ -85,4 +85,14 @@ public final class DefaultClient: Client {
 	public func close() -> Promise<Void> {
 		return httpClient.close()
 	}
+
+	// The configured names audiences and assignment-rule conditions target. Empty values are
+	// reported as `nil` so the context leaves the key out of the evaluation map.
+	public func getApplication() -> String? {
+		return config.application.isEmpty ? nil : config.application
+	}
+
+	public func getEnvironment() -> String? {
+		return config.environment.isEmpty ? nil : config.environment
+	}
 }

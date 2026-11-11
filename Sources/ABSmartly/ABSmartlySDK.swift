@@ -97,7 +97,9 @@ public final class ABsmartlySDK {
 			config: config, clock: DefaultClock(), scheduler: scheduler, handler: contextEventHandler,
 			provider: contextDataProvider, logger: config.eventLogger ?? contextEventLogger, parser: variableParser,
 			matcher: AudienceMatcher(),
-			promise: Promise<ContextData>.value(contextData))
+			promise: Promise<ContextData>.value(contextData),
+			application: client?.getApplication(),
+			environment: client?.getEnvironment())
 	}
 
 	public func createContext(config: ContextConfig) -> Context {
@@ -105,7 +107,9 @@ public final class ABsmartlySDK {
 			config: config, clock: DefaultClock(), scheduler: scheduler, handler: contextEventHandler,
 			provider: contextDataProvider, logger: config.eventLogger ?? contextEventLogger, parser: variableParser,
 			matcher: AudienceMatcher(),
-			promise: contextDataProvider.getContextData())
+			promise: contextDataProvider.getContextData(),
+			application: client?.getApplication(),
+			environment: client?.getEnvironment())
 	}
 
 	public func getContextData() -> Promise<ContextData> {
