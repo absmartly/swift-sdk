@@ -962,7 +962,8 @@ public final class Context {
 			if let experiment = experiment {
 				let unitType = experiment.data.unitType
 
-				let rule = resolveRule(experiment, buildAttributeMap(), unitPinnedMissing: false)
+				let rule =
+					experiment.rules != nil ? resolveRule(experiment, buildAttributeMap(), unitPinnedMissing: false) : nil
 				assignment.ruleKey = experiment.data.assignmentRules ?? ""
 				assignment.ruleVariant = rule?.variant
 				assignment.ruleMissingUnit = rule?.missingUnit ?? false
