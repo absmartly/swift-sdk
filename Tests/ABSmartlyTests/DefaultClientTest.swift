@@ -221,7 +221,7 @@ final class DefaultClientTest: XCTestCase {
 		XCTAssertEqual("test", headers?["X-API-Key"])
 		XCTAssertEqual("test", headers?["X-Environment"])
 		XCTAssertEqual("test_app", headers?["X-Application"])
-		XCTAssertEqual("absmartly-swift-sdk", headers?["X-Agent"])
+		XCTAssertEqual("absmartly-swift-sdk/\(SDKVersion.version)", headers?["X-Agent"])
 
 		XCTAssertNotNil(httpClient.putUrlQueryHeadersBodyReceivedArguments?.body)
 
@@ -586,5 +586,16 @@ final class DefaultClientTest: XCTestCase {
 		resolver.fulfill(response)
 
 		wait(for: [expectation], timeout: 1.0)
+	}
+
+	// The release workflow publishes the podspec version; X-Agent must report the same one.
+	func testSDKVersionMatchesPodspec() throws {
+		let root = ((#filePath as NSString).deletingLastPathComponent as NSString)
+			.deletingLastPathComponent as NSString
+		let podspec = try String(
+			contentsOfFile: (root.deletingLastPathComponent as NSString).appendingPathComponent(
+				"ABSmartlySwiftSDK.podspec"), encoding: .utf8)
+		XCTAssertTrue(podspec.contains("spec.version = '\(SDKVersion.version)'"))
+		XCTAssertEqual("absmartly-swift-sdk/\(SDKVersion.version)", SDKVersion.agent)
 	}
 }
