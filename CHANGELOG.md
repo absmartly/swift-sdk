@@ -16,7 +16,8 @@
 - `getContextData()` rejects a non-2xx response with `ABSmartlyHTTPError` (v1.4.0 tried to decode the body and rejected with a decoding error).
 
 ### Dependencies
-- SwiftyJSON is no longer a dependency (Swift Package Manager or CocoaPods). `ABSmartly.JSON` is a vendored copy of SwiftyJSON 5.0.2's `JSON` with the same API, so code that uses `JSON(...)`, `.string`, `.intValue`, subscripts etc. through `import ABSmartly` keeps compiling. Apps that relied on `import SwiftyJSON` coming in through this SDK must add SwiftyJSON themselves. Code that names `SwiftyJSON.JSON` explicitly must use ABSmartly's `JSON` instead; the two are now different types. `SwiftyJSONError` is also vendored as `ABSmartly.SwiftyJSONError`.
+- Apple platforms are unchanged: the SDK still depends on SwiftyJSON (`~> 5.0`, Swift Package Manager and CocoaPods) and `ABSmartly.JSON` is still `SwiftyJSON.JSON`, so `SwiftyJSON.JSON` values can be passed to the SDK and its results stored in `SwiftyJSON.JSON` variables as before.
+- On Linux, where SwiftyJSON does not compile with Linux Foundation, `ABSmartly.JSON` is a vendored copy of SwiftyJSON 5.0.2's `JSON` with the same API (`SwiftyJSONError` is vendored too), and SwiftyJSON is not linked.
 
 ### Compatibility
 - `getCustomFieldValue` returns the v1.4.0 types: `[String: JSON]` from the configured `VariableParser` for a `json` object (other JSON values as `JSON`), `Double` for `number`, `Bool` for `boolean`.
@@ -24,7 +25,7 @@
 - `publish()` and `refresh()` work before the context is ready, as in v1.4.0.
 - A pending automatic publish keeps the context alive until it is sent, so a `track()` followed by dropping the context still publishes.
 - `Context` methods keep their v1.4.0 non-throwing signatures. Misuse that used to hit a `precondition` (reading before ready, writing after close, an invalid or changed unit) no longer crashes: reads return a default (`0`, `nil`, the `defaultValue`, empty collections), writes are ignored, and an `.error` event is logged. Overrides and custom assignments (`setOverride(s)`, `setCustomAssignment(s)`) are still accepted after close, as in v1.4.0.
-- Swift tools-version stays 5.3. `swift-crypto` (`1.0.0..<4.0.0`) is only linked on Linux; Apple platforms keep using CommonCrypto.
+- Swift tools-version stays 5.3. Toolchains 5.9 and later read `Package@swift-5.9.swift`, which is identical except that the SwiftyJSON dependency also names Mac Catalyst and visionOS (those platform conditions need a newer tools-version). `swift-crypto` (`1.0.0..<4.0.0`) is only linked on Linux; Apple platforms keep using CommonCrypto.
 - Linux is supported: the SDK builds and its tests pass with Swift 5.10, 6.1 and 6.4 on Linux, and CI runs them on every change. Before, SwiftyJSON did not compile with Linux Foundation.
 - On Linux, `ABSmartlyError` (and the internal HTTP error) subclass `NSError`, because Foundation in Swift 6.0 and 6.1 crashes when `localizedDescription` is read on a class-based error that is not an `NSError` ([swift-corelibs-foundation#5221](https://github.com/swiftlang/swift-corelibs-foundation/issues/5221)). `errorMessage`, `localizedDescription` and `is`/`as?` casts are unchanged. Apple platforms are not affected.
 

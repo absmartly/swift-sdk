@@ -13,7 +13,7 @@ The A/B Smartly Swift SDK is supported on:
 |-------------|------------|------------------------------------------------|
 | iOS         | iOS 10+    | Full support including UIDevice integration    |
 | macOS       | 10.10+     | Full support                                   |
-| Linux       | Swift 5.10+ | Swift Package Manager; tested in CI with Swift 6.1 |
+| Linux       | Swift 5.10+ | Swift Package Manager; tested in CI with Swift 6.1. `JSON` is a vendored copy of SwiftyJSON's `JSON` (same API); on Apple platforms it is `SwiftyJSON.JSON` |
 | Swift       | 5.0+       | Swift Package Manager and CocoaPods supported  |
 
 ## Installation

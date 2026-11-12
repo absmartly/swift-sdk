@@ -31,7 +31,15 @@
 //    made `lhs.rawNumber < rhs.rawNumber` ambiguous and stopped SwiftyJSON from compiling. Being
 //    file-private they also cannot change how NSNumbers compare elsewhere in the SDK.
 //  No other changes; the public API is the same.
+//
+//  Only compiled where Darwin is unavailable (Linux). On Apple platforms `JSON` is SwiftyJSON's
+//  own type, as before, so apps can keep passing `SwiftyJSON.JSON` values to the SDK.
 
+#if canImport(Darwin)
+import SwiftyJSON
+
+public typealias JSON = SwiftyJSON.JSON
+#else
 import Foundation
 
 // MARK: - Error
@@ -1408,3 +1416,4 @@ extension JSON: Codable {
         }
     }
 }
+#endif

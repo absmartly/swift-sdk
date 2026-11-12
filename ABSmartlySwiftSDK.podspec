@@ -21,4 +21,5 @@ Pod::Spec.new do |spec|
   spec.framework = 'Foundation'
   spec.dependency 'PromiseKit', '~> 6.8'
   spec.dependency 'SwiftAtomics', '~> 1.0.2'
+  spec.dependency 'SwiftyJSON', '~> 5.0.0'
 end
