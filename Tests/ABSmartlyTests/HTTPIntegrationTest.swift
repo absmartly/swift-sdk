@@ -1,5 +1,11 @@
+#if canImport(Darwin)
+import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#elseif canImport(Musl)
+import Musl
+#endif
 import Foundation
-import Network
 import PromiseKit
 import XCTest
 
@@ -128,12 +134,13 @@ final class HTTPIntegrationTest: XCTestCase {
 	}
 }
 
-// MARK: - Minimal localhost HTTP server (NWListener-based)
+// MARK: - Minimal localhost HTTP server (POSIX sockets)
 
 /// A tiny, hermetic HTTP/1.1 server bound to 127.0.0.1 on an ephemeral port.
 /// It parses request line + headers + (Content-Length) body, records each
 /// request, and replies 200 with a small JSON body. Just enough to exercise the
 /// SDK's real URLSession client; not a general-purpose server.
+/// Built on POSIX sockets rather than Network.framework so it also runs on Linux.
 private final class LocalHTTPServer {
 	struct Request {
 		let method: String
@@ -150,45 +157,76 @@ private final class LocalHTTPServer {
 	var getResponseBody: String = #"{"experiments":[]}"#
 	var putResponseBody: String = "{}"
 
-	private let listener: NWListener
-	private let queue = DispatchQueue(label: "local-http-server")
+	private let listenFD: Int32
 	private let lock = NSLock()
 	private var requests: [Request] = []
-
-	var port: UInt16 {
-		return listener.port?.rawValue ?? 0
-	}
+	private var stopped = false
+	private var acceptThread: Thread?
+	private(set) var port: UInt16 = 0
 
 	init() throws {
-		let params = NWParameters.tcp
-		params.allowLocalEndpointReuse = true
-		// Bind explicitly to loopback on a kernel-chosen ephemeral port.
-		params.requiredLocalEndpoint = NWEndpoint.hostPort(host: "127.0.0.1", port: .any)
-		listener = try NWListener(using: params)
+		#if canImport(Glibc) && !canImport(Darwin)
+			listenFD = socket(AF_INET, Int32(SOCK_STREAM.rawValue), 0)
+		#else
+			listenFD = socket(AF_INET, SOCK_STREAM, 0)
+		#endif
+		guard listenFD >= 0 else {
+			throw ABSmartlyError("Local HTTP server could not create a socket")
+		}
+		var reuse: Int32 = 1
+		setsockopt(listenFD, SOL_SOCKET, SO_REUSEADDR, &reuse, socklen_t(MemoryLayout<Int32>.size))
 	}
 
 	func start() throws {
-		let ready = DispatchSemaphore(value: 0)
-		listener.stateUpdateHandler = { state in
-			if case .ready = state {
-				ready.signal()
+		var address = sockaddr_in()
+		#if canImport(Darwin)
+			address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+		#endif
+		address.sin_family = sa_family_t(AF_INET)
+		address.sin_port = 0
+		address.sin_addr.s_addr = in_addr_t(0x7F00_0001).bigEndian
+		let bound = withUnsafePointer(to: &address) {
+			$0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+				bind(listenFD, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
 			}
 		}
-		listener.newConnectionHandler = { [weak self] connection in
-			self?.handle(connection)
+		guard bound == 0, listen(listenFD, 16) == 0 else {
+			throw ABSmartlyError("Local HTTP server failed to listen on 127.0.0.1")
 		}
-		listener.start(queue: queue)
 
-		guard ready.wait(timeout: .now() + 5.0) == .success else {
-			throw ABSmartlyError("Local HTTP server failed to reach ready state")
+		var boundAddress = sockaddr_in()
+		var length = socklen_t(MemoryLayout<sockaddr_in>.size)
+		_ = withUnsafeMutablePointer(to: &boundAddress) {
+			$0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+				getsockname(listenFD, $0, &length)
+			}
 		}
+		port = UInt16(bigEndian: boundAddress.sin_port)
 		guard port != 0 else {
 			throw ABSmartlyError("Local HTTP server did not bind to a port")
 		}
+
+		let thread = Thread { [weak self] in
+			self?.acceptLoop()
+		}
+		acceptThread = thread
+		thread.start()
 	}
 
+	/// Also releases the socket when `start()` failed (tearDown still calls this).
 	func stop() {
-		listener.cancel()
+		lock.lock()
+		let wasStopped = stopped
+		stopped = true
+		lock.unlock()
+		if !wasStopped {
+			// The accept loop polls with a timeout, so it notices `stopped` and exits;
+			// closing here is safe because it no longer blocks in accept().
+			while acceptThread?.isFinished == false {
+				Thread.sleep(forTimeInterval: 0.01)
+			}
+			close(listenFD)
+		}
 	}
 
 	/// Block until a request with the given method has been recorded (or timeout).
@@ -208,45 +246,46 @@ private final class LocalHTTPServer {
 
 	// MARK: connection handling
 
-	private func handle(_ connection: NWConnection) {
-		connection.start(queue: queue)
-		receive(connection, buffer: Data())
+	private var isStopped: Bool {
+		lock.lock()
+		defer { lock.unlock() }
+		return stopped
 	}
 
-	private func receive(_ connection: NWConnection, buffer: Data) {
-		connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) {
-			[weak self] data, _, isComplete, error in
-			guard let self = self else {
-				connection.cancel()
+	private func acceptLoop() {
+		while !isStopped {
+			var pollFD = pollfd(fd: listenFD, events: Int16(POLLIN), revents: 0)
+			guard poll(&pollFD, 1, 50) > 0 else { continue }
+			let connection = accept(listenFD, nil, nil)
+			guard connection >= 0 else { continue }
+			DispatchQueue.global().async { [weak self] in
+				self?.handle(connection)
+				close(connection)
+			}
+		}
+	}
+
+	private func handle(_ connection: Int32) {
+		#if canImport(Darwin)
+			var noSigPipe: Int32 = 1
+			setsockopt(connection, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size))
+		#endif
+		var accumulated = Data()
+		var chunk = [UInt8](repeating: 0, count: 64 * 1024)
+		while true {
+			let count = recv(connection, &chunk, chunk.count, 0)
+			if count <= 0 {
+				return  // closed or failed before a full request arrived
+			}
+			accumulated.append(contentsOf: chunk[0..<count])
+
+			if let parsed = tryParse(accumulated) {
+				lock.lock()
+				requests.append(parsed.request)
+				lock.unlock()
+				respond(connection, to: parsed.request)
 				return
 			}
-
-			var accumulated = buffer
-			if let data = data {
-				accumulated.append(data)
-			}
-
-			if let parsed = self.tryParse(accumulated) {
-				self.lock.lock()
-				self.requests.append(parsed.request)
-				self.lock.unlock()
-				self.respond(connection, to: parsed.request)
-				return
-			}
-
-			if let error = error {
-				_ = error
-				connection.cancel()
-				return
-			}
-
-			if isComplete {
-				connection.cancel()
-				return
-			}
-
-			// Need more bytes (headers or body incomplete).
-			self.receive(connection, buffer: accumulated)
 		}
 	}
 
@@ -310,7 +349,7 @@ private final class LocalHTTPServer {
 		return (path, query)
 	}
 
-	private func respond(_ connection: NWConnection, to request: Request) {
+	private func respond(_ connection: Int32, to request: Request) {
 		let body = request.method == "PUT" ? putResponseBody : getResponseBody
 		let bodyData = Data(body.utf8)
 		var response = "HTTP/1.1 200 OK\r\n"
@@ -322,10 +361,20 @@ private final class LocalHTTPServer {
 		var out = Data(response.utf8)
 		out.append(bodyData)
 
-		connection.send(
-			content: out,
-			completion: .contentProcessed { _ in
-				connection.cancel()
-			})
+		#if !canImport(Darwin)
+			let flags = Int32(MSG_NOSIGNAL)
+		#else
+			let flags: Int32 = 0
+		#endif
+		out.withUnsafeBytes { (buffer: UnsafeRawBufferPointer) in
+			var sent = 0
+			while sent < buffer.count {
+				let result = send(connection, buffer.baseAddress! + sent, buffer.count - sent, flags)
+				if result <= 0 {
+					return
+				}
+				sent += result
+			}
+		}
 	}
 }

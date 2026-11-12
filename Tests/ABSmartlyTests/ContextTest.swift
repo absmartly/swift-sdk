@@ -78,7 +78,7 @@ final class ContextTest: XCTestCase {
 
 	func loggedErrorMessages() -> [String] {
 		return logger.handleEventContextEventReceivedInvocations.compactMap {
-			if case let .error(error) = $0.event { return error.localizedDescription }
+			if case let .error(error) = $0.event { return error.safeLocalizedDescription }
 			return nil
 		}
 	}

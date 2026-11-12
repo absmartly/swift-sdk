@@ -145,7 +145,7 @@ public final class Context {
 						seal.fulfill(())
 					}.catch(on: DispatchQueue.global()) { [self] error in
 						self.applyDataFailed(error)
-						Logger.error("Context initialization failed: \(error.localizedDescription)")
+						Logger.error("Context initialization failed: \(error.safeLocalizedDescription)")
 						self.logError(error: error)
 						self.failed.store(true, ordering: .releasing)
 						self.promiseLock.lock()
@@ -592,7 +592,7 @@ public final class Context {
 			}.catch(on: DispatchQueue.global()) { [self] error in
 				self.refreshing.store(false, ordering: .releasing)
 
-				Logger.error("Context refresh failed: \(error.localizedDescription)")
+				Logger.error("Context refresh failed: \(error.safeLocalizedDescription)")
 				self.logError(error: error)
 
 				seal.reject(error)
@@ -733,7 +733,7 @@ public final class Context {
 						self.pendingCount.wrappingIncrement(by: UInt(eventCount), ordering: .releasing)
 						self.eventLock.unlock()
 
-						Logger.error("Publish failed: \(error.localizedDescription)")
+						Logger.error("Publish failed: \(error.safeLocalizedDescription)")
 						self.logError(error: error)
 						throw error
 					}
@@ -801,7 +801,7 @@ public final class Context {
 	}
 
 	private func reportError(_ error: Error) {
-		Logger.error(error.localizedDescription)
+		Logger.error(error.safeLocalizedDescription)
 		logError(error: error)
 	}
 
@@ -1017,7 +1017,7 @@ public final class Context {
 					execute: { [self] in
 						// flush() already reports the failure as one `.error` event.
 						self.flush().catch(on: DispatchQueue.global()) { error in
-							Logger.error("Auto-flush failed: \(error.localizedDescription)")
+							Logger.error("Auto-flush failed: \(error.safeLocalizedDescription)")
 						}
 					})
 		}
@@ -1046,7 +1046,7 @@ public final class Context {
 					self.refresh()
 						.done { }
 						.catch { error in
-							Logger.error("Auto-refresh failed: \(error.localizedDescription)")
+							Logger.error("Auto-refresh failed: \(error.safeLocalizedDescription)")
 							self.logError(error: error)
 						}
 				})
@@ -1120,7 +1120,7 @@ public final class Context {
 								}
 							} catch {
 								let truncated = customValue.count > 100 ? "\(customValue.prefix(100))..." : customValue
-								Logger.error("Failed to parse JSON custom field '\(fieldName)' for experiment '\(experiment.name)': \(error.localizedDescription). Original value: '\(truncated)'")
+								Logger.error("Failed to parse JSON custom field '\(fieldName)' for experiment '\(experiment.name)': \(error.safeLocalizedDescription). Original value: '\(truncated)'")
 								value.value = nil
 							}
 						} else if fieldType.starts(with: "boolean") {

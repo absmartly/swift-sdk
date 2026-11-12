@@ -1,17 +1,19 @@
 # A/B Smartly Swift SDK <a href="https://github.com/apple/swift-package-manager" title="Swift Package Manager compatible"><img src="https://img.shields.io/badge/Swift%20Package%20Manager-compatible-brightgreen.svg" alt="Swift Package Manager compatible" /></a>
 
-A/B Smartly - Swift SDK for iOS and macOS applications.
+A/B Smartly - Swift SDK for iOS, macOS and Linux applications.
 
 ## Compatibility
 
 The A/B Smartly Swift SDK is supported on:
 - iOS 10.0 or later
 - macOS 10.10 or later
+- Linux (Swift Package Manager, Swift 5.10 or later)
 
 | Platform    | Support    | Notes                                          |
 |-------------|------------|------------------------------------------------|
 | iOS         | iOS 10+    | Full support including UIDevice integration    |
 | macOS       | 10.10+     | Full support                                   |
+| Linux       | Swift 5.10+ | Swift Package Manager; tested in CI with Swift 6.1. `JSON` is a vendored copy of SwiftyJSON's `JSON` (same API); on Apple platforms it is `SwiftyJSON.JSON` |
 | Swift       | 5.0+       | Swift Package Manager and CocoaPods supported  |
 
 ## Installation

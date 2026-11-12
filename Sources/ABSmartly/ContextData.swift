@@ -25,7 +25,7 @@ public final class ContextData: Codable {
 			throw DecodingError.dataCorrupted(
 				DecodingError.Context(
 					codingPath: decoder.codingPath,
-					debugDescription: "Failed to decode ContextData: \(error.localizedDescription)",
+					debugDescription: "Failed to decode ContextData: \(error.safeLocalizedDescription)",
 					underlyingError: error))
 		}
 	}

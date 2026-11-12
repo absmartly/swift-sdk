@@ -16,7 +16,7 @@ public class DefaultVariableParser: VariableParser {
 			}
 		} catch {
 			let truncated = config.count > 100 ? "\(config.prefix(100))..." : config
-			Logger.error("Failed to parse variant config for experiment '\(experimentName)': \(error.localizedDescription). Config: '\(truncated)'")
+			Logger.error("Failed to parse variant config for experiment '\(experimentName)': \(error.safeLocalizedDescription). Config: '\(truncated)'")
 			return nil
 		}
 	}
