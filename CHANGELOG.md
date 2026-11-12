@@ -15,6 +15,9 @@
 - A `json` custom field holding an array or a scalar returns it as `JSON` (v1.4.0 returned `nil`, since the `VariableParser` only accepts objects).
 - `getContextData()` rejects a non-2xx response with `ABSmartlyHTTPError` (v1.4.0 tried to decode the body and rejected with a decoding error).
 
+### Dependencies
+- SwiftyJSON is no longer a dependency (Swift Package Manager or CocoaPods). `ABSmartly.JSON` is a vendored copy of SwiftyJSON 5.0.2's `JSON` with the same API, so code that uses `JSON(...)`, `.string`, `.intValue`, subscripts etc. through `import ABSmartly` keeps compiling. Apps that relied on `import SwiftyJSON` coming in through this SDK must add SwiftyJSON themselves. Code that names `SwiftyJSON.JSON` explicitly must use ABSmartly's `JSON` instead; the two are now different types. `SwiftyJSONError` is also vendored as `ABSmartly.SwiftyJSONError`.
+
 ### Compatibility
 - `getCustomFieldValue` returns the v1.4.0 types: `[String: JSON]` from the configured `VariableParser` for a `json` object (other JSON values as `JSON`), `Double` for `number`, `Bool` for `boolean`.
 - `ready`, `refresh`, `publish` and `close` events reach the `ContextEventLogger` on the main thread on Apple platforms, as in v1.4.0. The work itself runs off the main thread.
@@ -22,6 +25,7 @@
 - A pending automatic publish keeps the context alive until it is sent, so a `track()` followed by dropping the context still publishes.
 - `Context` methods keep their v1.4.0 non-throwing signatures. Misuse that used to hit a `precondition` (reading before ready, writing after close, an invalid or changed unit) no longer crashes: reads return a default (`0`, `nil`, the `defaultValue`, empty collections), writes are ignored, and an `.error` event is logged. Overrides and custom assignments (`setOverride(s)`, `setCustomAssignment(s)`) are still accepted after close, as in v1.4.0.
 - Swift tools-version stays 5.3. `swift-crypto` (`1.0.0..<4.0.0`) is only linked on Linux; Apple platforms keep using CommonCrypto.
+- Linux is supported: the SDK builds and its tests pass with Swift 5.10, 6.1 and 6.4 on Linux, and CI runs them on every change. Before, SwiftyJSON did not compile with Linux Foundation.
 
 ### Added
 - `ClientConfig.applicationVersion`.
