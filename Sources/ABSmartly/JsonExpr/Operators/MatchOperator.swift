@@ -36,7 +36,7 @@ final class MatchOperator: BinaryOperator {
 					let matcher = try NSRegularExpression(pattern: regex, options: [])
 					return Self.firstMatch(matcher, in: string, pattern: regex)
 				} catch {
-					Logger.error("Failed to compile regex pattern '\(regex)': \(error.localizedDescription)")
+					Logger.error("Failed to compile regex pattern '\(regex)': \(error.safeLocalizedDescription)")
 					return JSON.null
 				}
 			}

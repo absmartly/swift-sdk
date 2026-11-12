@@ -33,7 +33,7 @@ public class ClientConfig {
 				self.init(from: [:])
 			}
 		} catch {
-			Logger.error("Failed to parse ClientConfig plist: \(error.localizedDescription)")
+			Logger.error("Failed to parse ClientConfig plist: \(error.safeLocalizedDescription)")
 			self.init(from: [:])
 		}
 	}

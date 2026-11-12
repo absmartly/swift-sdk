@@ -21,7 +21,7 @@ final class ABsmartlySDKTest: XCTestCase {
 			}
 			sdk = try ABsmartlySDK(config: sdkConfig)
 		} catch {
-			XCTFail(error.localizedDescription)
+			XCTFail(error.safeLocalizedDescription)
 		}
 	}
 
@@ -29,7 +29,7 @@ final class ABsmartlySDKTest: XCTestCase {
 		let config = ABsmartlyConfig()
 
 		XCTAssertThrowsError(try ABsmartlySDK(config: config)) { error in
-			XCTAssertEqual(error.localizedDescription, "Missing Client instance")
+			XCTAssertEqual(error.safeLocalizedDescription, "Missing Client instance")
 		}
 	}
 
@@ -204,7 +204,7 @@ final class ABsmartlySDKTest: XCTestCase {
 				environment: "test"
 			)
 		) { error in
-			XCTAssertEqual(error.localizedDescription, "Missing Endpoint configuration")
+			XCTAssertEqual(error.safeLocalizedDescription, "Missing Endpoint configuration")
 		}
 	}
 
@@ -217,7 +217,7 @@ final class ABsmartlySDKTest: XCTestCase {
 				environment: "test"
 			)
 		) { error in
-			XCTAssertEqual(error.localizedDescription, "Missing APIKey configuration")
+			XCTAssertEqual(error.safeLocalizedDescription, "Missing APIKey configuration")
 		}
 	}
 
@@ -230,7 +230,7 @@ final class ABsmartlySDKTest: XCTestCase {
 				environment: "test"
 			)
 		) { error in
-			XCTAssertEqual(error.localizedDescription, "Missing Application configuration")
+			XCTAssertEqual(error.safeLocalizedDescription, "Missing Application configuration")
 		}
 	}
 
@@ -243,7 +243,7 @@ final class ABsmartlySDKTest: XCTestCase {
 				environment: ""
 			)
 		) { error in
-			XCTAssertEqual(error.localizedDescription, "Missing Environment configuration")
+			XCTAssertEqual(error.safeLocalizedDescription, "Missing Environment configuration")
 		}
 	}
 
