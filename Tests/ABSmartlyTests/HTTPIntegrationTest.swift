@@ -178,7 +178,6 @@ private final class LocalHTTPServer {
 	}
 
 	func start() throws {
-		// Bind explicitly to loopback on a kernel-chosen ephemeral port.
 		var address = sockaddr_in()
 		#if canImport(Darwin)
 			address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
@@ -259,7 +258,6 @@ private final class LocalHTTPServer {
 			guard poll(&pollFD, 1, 50) > 0 else { continue }
 			let connection = accept(listenFD, nil, nil)
 			guard connection >= 0 else { continue }
-			// Each connection carries one request (the response sets Connection: close).
 			DispatchQueue.global().async { [weak self] in
 				self?.handle(connection)
 				close(connection)
@@ -288,7 +286,6 @@ private final class LocalHTTPServer {
 				respond(connection, to: parsed.request)
 				return
 			}
-			// Need more bytes (headers or body incomplete).
 		}
 	}
 
