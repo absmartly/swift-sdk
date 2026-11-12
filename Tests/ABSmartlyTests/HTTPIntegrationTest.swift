@@ -1,7 +1,9 @@
-#if canImport(Glibc)
-import Glibc
-#else
+#if canImport(Darwin)
 import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#elseif canImport(Musl)
+import Musl
 #endif
 import Foundation
 import PromiseKit
@@ -163,7 +165,7 @@ private final class LocalHTTPServer {
 	private(set) var port: UInt16 = 0
 
 	init() throws {
-		#if canImport(Glibc)
+		#if canImport(Glibc) && !canImport(Darwin)
 			listenFD = socket(AF_INET, Int32(SOCK_STREAM.rawValue), 0)
 		#else
 			listenFD = socket(AF_INET, SOCK_STREAM, 0)
@@ -178,7 +180,7 @@ private final class LocalHTTPServer {
 	func start() throws {
 		// Bind explicitly to loopback on a kernel-chosen ephemeral port.
 		var address = sockaddr_in()
-		#if !canImport(Glibc)
+		#if canImport(Darwin)
 			address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
 		#endif
 		address.sin_family = sa_family_t(AF_INET)
@@ -266,7 +268,7 @@ private final class LocalHTTPServer {
 	}
 
 	private func handle(_ connection: Int32) {
-		#if !canImport(Glibc)
+		#if canImport(Darwin)
 			var noSigPipe: Int32 = 1
 			setsockopt(connection, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size))
 		#endif
@@ -362,7 +364,7 @@ private final class LocalHTTPServer {
 		var out = Data(response.utf8)
 		out.append(bodyData)
 
-		#if canImport(Glibc)
+		#if !canImport(Darwin)
 			let flags = Int32(MSG_NOSIGNAL)
 		#else
 			let flags: Int32 = 0

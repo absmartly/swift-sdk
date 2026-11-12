@@ -26,6 +26,7 @@
 - `Context` methods keep their v1.4.0 non-throwing signatures. Misuse that used to hit a `precondition` (reading before ready, writing after close, an invalid or changed unit) no longer crashes: reads return a default (`0`, `nil`, the `defaultValue`, empty collections), writes are ignored, and an `.error` event is logged. Overrides and custom assignments (`setOverride(s)`, `setCustomAssignment(s)`) are still accepted after close, as in v1.4.0.
 - Swift tools-version stays 5.3. `swift-crypto` (`1.0.0..<4.0.0`) is only linked on Linux; Apple platforms keep using CommonCrypto.
 - Linux is supported: the SDK builds and its tests pass with Swift 5.10, 6.1 and 6.4 on Linux, and CI runs them on every change. Before, SwiftyJSON did not compile with Linux Foundation.
+- On Linux, `ABSmartlyError` (and the internal HTTP error) subclass `NSError`, because Foundation in Swift 6.0 and 6.1 crashes when `localizedDescription` is read on a class-based error that is not an `NSError` ([swift-corelibs-foundation#5221](https://github.com/swiftlang/swift-corelibs-foundation/issues/5221)). `errorMessage`, `localizedDescription` and `is`/`as?` casts are unchanged. Apple platforms are not affected.
 
 ### Added
 - `ClientConfig.applicationVersion`.
