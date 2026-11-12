@@ -37,6 +37,15 @@ jobs:
       - name: Run tests
         run: swift test
 
+      # The Example app references this checkout as a local package and has its own lockfile;
+      # fail if that lockfile no longer satisfies Package.swift.
+      - name: Build Example app
+        run: |
+          xcodebuild build -project Example/Example.xcodeproj -scheme Example \
+            -destination 'generic/platform=iOS Simulator' \
+            -onlyUsePackageVersionsFromResolvedFile -disableAutomaticPackageResolution \
+            CODE_SIGNING_ALLOWED=NO
+
   test-linux:
     name: test (linux, swift-6.1)
     runs-on: ubuntu-latest
