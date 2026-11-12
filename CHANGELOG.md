@@ -31,6 +31,10 @@
 - On Linux, `ABSmartlyError` (and the internal HTTP error) subclass `NSError`, because Foundation in Swift 6.0 and 6.1 crashes when `localizedDescription` is read on a class-based error that is not an `NSError` ([swift-corelibs-foundation#5221](https://github.com/swiftlang/swift-corelibs-foundation/issues/5221)). `errorMessage`, `localizedDescription` and `is`/`as?` casts are unchanged. Apple platforms are not affected.
 
 ### Added
+- Assignment rules (`Experiment.assignmentRules`), matching the JavaScript SDK. The first rule whose `environments` and `conditions` match sets the variant: `assign` gives a fixed variant, `split` hashes the unit with the experiment's seed over the rule's percentages (which must sum to 100 within 0.01). A matching rule wins over audience/`audienceStrict`, traffic eligibility, full-on and custom assignments; only an override beats it. Exposures carry a new `ruleOverride` flag. A split matched before its unit is set gives the experiment's no-unit result (the full-on variant, else 0) and is re-resolved when the unit is set, unless it was already exposed. Malformed rules are skipped; a split whose length differs from the variant count, or an out-of-bounds `assign` variant, falls back to normal assignment.
+- `semver_eq`, `semver_gt`, `semver_gte`, `semver_lt` and `semver_lte` JSON-expression operators.
+- The `X-Agent` header is `absmartly-swift-sdk/<version>` (was `absmartly-swift-sdk`).
+- Tags `v*` publish the podspec to the CocoaPods trunk (the tag, podspec and SDK version must agree). Swift Package Manager keeps resolving releases from the tag.
 - `ClientConfig.applicationVersion`.
 - `ABsmartlySDK(endpoint:apiKey:application:environment:…)` convenience init. Its `contextEventLogger` is used for every context whose `ContextConfig.eventLogger` is unset, and `retries` defaults to 3, like `DefaultHTTPClientConfig`.
 - `ContextEventLoggerEvent.finalize`, an alias for `.close`.

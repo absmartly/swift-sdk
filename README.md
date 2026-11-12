@@ -280,6 +280,19 @@ targeted by them without setting anything. A user-set attribute of the same name
 after the context is created. These attributes are evaluation-only: they are not sent on the publish
 payload (the collector adds them server-side) and are not returned by `getAttributes()`.
 
+Audience filters and rule conditions can compare versions with `semver_eq`, `semver_gt`, `semver_gte`,
+`semver_lt` and `semver_lte` (a leading `v` and build metadata are ignored, and a release ranks above
+its pre-releases).
+
+### Assignment Rules
+
+Experiments can carry ordered assignment rules, set up in the A/B Smartly dashboard. The first rule
+whose environments and conditions match decides the variant: an `assign` rule sets a fixed variant, and
+a `split` rule spreads matching units over the variants by its percentages (hashed with the
+experiment's own seed). A matching rule wins over the audience, traffic allocation, full-on and custom
+assignments; only `setOverride` beats it. Its exposures carry `ruleOverride: true` and are kept out of
+the experiment's analysis.
+
 ### Tracking Goals
 
 Goals are created in the A/B Smartly web console.
