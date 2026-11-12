@@ -15,7 +15,7 @@ final class DefaultClientTest: XCTestCase {
 				apiKey: "test", application: "test_app", endpoint: "https://test.absmartly.io/v1", environment: "test")
 			client = try DefaultClient(config: clientConfig, httpClient: httpClient!)
 		} catch {
-			XCTFail(error.localizedDescription)
+			XCTFail(error.safeLocalizedDescription)
 		}
 	}
 
@@ -56,7 +56,7 @@ final class DefaultClientTest: XCTestCase {
 		let clientConfig = ClientConfig(
 			apiKey: "test", application: "test_app", endpoint: "", environment: "test")
 		XCTAssertThrowsError(try DefaultClient(config: clientConfig, httpClient: HTTPClientMock())) { error in
-			XCTAssertEqual(error.localizedDescription, "Missing Endpoint configuration")
+			XCTAssertEqual(error.safeLocalizedDescription, "Missing Endpoint configuration")
 		}
 	}
 
@@ -64,7 +64,7 @@ final class DefaultClientTest: XCTestCase {
 		let clientConfig = ClientConfig(
 			apiKey: "", application: "test_app", endpoint: "https://test.absmartly.io/v1", environment: "test")
 		XCTAssertThrowsError(try DefaultClient(config: clientConfig, httpClient: HTTPClientMock())) { error in
-			XCTAssertEqual(error.localizedDescription, "Missing APIKey configuration")
+			XCTAssertEqual(error.safeLocalizedDescription, "Missing APIKey configuration")
 		}
 	}
 
@@ -72,7 +72,7 @@ final class DefaultClientTest: XCTestCase {
 		let clientConfig = ClientConfig(
 			apiKey: "test", application: "", endpoint: "https://test.absmartly.io/v1", environment: "test")
 		XCTAssertThrowsError(try DefaultClient(config: clientConfig, httpClient: HTTPClientMock())) { error in
-			XCTAssertEqual(error.localizedDescription, "Missing Application configuration")
+			XCTAssertEqual(error.safeLocalizedDescription, "Missing Application configuration")
 		}
 	}
 
@@ -80,7 +80,7 @@ final class DefaultClientTest: XCTestCase {
 		let clientConfig = ClientConfig(
 			apiKey: "test", application: "test_app", endpoint: "https://test.absmartly.io/v1", environment: "")
 		XCTAssertThrowsError(try DefaultClient(config: clientConfig, httpClient: HTTPClientMock())) { error in
-			XCTAssertEqual(error.localizedDescription, "Missing Environment configuration")
+			XCTAssertEqual(error.safeLocalizedDescription, "Missing Environment configuration")
 		}
 	}
 
@@ -103,7 +103,7 @@ final class DefaultClientTest: XCTestCase {
 		result.done { data in
 			expectation.fulfill()
 		}.catch { error in
-			XCTFail(error.localizedDescription)
+			XCTFail(error.safeLocalizedDescription)
 		}
 
 		let path = TestResources.path(forResource: "context", ofType: "json")
@@ -113,7 +113,7 @@ final class DefaultClientTest: XCTestCase {
 				status: 200, statusMessage: "OK", contentType: "application/json; charset=utf-8", content: data)
 			resolver.fulfill(response)
 		} catch {
-			XCTFail(error.localizedDescription)
+			XCTFail(error.safeLocalizedDescription)
 		}
 	}
 
@@ -208,7 +208,7 @@ final class DefaultClientTest: XCTestCase {
 		result.done {
 			expectation.fulfill()
 		}.catch { error in
-			XCTFail(error.localizedDescription)
+			XCTFail(error.safeLocalizedDescription)
 		}
 
 		XCTAssertEqual(1, httpClient.putUrlQueryHeadersBodyCallsCount)
@@ -256,7 +256,7 @@ final class DefaultClientTest: XCTestCase {
 		result.done {
 			expectation.fulfill()
 		}.catch { error in
-			XCTFail(error.localizedDescription)
+			XCTFail(error.safeLocalizedDescription)
 		}
 
 		let body = httpClient.putUrlQueryHeadersBodyReceivedArguments?.body
@@ -295,7 +295,7 @@ final class DefaultClientTest: XCTestCase {
 		result.done {
 			expectation.fulfill()
 		}.catch { error in
-			XCTFail(error.localizedDescription)
+			XCTFail(error.safeLocalizedDescription)
 		}
 
 		let body = httpClient.putUrlQueryHeadersBodyReceivedArguments?.body
@@ -426,7 +426,7 @@ final class DefaultClientTest: XCTestCase {
 		result.done {
 			expectation.fulfill()
 		}.catch { error in
-			XCTFail(error.localizedDescription)
+			XCTFail(error.safeLocalizedDescription)
 		}
 
 		let headers = httpMock.putUrlQueryHeadersBodyReceivedArguments?.headers
@@ -452,7 +452,7 @@ final class DefaultClientTest: XCTestCase {
 		result.done { data in
 			expectation.fulfill()
 		}.catch { error in
-			XCTFail(error.localizedDescription)
+			XCTFail(error.safeLocalizedDescription)
 		}
 
 		XCTAssertEqual(1, httpClient.closeCallsCount)

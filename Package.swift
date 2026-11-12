@@ -28,13 +28,20 @@ let package = Package(
             dependencies: [
                 .product(name: "Atomics", package: "swift-atomics"),
                 "PromiseKit",
-                "SwiftyJSON",
+                // Apple platforms only: SwiftyJSON does not compile on Linux, where the SDK uses
+                // a vendored copy (see JSON.swift). Toolchains 5.9+ read Package@swift-5.9.swift,
+                // which also lists Mac Catalyst and visionOS.
+                .product(name: "SwiftyJSON", package: "SwiftyJSON", condition: .when(platforms: [.macOS, .iOS, .tvOS, .watchOS])),
                 .product(name: "Crypto", package: "swift-crypto", condition: .when(platforms: [.linux]))
             ],
             path: "Sources/ABSmartly"),
         .testTarget(
             name: "ABSmartlyTests",
-            dependencies: ["ABSmartly"],
+            dependencies: [
+                "ABSmartly",
+                // For SwiftyJSONCompatibilityTest.
+                .product(name: "SwiftyJSON", package: "SwiftyJSON", condition: .when(platforms: [.macOS, .iOS, .tvOS, .watchOS]))
+            ],
             path: "Tests/ABSmartlyTests",
             resources: [.copy("Resources")]),
     ],

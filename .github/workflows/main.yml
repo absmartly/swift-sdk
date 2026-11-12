@@ -36,3 +36,30 @@ jobs:
 
       - name: Run tests
         run: swift test
+
+      # The Example app references this checkout as a local package and has its own lockfile.
+      # Resolve strictly from it, so a lockfile that no longer satisfies Package.swift fails CI.
+      - name: Resolve Example app packages from its lockfile
+        run: |
+          xcodebuild -resolvePackageDependencies -project Example/Example.xcodeproj -scheme Example \
+            -onlyUsePackageVersionsFromResolvedFile
+
+  test-linux:
+    name: test (linux, swift-6.1)
+    runs-on: ubuntu-latest
+    container: swift:6.1
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Show Swift version
+        run: swift --version
+
+      - name: Build
+        run: swift build
+
+      - name: Run tests
+        run: swift test

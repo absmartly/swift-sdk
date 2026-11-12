@@ -27,7 +27,7 @@ public enum ContextEventLoggerEvent: Equatable {
 		case (let .goal(lhsData), let .goal(rhsData)):
 			return lhsData == rhsData
 		case (let .error(lhsError), let .error(rhsError)):
-			return lhsError._code == rhsError._code && lhsError.localizedDescription == rhsError.localizedDescription
+			return lhsError._code == rhsError._code && lhsError.safeLocalizedDescription == rhsError.safeLocalizedDescription
 		case (.close, .close):
 			return true
 		default:
