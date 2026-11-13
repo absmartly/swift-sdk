@@ -6,8 +6,8 @@ public final class DefaultClient: Client {
 	private let httpClient: HTTPClient
 	private let url: String
 	private let getQuery: [String: String]
-	private let putHeaders: [String: String]
-	// Captured at init, like getQuery/putHeaders, so audience evaluation always sees the same
+	private let headers: [String: String]
+	// Captured at init, like getQuery/headers, so audience evaluation always sees the same
 	// application/environment names used to fetch context data and publish exposures, even if the
 	// caller mutates ClientConfig afterwards.
 	private let application: String
@@ -42,7 +42,8 @@ public final class DefaultClient: Client {
 
 		url = config.endpoint + "/context"
 		getQuery = ["application": config.application, "environment": config.environment]
-		putHeaders = [
+		// Sent on both the context GET and the publish PUT, as javascript-sdk does on every request.
+		headers = [
 			"Content-Type": "application/json; charset=utf-8",
 			"X-Agent": SDKVersion.agent,
 			"X-API-Key": config.apiKey,
@@ -54,7 +55,7 @@ public final class DefaultClient: Client {
 
 	public func getContextData() -> Promise<ContextData> {
 		return Promise<ContextData> { seal in
-			httpClient.get(url: url, query: getQuery, headers: nil).done(on: DispatchQueue.global()) { response in
+			httpClient.get(url: url, query: getQuery, headers: headers).done(on: DispatchQueue.global()) { response in
 				guard (200...299).contains(response.status) else {
 					seal.reject(ABSmartlyHTTPError(response.status, response.statusMessage))
 					return
@@ -75,7 +76,7 @@ public final class DefaultClient: Client {
 		return Promise<Void> { seal in
 			do {
 				let data = try JSONEncoder().encode(event)
-				httpClient.put(url: url, query: nil, headers: putHeaders, body: data).done(on: DispatchQueue.global()) { response in
+				httpClient.put(url: url, query: nil, headers: headers, body: data).done(on: DispatchQueue.global()) { response in
 					guard (200...299).contains(response.status) else {
 						seal.reject(ABSmartlyHTTPError(response.status, response.statusMessage))
 						return
