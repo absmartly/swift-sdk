@@ -415,11 +415,9 @@ public final class Context {
 
 		// A split rule resolved without its unit is rebuilt now that the unit is known. An exposed one
 		// is kept, so the user never switches variant or gets a second exposure.
-		for (experimentName, assignment) in assignmentCache
-		where assignment.unitType == unitType && assignment.ruleMissingUnit
-			&& !assignment.exposed.load(ordering: .acquiring)
-		{
-			assignmentCache.removeValue(forKey: experimentName)
+		assignmentCache = assignmentCache.filter { _, assignment in
+			assignment.unitType != unitType || !assignment.ruleMissingUnit
+				|| assignment.exposed.load(ordering: .acquiring)
 		}
 	}
 
