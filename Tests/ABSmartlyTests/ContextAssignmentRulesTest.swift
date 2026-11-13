@@ -358,6 +358,15 @@ final class ContextAssignmentRulesTest: XCTestCase {
 		XCTAssertEqual(2, createContext(data).getTreatment("exp"))
 	}
 
+	func testHugeAssignVariantIsOutOfBounds() throws {
+		let expected = splitVariant("unit-1", [0.34, 0.33, 0.33], seedHi: seedHi, seedLo: seedLo)
+		for variant in ["2147483648", "1e300", "-1"] {
+			let data = try contextData(
+				experimentJSON(rules: rules("{\"type\":\"assign\",\"variant\":\(variant)}")))
+			XCTAssertEqual(expected, createContext(data).getTreatment("exp"), variant)
+		}
+	}
+
 	func testUnparseableRulesAreIgnored() throws {
 		let expected = splitVariant("unit-1", [0.34, 0.33, 0.33], seedHi: seedHi, seedLo: seedLo)
 		for raw in ["not json", "{\"rules\":{}}", "[]"] {

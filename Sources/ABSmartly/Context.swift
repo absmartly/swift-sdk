@@ -491,23 +491,35 @@ public final class Context {
 	public func getTreatment(_ experimentName: String) -> Int {
 		guard ensureReady(true) else { return 0 }
 
-		let assignment = getAssignment(experimentName)
-		if !assignment.exposed.load(ordering: .acquiring) {
+		let (assignment, claimed) = getAssignmentClaimingExposure(experimentName, claim: true)
+		if claimed {
 			queueExposure(assignment)
 		}
 
 		return assignment.variant
 	}
 
+	// Looks the assignment up and marks it exposed in one `contextLock` section, so `setUnit` cannot
+	// evict it in between and let a later call expose a second, different variant. `claimed` is true
+	// when this call marked it exposed and must queue the exposure; with `requireVariables`, only an
+	// assignment whose variant has variables is claimed.
+	private func getAssignmentClaimingExposure(
+		_ experimentName: String, claim: Bool, requireVariables: Bool = false
+	) -> (Assignment, claimed: Bool) {
+		contextLock.lock()
+		defer { contextLock.unlock() }
+
+		let assignment = getAssignment(experimentName)
+		guard claim, !requireVariables || assignment.variables != nil, !closed.load(ordering: .acquiring), !closing.load(ordering: .acquiring) else {
+			return (assignment, false)
+		}
+		let claimed = assignment.exposed.compareExchange(
+			expected: false, desired: true, ordering: .acquiringAndReleasing
+		).0
+		return (assignment, claimed)
+	}
+
 	private func queueExposure(_ assignment: Assignment) {
-		if closed.load(ordering: .acquiring) || closing.load(ordering: .acquiring) {
-			return
-		}
-
-		if !assignment.exposed.compareExchange(expected: false, desired: true, ordering: .acquiringAndReleasing).0 {
-			return
-		}
-
 		let exposure = Exposure(
 			assignment.id, assignment.name, assignment.unitType, assignment.variant,
 			clock.millis(), assignment.assigned, assignment.eligible,
@@ -1046,9 +1058,10 @@ public final class Context {
 		}
 
 		for experimentVariables in keyExperimentVariables {
-			let assignment = getAssignment(experimentVariables.data.name)
+			let (assignment, claimed) = getAssignmentClaimingExposure(
+				experimentVariables.data.name, claim: !peek, requireVariables: true)
 			if let variables = assignment.variables {
-				if !peek && !assignment.exposed.load(ordering: .acquiring) {
+				if claimed {
 					queueExposure(assignment)
 				}
 

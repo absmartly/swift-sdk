@@ -76,11 +76,11 @@ extension AudienceMatcher {
 	private static func parseRuleAction(_ rule: JSON) -> RuleAction? {
 		switch rule["type"].string {
 		case "assign":
-			// Like JavaScript's Number.isInteger. An integral value outside Int's range is kept as
-			// out of bounds rather than skipped, as it is in the JavaScript SDK.
+			// Like JavaScript's Number.isInteger. An integral value outside Int's range (32 bits on
+			// watchOS arm64_32) is kept as out of bounds rather than skipped, as in the JavaScript SDK.
 			let variant = rule["variant"]
 			guard variant.type == .number, let d = variant.double, d.isFinite, d.rounded() == d else { return nil }
-			return .assign(variant: abs(d) < 9_007_199_254_740_992 ? Int(d) : -1)
+			return .assign(variant: Int(exactly: d) ?? -1)
 		case "split":
 			return parseSplitPercentages(rule["percentages"]).map { .split($0) }
 		default:

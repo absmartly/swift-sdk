@@ -93,23 +93,31 @@ public final class ABsmartlySDK {
 	}
 
 	public func createContextWithData(config: ContextConfig, contextData: ContextData) -> Context {
+		let (application, environment) = clientNames()
 		return Context(
 			config: config, clock: DefaultClock(), scheduler: scheduler, handler: contextEventHandler,
 			provider: contextDataProvider, logger: config.eventLogger ?? contextEventLogger, parser: variableParser,
 			matcher: AudienceMatcher(),
 			promise: Promise<ContextData>.value(contextData),
-			application: client?.getApplication(),
-			environment: client?.getEnvironment())
+			application: application, environment: environment)
 	}
 
 	public func createContext(config: ContextConfig) -> Context {
+		let (application, environment) = clientNames()
 		return Context(
 			config: config, clock: DefaultClock(), scheduler: scheduler, handler: contextEventHandler,
 			provider: contextDataProvider, logger: config.eventLogger ?? contextEventLogger, parser: variableParser,
 			matcher: AudienceMatcher(),
 			promise: contextDataProvider.getContextData(),
-			application: client?.getApplication(),
-			environment: client?.getEnvironment())
+			application: application, environment: environment)
+	}
+
+	// Read under `closeLock`, which `close()` takes to clear `client`, so both names come from the
+	// same client.
+	private func clientNames() -> (application: String?, environment: String?) {
+		closeLock.lock()
+		defer { closeLock.unlock() }
+		return (client?.getApplication(), client?.getEnvironment())
 	}
 
 	public func getContextData() -> Promise<ContextData> {
