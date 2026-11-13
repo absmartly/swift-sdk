@@ -205,6 +205,21 @@ final class ContextAssignmentRulesTest: XCTestCase {
 				.getTreatment("exp"))
 	}
 
+	func testConditionOnConfiguredEnvironment() throws {
+		let data = try contextData(
+			experimentJSON(
+				rules: rules(
+					"{\"type\":\"assign\",\"variant\":2,\"conditions\":{\"eq\":[{\"var\":\"environment\"},{\"value\":\"production\"}]}}"
+				)))
+		let context = createContext(data)
+		XCTAssertEqual(2, context.getTreatment("exp"))
+		XCTAssertTrue(try XCTUnwrap(exposures(context).last).ruleOverride)
+
+		let staging = createContext(data, environment: "staging")
+		_ = staging.getTreatment("exp")
+		XCTAssertFalse(try XCTUnwrap(exposures(staging).last).ruleOverride)
+	}
+
 	func testAttributeChangeReevaluatesRules() throws {
 		let data = try contextData(
 			experimentJSON(rules: rules("{\"type\":\"assign\",\"variant\":2,\"conditions\":\(countryNL)}")))

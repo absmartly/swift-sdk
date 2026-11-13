@@ -100,6 +100,31 @@ final class ABsmartlySDKTest: XCTestCase {
 		XCTAssertEqual(0, stagingContext.peekTreatment("exp_test_ab"))
 	}
 
+	// A client configured with an application version does not inject it as `app_version`.
+	func testCreateContextDoesNotEvaluateApplicationVersion() throws {
+		let sdk = try ABsmartlySDK(
+			endpoint: "https://test.absmartly.io/v1", apiKey: "test-api-key", application: "website",
+			environment: "production", applicationVersion: "1.2.3")
+
+		let json = """
+			{"experiments":[{"id":1,"name":"exp_test_ab","iteration":1,"unitType":"session_id",\
+			"seedHi":3603515,"seedLo":233373850,"split":[0.0,1.0],"trafficSeedHi":449867249,\
+			"trafficSeedLo":455443629,"trafficSplit":[0.0,1.0],"fullOnVariant":0,\
+			"variants":[{"name":"A","config":null},{"name":"B","config":"{}"}],"audienceStrict":true,\
+			"audience":"{\\"filter\\":[{\\"eq\\":[{\\"var\\":\\"app_version\\"},{\\"value\\":\\"1.2.3\\"}]}]}"}]}
+			"""
+		let contextData = try JSONDecoder().decode(ContextData.self, from: json.data(using: .utf8)!)
+
+		let config = ContextConfig()
+		config.setUnit(unitType: "session_id", uid: "123456789")
+		let context = sdk.createContextWithData(config: config, contextData: contextData)
+		XCTAssertEqual(0, context.peekTreatment("exp_test_ab"))
+
+		// The same audience matches once the attribute is set explicitly.
+		context.setAttribute(name: "app_version", value: "1.2.3")
+		XCTAssertEqual(1, context.peekTreatment("exp_test_ab"))
+	}
+
 	func testGetContextData() {
 		setUpSDK()
 

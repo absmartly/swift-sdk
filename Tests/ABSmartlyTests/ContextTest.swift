@@ -3503,8 +3503,7 @@ final class ContextTest: XCTestCase {
 			loggedExposures())
 	}
 
-	// Assignment-rule conditions read the same attribute map. The Swift SDK evaluates all
-	// conditions through `audience`, so a condition on the configured environment matches.
+	// An audience condition on the configured environment matches.
 	func testAudienceConditionMatchesConfiguredEnvironment() throws {
 		let data = try strictAudienceContextData(
 			filter: "{\"and\":[{\"eq\":[{\"var\":\"environment\"},{\"value\":\"production\"}]}]}")
@@ -3586,8 +3585,8 @@ final class ContextTest: XCTestCase {
 		wait(for: [expectation], timeout: 1.0)
 	}
 
-	// `app_version` is never injected: a filter on it does not match, even with an application
-	// version configured on the client.
+	// `app_version` is never injected: a filter on it does not match. The SDK path with a configured
+	// application version is covered in ABSmartlySDKTest.
 	func testAppVersionIsNotInjectedIntoEvaluation() throws {
 		let data = try strictAudienceContextData(
 			filter: "[{\"eq\":[{\"var\":\"app_version\"},{\"value\":\"1.2.3\"}]}]")
