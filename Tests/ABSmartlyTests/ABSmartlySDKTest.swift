@@ -83,7 +83,7 @@ final class ABsmartlySDKTest: XCTestCase {
 	}
 
 	// createContextWithData forwards the client's application/environment into the Context, so a
-	// strict audience targeting the configured environment matches without the caller setting it.
+	// strict audience targeting the configured application and environment matches without the caller setting it.
 	// Uses peek so no exposure is queued and the real DefaultScheduler never auto-publishes.
 	func testCreateContextForwardsClientApplicationAndEnvironment() throws {
 		setUpSDK()
@@ -93,7 +93,8 @@ final class ABsmartlySDKTest: XCTestCase {
 		client.getApplicationReturnValue = "website"
 		client.getEnvironmentReturnValue = "production"
 
-		let filter = "[{\"eq\":[{\"var\":\"environment\"},{\"value\":\"production\"}]}]"
+		let filter =
+			"[{\"eq\":[{\"var\":\"application\"},{\"value\":\"website\"}]},{\"eq\":[{\"var\":\"environment\"},{\"value\":\"production\"}]}]"
 		let contextData = try strictAudienceContextData(filter: filter)
 
 		let context = sdk.createContextWithData(config: contextConfig, contextData: contextData)
@@ -105,6 +106,12 @@ final class ABsmartlySDKTest: XCTestCase {
 			filter: filter.replacingOccurrences(of: "production", with: "staging"))
 		let stagingContext = sdk.createContextWithData(config: contextConfig, contextData: stagingData)
 		XCTAssertEqual(0, stagingContext.peekTreatment("exp_test_ab"))
+
+		// Nor does another application.
+		let otherAppData = try strictAudienceContextData(
+			filter: filter.replacingOccurrences(of: "website", with: "mobile"))
+		let otherAppContext = sdk.createContextWithData(config: contextConfig, contextData: otherAppData)
+		XCTAssertEqual(0, otherAppContext.peekTreatment("exp_test_ab"))
 	}
 
 	// A client configured with an application version does not inject it as `app_version`.
