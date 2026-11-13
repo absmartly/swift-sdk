@@ -64,11 +64,20 @@ public final class Context {
 	private var refreshInterval: TimeInterval = 0
 	private var attrsSeq: Int = 0
 
+	// Non-empty `application`/`environment` names from the client config, which the collector also
+	// attaches to every exposure server-side. They seed the evaluation map so audiences and
+	// assignment-rule conditions can target them; a user-set attribute of the same name wins.
+	private let systemAttributes: [String: JSON]
+	// Matched against an assignment rule's `environments`.
+	private let environmentName: String?
+
 	init(
 		config: ContextConfig, clock: Clock, scheduler: Scheduler, handler: ContextEventHandler,
 		provider: ContextDataProvider, logger: ContextEventLogger?, parser: VariableParser,
 		matcher: AudienceMatcher,
-		promise: Promise<ContextData>
+		promise: Promise<ContextData>,
+		application: String? = nil,
+		environment: String? = nil
 	) {
 		self.clock = clock
 		self.scheduler = scheduler
@@ -78,6 +87,16 @@ public final class Context {
 		self.parser = parser
 		self.matcher = matcher
 		self.promise = promise
+
+		var systemAttributes: [String: JSON] = [:]
+		if let application = application, !application.isEmpty {
+			systemAttributes["application"] = JSON(application)
+		}
+		if let environment = environment, !environment.isEmpty {
+			systemAttributes["environment"] = JSON(environment)
+		}
+		self.systemAttributes = systemAttributes
+		self.environmentName = environment.flatMap { $0.isEmpty ? nil : $0 }
 
 		publishDelay = config.publishDelay
 		refreshInterval = config.refreshInterval
@@ -393,6 +412,13 @@ public final class Context {
 
 		unitValues[unitType] = stored
 		units[unitType] = hashSource
+
+		// A split rule resolved without its unit is rebuilt now that the unit is known. An exposed one
+		// is kept, so the user never switches variant or gets a second exposure.
+		assignmentCache = assignmentCache.filter { _, assignment in
+			assignment.unitType != unitType || !assignment.ruleMissingUnit
+				|| assignment.exposed.load(ordering: .acquiring)
+		}
 	}
 
 	private static func sameUID(_ a: JSON, _ b: JSON) -> Bool {
@@ -463,27 +489,40 @@ public final class Context {
 	public func getTreatment(_ experimentName: String) -> Int {
 		guard ensureReady(true) else { return 0 }
 
-		let assignment = getAssignment(experimentName)
-		if !assignment.exposed.load(ordering: .acquiring) {
+		let (assignment, claimed) = getAssignmentClaimingExposure(experimentName, claim: true)
+		if claimed {
 			queueExposure(assignment)
 		}
 
 		return assignment.variant
 	}
 
+	// Looks the assignment up and marks it exposed in one `contextLock` section, so `setUnit` cannot
+	// evict it in between and let a later call expose a second, different variant. `claimed` is true
+	// when this call marked it exposed and must queue the exposure; with `requireVariables`, only an
+	// assignment whose variant has variables is claimed.
+	private func getAssignmentClaimingExposure(
+		_ experimentName: String, claim: Bool, requireVariables: Bool = false
+	) -> (Assignment, claimed: Bool) {
+		contextLock.lock()
+		defer { contextLock.unlock() }
+
+		let assignment = getAssignment(experimentName)
+		guard claim, !requireVariables || assignment.variables != nil, !closed.load(ordering: .acquiring), !closing.load(ordering: .acquiring) else {
+			return (assignment, false)
+		}
+		let claimed = assignment.exposed.compareExchange(
+			expected: false, desired: true, ordering: .acquiringAndReleasing
+		).0
+		return (assignment, claimed)
+	}
+
 	private func queueExposure(_ assignment: Assignment) {
-		if closed.load(ordering: .acquiring) || closing.load(ordering: .acquiring) {
-			return
-		}
-
-		if !assignment.exposed.compareExchange(expected: false, desired: true, ordering: .acquiringAndReleasing).0 {
-			return
-		}
-
 		let exposure = Exposure(
 			assignment.id, assignment.name, assignment.unitType, assignment.variant,
 			clock.millis(), assignment.assigned, assignment.eligible,
-			assignment.overridden, assignment.fullOn, assignment.custom, assignment.audienceMismatch)
+			assignment.overridden, assignment.fullOn, assignment.custom, assignment.audienceMismatch,
+			ruleOverride: assignment.ruleOverride)
 
 		do {
 			eventLock.lock()
@@ -805,8 +844,11 @@ public final class Context {
 		logError(error: error)
 	}
 
+	// System values first, then user attributes overlaid on top, so a user-set value always wins —
+	// including one set after an assignment was cached (the `attrsSeq` bump invalidates it). A
+	// user value of `null`/empty still overwrites the system key, matching the JavaScript SDK.
 	private func buildAttributeMap() -> [String: JSON] {
-		var attrs: [String: JSON] = [:]
+		var attrs: [String: JSON] = systemAttributes
 		for attr in attributes {
 			attrs[attr.name] = attr.value
 		}
@@ -819,22 +861,64 @@ public final class Context {
 			&& experiment.trafficSplit == assignment.trafficSplit
 	}
 
-	private func audienceMatches(_ experiment: Experiment, _ assignment: Assignment) -> Bool {
-		if let audience = experiment.audience, audience.count > 0 {
-			if attrsSeq > assignment.attrsSeq {
-				let attrs = buildAttributeMap()
+	// Whether the cached assignment still holds for the current attributes and rules: the matching
+	// rule (if any) must give the same variant, and the audience result must not have flipped.
+	private func audienceMatches(_ experiment: ExperimentVariables, _ assignment: Assignment) -> Bool {
+		let ruleKey = experiment.data.assignmentRules ?? ""
+		let ruleKeyChanged = ruleKey != assignment.ruleKey
 
+		let hasAudience = !(experiment.data.audience ?? "").isEmpty
+		if (attrsSeq > assignment.attrsSeq && (experiment.rules != nil || hasAudience)) || ruleKeyChanged {
+			let attrs = buildAttributeMap()
+
+			// An exposed split resolved without its unit keeps resolving as if the unit were still
+			// missing, so a unit set afterwards cannot switch the variant the user already saw.
+			let unitPinnedMissing = assignment.ruleMissingUnit && assignment.exposed.load(ordering: .acquiring)
+			let rule = resolveRule(experiment, attrs, unitPinnedMissing: unitPinnedMissing)
+			if rule?.variant != assignment.ruleVariant {
+				return false
+			}
+			assignment.ruleMissingUnit = rule?.missingUnit ?? false
+
+			if !assignment.ruleOverride && hasAudience, let audience = experiment.data.audience {
 				let result = matcher.evaluate(audience, attrs)
 				let newAudienceMismatch = result != nil ? !result! : assignment.audienceMismatch
 
 				if newAudienceMismatch != assignment.audienceMismatch {
 					return false
 				}
-
-				assignment.attrsSeq = attrsSeq
 			}
+
+			assignment.ruleKey = ruleKey
+			assignment.attrsSeq = attrsSeq
 		}
 		return true
+	}
+
+	// The variant of the first matching assignment rule, or nil when none matches. An out-of-bounds
+	// assign variant or a split whose length differs from the variant count stops rule evaluation
+	// and falls back to normal assignment. A split matched while the unit is missing gives the
+	// experiment's own no-unit result (the full-on variant, else 0) and is flagged `missingUnit`.
+	private func resolveRule(
+		_ experiment: ExperimentVariables, _ attrs: [String: JSON], unitPinnedMissing: Bool
+	) -> (variant: Int, missingUnit: Bool)? {
+		guard let rules = experiment.rules else { return nil }
+
+		let data = experiment.data
+		let variantCount = data.variants.count
+		switch matcher.evaluateRules(rules, environmentName: environmentName, attributes: attrs) {
+		case nil:
+			return nil
+		case .assign(let variant)?:
+			return variant >= 0 && variant < variantCount ? (variant, false) : nil
+		case .split(let split)?:
+			guard split.count == variantCount else { return nil }
+			guard !unitPinnedMissing, let unitType = data.unitType, let uid = units[unitType] else {
+				return (data.fullOnVariant, true)
+			}
+			let assigner = getVariantAssigner(unitType, getUnitHash(unitType, uid))
+			return (assigner.assign(split, data.seedHi, data.seedLo), false)
+		}
 	}
 
 	private func getExperiment(_ experimentName: String) -> ExperimentVariables? {
@@ -854,20 +938,20 @@ public final class Context {
 					return assignment
 				}
 			} else if experiment == nil {
-				if !assignment.assigned {
+				// A rule-won assignment came from the experiment's rules, so it is rebuilt once the
+				// experiment is gone.
+				if !assignment.assigned && !assignment.ruleOverride {
 					// previously not-running experiment
 					return assignment
 				}
 			} else if let exp = experiment {
+				// A matching rule wins over a custom assignment, so a custom mismatch is not staleness.
 				let custom = cassignments[experimentName]
-				if let customVariant = custom {
-					if customVariant == assignment.variant && experimentMatches(exp.data, assignment) && audienceMatches(exp.data, assignment) {
+				if custom == nil || custom == assignment.variant || assignment.ruleOverride {
+					if experimentMatches(exp.data, assignment) && audienceMatches(exp, assignment) {
 						// assignment up-to-date
 						return assignment
 					}
-				} else if experimentMatches(exp.data, assignment) && audienceMatches(exp.data, assignment) {
-					// assignment up-to-date
-					return assignment
 				}
 			}
 		}
@@ -888,48 +972,62 @@ public final class Context {
 			if let experiment = experiment {
 				let unitType = experiment.data.unitType
 
-				if let audience = experiment.data.audience {
-					if audience.count > 0 {
-						let attrs = buildAttributeMap()
+				let rule =
+					experiment.rules != nil ? resolveRule(experiment, buildAttributeMap(), unitPinnedMissing: false) : nil
+				assignment.ruleKey = experiment.data.assignmentRules ?? ""
+				assignment.ruleVariant = rule?.variant
+				assignment.ruleMissingUnit = rule?.missingUnit ?? false
 
-						if let result = matcher.evaluate(audience, attrs) {
-							assignment.audienceMismatch = !result
-						}
-					}
-				}
-
-				if experiment.data.audienceStrict && assignment.audienceMismatch {
-					assignment.variant = 0
-				} else if experiment.data.fullOnVariant == 0 {
-					if let unitType = experiment.data.unitType, let uid = units[unitType] {
-						let unitHash: [UInt8] = getUnitHash(unitType, uid)
-						let assigner = getVariantAssigner(unitType, unitHash)
-
-						let eligible =
-							assigner.assign(
-								experiment.data.trafficSplit, experiment.data.trafficSeedHi,
-								experiment.data.trafficSeedLo) == 1
-
-						if eligible {
-							let custom = cassignments[experimentName]
-							if custom != nil {
-								assignment.variant = custom!
-								assignment.custom = true
-							} else {
-								assignment.variant = assigner.assign(
-									experiment.data.split, experiment.data.seedHi, experiment.data.seedLo)
-							}
-						} else {
-							assignment.eligible = false
-							assignment.variant = 0
-						}
-
-						assignment.assigned = true
-					}
+				// A matching assignment rule is an explicit, author-specified assignment: it wins over
+				// the audience, traffic eligibility, full-on and custom assignments; only an override
+				// beats it. It is flagged `ruleOverride` so the collector keeps it out of analysis.
+				if let rule = rule {
+					assignment.variant = rule.variant
+					assignment.ruleOverride = true
 				} else {
-					assignment.assigned = true
-					assignment.variant = experiment.data.fullOnVariant
-					assignment.fullOn = true
+					if let audience = experiment.data.audience {
+						if audience.count > 0 {
+							let attrs = buildAttributeMap()
+
+							if let result = matcher.evaluate(audience, attrs) {
+								assignment.audienceMismatch = !result
+							}
+						}
+					}
+
+					if experiment.data.audienceStrict && assignment.audienceMismatch {
+						assignment.variant = 0
+					} else if experiment.data.fullOnVariant == 0 {
+						if let unitType = experiment.data.unitType, let uid = units[unitType] {
+							let unitHash: [UInt8] = getUnitHash(unitType, uid)
+							let assigner = getVariantAssigner(unitType, unitHash)
+
+							let eligible =
+								assigner.assign(
+									experiment.data.trafficSplit, experiment.data.trafficSeedHi,
+									experiment.data.trafficSeedLo) == 1
+
+							if eligible {
+								let custom = cassignments[experimentName]
+								if custom != nil {
+									assignment.variant = custom!
+									assignment.custom = true
+								} else {
+									assignment.variant = assigner.assign(
+										experiment.data.split, experiment.data.seedHi, experiment.data.seedLo)
+								}
+							} else {
+								assignment.eligible = false
+								assignment.variant = 0
+							}
+
+							assignment.assigned = true
+						}
+					} else {
+						assignment.assigned = true
+						assignment.variant = experiment.data.fullOnVariant
+						assignment.fullOn = true
+					}
 				}
 
 				assignment.unitType = unitType
@@ -950,21 +1048,22 @@ public final class Context {
 	}
 
 	// Experiments sharing a key are walked in ascending id order, like the JavaScript SDK: each
-	// one visited is exposed (unless peeking), and the first that is assigned or overridden
-	// and whose variant defines the key provides the value.
+	// one visited is exposed (unless peeking), and the first that is assigned, overridden or won by
+	// an assignment rule and whose variant defines the key provides the value.
 	private func resolveVariableValue(_ key: String, defaultValue: JSON?, peek: Bool) -> JSON? {
 		guard let keyExperimentVariables = getVariableExperiments(key) else {
 			return defaultValue
 		}
 
 		for experimentVariables in keyExperimentVariables {
-			let assignment = getAssignment(experimentVariables.data.name)
+			let (assignment, claimed) = getAssignmentClaimingExposure(
+				experimentVariables.data.name, claim: !peek, requireVariables: true)
 			if let variables = assignment.variables {
-				if !peek && !assignment.exposed.load(ordering: .acquiring) {
+				if claimed {
 					queueExposure(assignment)
 				}
 
-				if let value = variables[key], assignment.assigned || assignment.overridden {
+				if let value = variables[key], assignment.assigned || assignment.overridden || assignment.ruleOverride {
 					return value
 				}
 			}
@@ -1077,6 +1176,12 @@ public final class Context {
 
 		for experiment in data.experiments {
 			let experimentVariables = ExperimentVariables(experiment)
+			if let assignmentRules = experiment.assignmentRules, !assignmentRules.isEmpty {
+				experimentVariables.rules = matcher.parseRules(assignmentRules)
+				if experimentVariables.rules == nil {
+					Logger.error("Failed to parse assignmentRules for experiment '\(experiment.name)'.")
+				}
+			}
 			var experimentCustomFieldValues: [String: ContextCustomFieldValue] = [:]
 
 			for variant in experiment.variants {
@@ -1214,6 +1319,8 @@ public final class Context {
 private class ExperimentVariables {
 	let data: Experiment
 	var variables: [[String: JSON]] = []
+	// Parsed `data.assignmentRules`; nil when there are none or they are not valid JSON.
+	var rules: [JSON]?
 
 	init(_ experiment: Experiment) {
 		data = experiment
@@ -1231,7 +1338,8 @@ private class Assignment: Equatable {
 			&& lhs.name == rhs.name && lhs.unitType == rhs.unitType && lhs.trafficSplit == rhs.trafficSplit
 			&& lhs.variant == rhs.variant && lhs.assigned == rhs.assigned && lhs.overridden == rhs.overridden
 			&& lhs.eligible == rhs.eligible && lhs.fullOn == rhs.fullOn && lhs.custom == rhs.custom
-			&& lhs.audienceMismatch == rhs.audienceMismatch && lhs.variables == rhs.variables
+			&& lhs.audienceMismatch == rhs.audienceMismatch && lhs.ruleOverride == rhs.ruleOverride
+			&& lhs.variables == rhs.variables
 	}
 
 	var id: Int = 0
@@ -1247,6 +1355,12 @@ private class Assignment: Equatable {
 	var fullOn: Bool = false
 	var custom: Bool = false
 	var audienceMismatch = false
+	var ruleOverride = false
+	// The variant of the matching rule and the rules it came from, to detect when they change.
+	var ruleVariant: Int?
+	var ruleKey = ""
+	// A split rule matched while the unit was missing.
+	var ruleMissingUnit = false
 	var variables: [String: JSON]?
 	var exposed = ManagedAtomic<Bool>(false)
 	var attrsSeq: Int = 0

@@ -17,6 +17,8 @@ public struct Experiment: Codable {
 	public let audienceStrict: Bool
 	public let audience: String?
 	public let customFieldValues: [CustomFieldValue]?
+	/// The experiment's assignment rules, a JSON string of the form `{"rules": [...]}`.
+	public let assignmentRules: String?
 
 	// Every field except `name` decodes leniently: a missing or wrong-typed
 	// field falls back to its default instead of failing the whole context.
@@ -43,6 +45,14 @@ public struct Experiment: Codable {
 		applications = (try? container.decode([Application].self, forKey: .applications)) ?? []
 		variants = (try? container.decode([ExperimentVariant].self, forKey: .variants)) ?? []
 		customFieldValues = (try? container.decode([CustomFieldValue].self, forKey: .customFieldValues)) ?? []
+
+		// Sent as a JSON string. Anything else (e.g. an inline object) only drops this experiment's rules.
+		assignmentRules = try? container.decodeIfPresent(String.self, forKey: .assignmentRules)
+		if assignmentRules == nil, container.contains(.assignmentRules),
+			(try? container.decodeNil(forKey: .assignmentRules)) == false
+		{
+			Logger.error("Ignoring assignmentRules for experiment '\(name)': expected a JSON string.")
+		}
 	}
 }
 
@@ -54,5 +64,6 @@ extension Experiment: Equatable {
 			&& lhs.trafficSeedLo == rhs.trafficSeedLo && lhs.trafficSplit == rhs.trafficSplit
 			&& lhs.fullOnVariant == rhs.fullOnVariant && lhs.applications == rhs.applications
 			&& lhs.variants == rhs.variants && lhs.customFieldValues == rhs.customFieldValues
+			&& lhs.assignmentRules == rhs.assignmentRules
 	}
 }

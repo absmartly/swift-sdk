@@ -69,12 +69,50 @@ class ClientMock: Client {
 		}
 	}
 
+	//MARK: - getApplication
+
+	var getApplicationCallsCount = 0
+	var getApplicationCalled: Bool {
+		return getApplicationCallsCount > 0
+	}
+	var getApplicationReturnValue: String?
+	var getApplicationClosure: (() -> String?)?
+
+	func getApplication() -> String? {
+		getApplicationCallsCount += 1
+		if let getApplicationClosure = getApplicationClosure {
+			return getApplicationClosure()
+		} else {
+			return getApplicationReturnValue
+		}
+	}
+
+	//MARK: - getEnvironment
+
+	var getEnvironmentCallsCount = 0
+	var getEnvironmentCalled: Bool {
+		return getEnvironmentCallsCount > 0
+	}
+	var getEnvironmentReturnValue: String?
+	var getEnvironmentClosure: (() -> String?)?
+
+	func getEnvironment() -> String? {
+		getEnvironmentCallsCount += 1
+		if let getEnvironmentClosure = getEnvironmentClosure {
+			return getEnvironmentClosure()
+		} else {
+			return getEnvironmentReturnValue
+		}
+	}
+
 	func clearInvocations() {
 		getContextDataCallsCount = 0
 		publishEventCallsCount = 0
 		publishEventReceivedEvent = nil
 		publishEventReceivedInvocations = []
 		closeCallsCount = 0
+		getApplicationCallsCount = 0
+		getEnvironmentCallsCount = 0
 	}
 }
 

@@ -35,6 +35,23 @@ final class DefaultClientTest: XCTestCase {
 		XCTAssertNoThrow(try DefaultClient(config: clientConfig, httpClient: HTTPClientMock()))
 	}
 
+	func testGetApplicationAndEnvironmentReturnConfiguredNames() throws {
+		let clientConfig = ClientConfig(
+			apiKey: "test", application: "website", endpoint: "https://test.absmartly.io/v1",
+			environment: "production")
+		let client = try DefaultClient(config: clientConfig, httpClient: HTTPClientMock())
+
+		XCTAssertEqual("website", client.getApplication())
+		XCTAssertEqual("production", client.getEnvironment())
+
+		// Captured at init, like the HTTP metadata: mutating the config afterwards does not change
+		// the names audiences evaluate against, so evaluation stays consistent with context fetches.
+		clientConfig.application = "mobile"
+		clientConfig.environment = "staging"
+		XCTAssertEqual("website", client.getApplication())
+		XCTAssertEqual("production", client.getEnvironment())
+	}
+
 	func testThrowsWithMissingEndpoint() {
 		let clientConfig = ClientConfig(
 			apiKey: "test", application: "test_app", endpoint: "", environment: "test")
@@ -81,7 +98,7 @@ final class DefaultClientTest: XCTestCase {
 		XCTAssertEqual("https://test.absmartly.io/v1/context", httpClient.getUrlQueryHeadersReceivedArguments?.url)
 		XCTAssertEqual(
 			["environment": "test", "application": "test_app"], httpClient.getUrlQueryHeadersReceivedArguments?.query)
-		XCTAssertNil(httpClient.getUrlQueryHeadersReceivedArguments?.headers)
+		XCTAssertNotNil(httpClient.getUrlQueryHeadersReceivedArguments?.headers)
 
 		result.done { data in
 			expectation.fulfill()
@@ -204,7 +221,7 @@ final class DefaultClientTest: XCTestCase {
 		XCTAssertEqual("test", headers?["X-API-Key"])
 		XCTAssertEqual("test", headers?["X-Environment"])
 		XCTAssertEqual("test_app", headers?["X-Application"])
-		XCTAssertEqual("absmartly-swift-sdk", headers?["X-Agent"])
+		XCTAssertEqual("absmartly-swift-sdk/\(SDKVersion.version)", headers?["X-Agent"])
 
 		XCTAssertNotNil(httpClient.putUrlQueryHeadersBodyReceivedArguments?.body)
 
@@ -456,15 +473,44 @@ final class DefaultClientTest: XCTestCase {
 		XCTAssertEqual(2, query?.count)
 	}
 
-	func testGetContextDataDoesNotSendHeaders() {
-		guard let client = client, let httpClient = httpClient else { return }
+	// Cross-SDK scenario 320: the context GET carries the same SDK headers as the publish PUT
+	// (as javascript-sdk sends on every request), including X-Agent absmartly-<lang>-sdk/<semver>.
+	func testGetContextDataSendsSameHeadersAsPublish() throws {
+		let httpMock = HTTPClientMock()
+		let clientConfig = ClientConfig(
+			apiKey: "test-key",
+			application: "website",
+			endpoint: "https://test.absmartly.io/v1",
+			environment: "production",
+			applicationVersion: "1.2.3")
+		let headerClient = try DefaultClient(config: clientConfig, httpClient: httpMock)
 
-		let (promise, _) = Promise<Response>.pending()
-		httpClient.getUrlQueryHeadersReturnValue = promise
+		let (getPromise, _) = Promise<Response>.pending()
+		httpMock.getUrlQueryHeadersReturnValue = getPromise
+		let (putPromise, _) = Promise<Response>.pending()
+		httpMock.putUrlQueryHeadersBodyReturnValue = putPromise
 
-		_ = client.getContextData()
+		_ = headerClient.getContextData()
+		_ = headerClient.publish(event: PublishEvent())
 
-		XCTAssertNil(httpClient.getUrlQueryHeadersReceivedArguments?.headers)
+		XCTAssertEqual(1, httpMock.getUrlQueryHeadersCallsCount)
+		XCTAssertEqual(
+			["application": "website", "environment": "production"],
+			httpMock.getUrlQueryHeadersReceivedArguments?.query)
+
+		let headers = try XCTUnwrap(httpMock.getUrlQueryHeadersReceivedArguments?.headers)
+		XCTAssertEqual("application/json; charset=utf-8", headers["Content-Type"])
+		XCTAssertEqual("test-key", headers["X-API-Key"])
+		XCTAssertEqual("production", headers["X-Environment"])
+		XCTAssertEqual("website", headers["X-Application"])
+		XCTAssertEqual("1.2.3", headers["X-Application-Version"])
+		let agent = try XCTUnwrap(headers["X-Agent"])
+		XCTAssertNotNil(
+			agent.range(
+				of: "^absmartly-[a-z0-9]+-sdk/[0-9]+\\.[0-9]+\\.[0-9]+([-+][0-9A-Za-z.+-]*)?$",
+				options: .regularExpression),
+			agent)
+		XCTAssertEqual(httpMock.putUrlQueryHeadersBodyReceivedArguments?.headers, headers)
 	}
 
 	func testConstructorAcceptsValidConfig() throws {
@@ -569,5 +615,16 @@ final class DefaultClientTest: XCTestCase {
 		resolver.fulfill(response)
 
 		wait(for: [expectation], timeout: 1.0)
+	}
+
+	// The release workflow publishes the podspec version; X-Agent must report the same one.
+	func testSDKVersionMatchesPodspec() throws {
+		let root = ((#filePath as NSString).deletingLastPathComponent as NSString)
+			.deletingLastPathComponent as NSString
+		let podspec = try String(
+			contentsOfFile: (root.deletingLastPathComponent as NSString).appendingPathComponent(
+				"ABSmartlySwiftSDK.podspec"), encoding: .utf8)
+		XCTAssertTrue(podspec.contains("spec.version = '\(SDKVersion.version)'"))
+		XCTAssertEqual("absmartly-swift-sdk/\(SDKVersion.version)", SDKVersion.agent)
 	}
 }

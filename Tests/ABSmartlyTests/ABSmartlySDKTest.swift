@@ -68,6 +68,71 @@ final class ABsmartlySDKTest: XCTestCase {
 		XCTAssertEqual(0, client.getContextDataCallsCount)
 	}
 
+	// exp_test_ab with a strict audience and a 0/100 split, so a match gives variant 1 and a mismatch 0.
+	func strictAudienceContextData(filter: String) throws -> ContextData {
+		let audience = "{\"filter\":\(filter)}"
+		let experiment: [String: Any] = [
+			"id": 1, "name": "exp_test_ab", "iteration": 1, "unitType": "session_id", "seedHi": 3_603_515,
+			"seedLo": 233_373_850, "split": [0.0, 1.0], "trafficSeedHi": 449_867_249, "trafficSeedLo": 455_443_629,
+			"trafficSplit": [0.0, 1.0], "fullOnVariant": 0,
+			"variants": [["name": "A", "config": NSNull()], ["name": "B", "config": "{}"]],
+			"audienceStrict": true, "audience": audience,
+		]
+		let data = try JSONSerialization.data(withJSONObject: ["experiments": [experiment]])
+		return try JSONDecoder().decode(ContextData.self, from: data)
+	}
+
+	// createContextWithData forwards the client's application/environment into the Context, so a
+	// strict audience targeting the configured application and environment matches without the caller setting it.
+	// Uses peek so no exposure is queued and the real DefaultScheduler never auto-publishes.
+	func testCreateContextForwardsClientApplicationAndEnvironment() throws {
+		setUpSDK()
+
+		guard let sdk = sdk, let client = client else { return }
+
+		client.getApplicationReturnValue = "website"
+		client.getEnvironmentReturnValue = "production"
+
+		let filter =
+			"[{\"eq\":[{\"var\":\"application\"},{\"value\":\"website\"}]},{\"eq\":[{\"var\":\"environment\"},{\"value\":\"production\"}]}]"
+		let contextData = try strictAudienceContextData(filter: filter)
+
+		let context = sdk.createContextWithData(config: contextConfig, contextData: contextData)
+		XCTAssertTrue(context.isReady())
+		XCTAssertEqual(1, context.peekTreatment("exp_test_ab"))
+
+		// A staging target does not match the configured production environment.
+		let stagingData = try strictAudienceContextData(
+			filter: filter.replacingOccurrences(of: "production", with: "staging"))
+		let stagingContext = sdk.createContextWithData(config: contextConfig, contextData: stagingData)
+		XCTAssertEqual(0, stagingContext.peekTreatment("exp_test_ab"))
+
+		// Nor does another application.
+		let otherAppData = try strictAudienceContextData(
+			filter: filter.replacingOccurrences(of: "website", with: "mobile"))
+		let otherAppContext = sdk.createContextWithData(config: contextConfig, contextData: otherAppData)
+		XCTAssertEqual(0, otherAppContext.peekTreatment("exp_test_ab"))
+	}
+
+	// A client configured with an application version does not inject it as `app_version`.
+	func testCreateContextDoesNotEvaluateApplicationVersion() throws {
+		let sdk = try ABsmartlySDK(
+			endpoint: "https://test.absmartly.io/v1", apiKey: "test-api-key", application: "website",
+			environment: "production", applicationVersion: "1.2.3")
+
+		let contextData = try strictAudienceContextData(
+			filter: "[{\"eq\":[{\"var\":\"app_version\"},{\"value\":\"1.2.3\"}]}]")
+
+		let config = ContextConfig()
+		config.setUnit(unitType: "session_id", uid: "123456789")
+		let context = sdk.createContextWithData(config: config, contextData: contextData)
+		XCTAssertEqual(0, context.peekTreatment("exp_test_ab"))
+
+		// The same audience matches once the attribute is set explicitly.
+		context.setAttribute(name: "app_version", value: "1.2.3")
+		XCTAssertEqual(1, context.peekTreatment("exp_test_ab"))
+	}
+
 	func testGetContextData() {
 		setUpSDK()
 
