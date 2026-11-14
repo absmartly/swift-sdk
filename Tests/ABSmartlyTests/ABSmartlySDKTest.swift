@@ -68,6 +68,38 @@ final class ABsmartlySDKTest: XCTestCase {
 		XCTAssertEqual(0, client.getContextDataCallsCount)
 	}
 
+	// createContextWithData forwards the client's application/environment into the Context, so a
+	// strict audience targeting the configured environment matches without the caller setting it.
+	// Uses peek so no exposure is queued and the real DefaultScheduler never auto-publishes.
+	func testCreateContextForwardsClientApplicationAndEnvironment() throws {
+		setUpSDK()
+
+		guard let sdk = sdk, let client = client else { return }
+
+		client.getApplicationReturnValue = "website"
+		client.getEnvironmentReturnValue = "production"
+
+		let json = """
+			{"experiments":[{"id":1,"name":"exp_test_ab","iteration":1,"unitType":"session_id",\
+			"seedHi":3603515,"seedLo":233373850,"split":[0.0,1.0],"trafficSeedHi":449867249,\
+			"trafficSeedLo":455443629,"trafficSplit":[0.0,1.0],"fullOnVariant":0,\
+			"applications":[{"name":"website"}],"variants":[{"name":"A","config":null},\
+			{"name":"B","config":"{}"}],"audienceStrict":true,\
+			"audience":"{\\"filter\\":[{\\"eq\\":[{\\"var\\":\\"environment\\"},{\\"value\\":\\"production\\"}]}]}"}]}
+			"""
+		let contextData = try JSONDecoder().decode(ContextData.self, from: json.data(using: .utf8)!)
+
+		let context = sdk.createContextWithData(config: contextConfig, contextData: contextData)
+		XCTAssertTrue(context.isReady())
+		XCTAssertEqual(1, context.peekTreatment("exp_test_ab"))
+
+		// A staging target does not match the configured production environment.
+		let stagingJson = json.replacingOccurrences(of: "production", with: "staging")
+		let stagingData = try JSONDecoder().decode(ContextData.self, from: stagingJson.data(using: .utf8)!)
+		let stagingContext = sdk.createContextWithData(config: contextConfig, contextData: stagingData)
+		XCTAssertEqual(0, stagingContext.peekTreatment("exp_test_ab"))
+	}
+
 	func testGetContextData() {
 		setUpSDK()
 

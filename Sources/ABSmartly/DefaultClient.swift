@@ -7,6 +7,11 @@ public final class DefaultClient: Client {
 	private let url: String
 	private let getQuery: [String: String]
 	private let putHeaders: [String: String]
+	// Captured at init, like getQuery/putHeaders, so audience evaluation always sees the same
+	// application/environment names used to fetch context data and publish exposures, even if the
+	// caller mutates ClientConfig afterwards.
+	private let application: String
+	private let environment: String
 
 	public convenience init(config: ClientConfig) throws {
 		try self.init(config: config, httpClient: DefaultHTTPClient(config: DefaultHTTPClientConfig()))
@@ -31,6 +36,9 @@ public final class DefaultClient: Client {
 		if config.environment.isEmpty {
 			throw ABSmartlyError("Missing Environment configuration")
 		}
+
+		application = config.application
+		environment = config.environment
 
 		url = config.endpoint + "/context"
 		getQuery = ["application": config.application, "environment": config.environment]
@@ -84,5 +92,16 @@ public final class DefaultClient: Client {
 
 	public func close() -> Promise<Void> {
 		return httpClient.close()
+	}
+
+	// The configured names audiences and assignment-rule conditions target, captured at init so they
+	// stay consistent with the HTTP metadata. Empty values are reported as `nil` so the context
+	// leaves the key out of the evaluation map.
+	public func getApplication() -> String? {
+		return application.isEmpty ? nil : application
+	}
+
+	public func getEnvironment() -> String? {
+		return environment.isEmpty ? nil : environment
 	}
 }

@@ -274,6 +274,12 @@ context.setAttributes([
 ])
 ```
 
+The configured `application` and `environment` names are always available to audience filters and
+assignment-rule conditions as the `application` and `environment` attributes, so experiments can be
+targeted by them without setting anything. A user-set attribute of the same name wins, even when set
+after the context is created. These attributes are evaluation-only: they are not sent on the publish
+payload (the collector adds them server-side) and are not returned by `getAttributes()`.
+
 ### Tracking Goals
 
 Goals are created in the A/B Smartly web console.
