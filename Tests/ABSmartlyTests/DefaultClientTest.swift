@@ -408,7 +408,7 @@ final class DefaultClientTest: XCTestCase {
 		let clientConfig = ClientConfig(
 			apiKey: "test", application: "test_app", endpoint: "https://test.absmartly.io/v1",
 			environment: "test",
-			applicationVersion: "1.2.3")
+			applicationVersion: "1002003")
 		let versionClient = try DefaultClient(config: clientConfig, httpClient: httpMock)
 
 		let (promise, resolver) = Promise<Response>.pending()
@@ -430,7 +430,7 @@ final class DefaultClientTest: XCTestCase {
 		}
 
 		let headers = httpMock.putUrlQueryHeadersBodyReceivedArguments?.headers
-		XCTAssertEqual("1.2.3", headers?["X-Application-Version"])
+		XCTAssertEqual("1002003", headers?["X-Application-Version"])
 
 		let response = DefaultHTTPResponse(
 			status: 200, statusMessage: "OK", contentType: "application/json", content: Data())
@@ -482,7 +482,7 @@ final class DefaultClientTest: XCTestCase {
 			application: "website",
 			endpoint: "https://test.absmartly.io/v1",
 			environment: "production",
-			applicationVersion: "1.2.3")
+			applicationVersion: "1004")
 		let headerClient = try DefaultClient(config: clientConfig, httpClient: httpMock)
 
 		let (getPromise, _) = Promise<Response>.pending()
@@ -503,7 +503,7 @@ final class DefaultClientTest: XCTestCase {
 		XCTAssertEqual("test-key", headers["X-API-Key"])
 		XCTAssertEqual("production", headers["X-Environment"])
 		XCTAssertEqual("website", headers["X-Application"])
-		XCTAssertEqual("1.2.3", headers["X-Application-Version"])
+		XCTAssertEqual("1004", headers["X-Application-Version"])
 		let agent = try XCTUnwrap(headers["X-Agent"])
 		XCTAssertNotNil(
 			agent.range(
@@ -511,6 +511,55 @@ final class DefaultClientTest: XCTestCase {
 				options: .regularExpression),
 			agent)
 		XCTAssertEqual(httpMock.putUrlQueryHeadersBodyReceivedArguments?.headers, headers)
+	}
+
+	// The collector binds X-Application-Version as a Long and rejects anything else with HTTP 400, so
+	// only the wire value is normalised (like the Java SDK): trimmed, 1–18 ASCII digits pass, anything
+	// else is sent as "0". Both the context GET and the publish PUT carry the normalised value.
+	func testApplicationVersionHeaderIsNormalisedOnGetAndPut() throws {
+		let cases: [(String, String)] = [
+			("1004", "1004"),
+			(" 1004 ", "1004"),
+			("\t1004\n", "1004"),
+			("0", "0"),
+			("007", "007"),
+			("1.2.3", "0"),
+			("2.4.1", "0"),
+			("", "0"),
+			("   ", "0"),
+			("-1", "0"),
+			("+1", "0"),
+			("1e3", "0"),
+			("\u{0661}\u{0662}", "0"),
+			("\u{FF11}\u{FF12}", "0"),
+			(String(repeating: "9", count: 18), String(repeating: "9", count: 18)),
+			(String(repeating: "9", count: 19), "0"),
+		]
+
+		for (configured, expected) in cases {
+			let httpMock = HTTPClientMock()
+			let clientConfig = ClientConfig(
+				apiKey: "test-key", application: "website", endpoint: "https://test.absmartly.io/v1",
+				environment: "production", applicationVersion: configured)
+			let headerClient = try DefaultClient(config: clientConfig, httpClient: httpMock)
+
+			let (getPromise, _) = Promise<Response>.pending()
+			httpMock.getUrlQueryHeadersReturnValue = getPromise
+			let (putPromise, _) = Promise<Response>.pending()
+			httpMock.putUrlQueryHeadersBodyReturnValue = putPromise
+
+			_ = headerClient.getContextData()
+			_ = headerClient.publish(event: PublishEvent())
+
+			XCTAssertEqual(
+				expected, httpMock.getUrlQueryHeadersReceivedArguments?.headers?["X-Application-Version"],
+				"GET for \(configured.debugDescription)")
+			XCTAssertEqual(
+				expected, httpMock.putUrlQueryHeadersBodyReceivedArguments?.headers?["X-Application-Version"],
+				"PUT for \(configured.debugDescription)")
+			// The public configuration keeps the caller's value.
+			XCTAssertEqual(configured, clientConfig.applicationVersion)
+		}
 	}
 
 	func testConstructorAcceptsValidConfig() throws {

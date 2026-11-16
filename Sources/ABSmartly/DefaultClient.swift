@@ -49,8 +49,21 @@ public final class DefaultClient: Client {
 			"X-API-Key": config.apiKey,
 			"X-Environment": config.environment,
 			"X-Application": config.application,
-			"X-Application-Version": config.applicationVersion,
+			"X-Application-Version": DefaultClient.wireApplicationVersion(config.applicationVersion),
 		]
+	}
+
+	// The collector binds X-Application-Version as a Long and rejects anything else with HTTP 400,
+	// which would stop the context from loading. Like the Java SDK, only the header value is
+	// normalised: trimmed, 1–18 ASCII digits are sent as-is, anything else as "0".
+	static func wireApplicationVersion(_ version: String) -> String {
+		let trimmed = version.unicodeScalars.drop(while: { $0.value <= 0x20 }).reversed().drop(while: {
+			$0.value <= 0x20
+		}).reversed()
+		guard (1...18).contains(trimmed.count), trimmed.allSatisfy({ $0 >= "0" && $0 <= "9" }) else {
+			return "0"
+		}
+		return String(String.UnicodeScalarView(trimmed))
 	}
 
 	public func getContextData() -> Promise<ContextData> {

@@ -84,7 +84,7 @@ let sdk = try ABsmartlySDK(
     apiKey: "YOUR-API-KEY",
     application: "website",
     environment: "production",
-    applicationVersion: "1.0.0",
+    applicationVersion: "10000",   // An integer; sent as "0" otherwise
     timeout: 5.0,           // Default: 3.0 seconds
     retries: 5              // Default: 3
 )
@@ -115,7 +115,7 @@ let sdk = try ABsmartlySDK(config: sdkConfig)
 | apiKey                  | `String`                          | &#9989;   | `nil`       | Your API key which can be found on the Web Console.                                                                                                                           |
 | application             | `String`                          | &#9989;   | `nil`       | The name of the application where the SDK is installed. Applications are created on the Web Console and should match the applications where your experiments will be running. |
 | environment             | `String`                          | &#9989;   | `nil`       | The environment of the platform where the SDK is installed. Environments are created on the Web Console and should match the available environments in your infrastructure.   |
-| applicationVersion      | `String`                          | &#10060;  | `"0"`       | The version of your application.                                                                                                                                              |
+| applicationVersion      | `String`                          | &#10060;  | `"0"`       | The version of your application, as an integer (e.g. `"10203"`). The collector only accepts digits, so any other value is sent as `"0"`.                                                                                                                                            |
 | timeout                 | `TimeInterval`                    | &#10060;  | `3.0`       | Network request timeout in seconds.                                                                                                                                           |
 | retries                 | `UInt`                            | &#10060;  | `3`         | Number of retry attempts for failed network requests.                                                                                                                         |
 | contextEventLogger      | `ContextEventLogger`              | &#10060;  | `nil`       | Callback to handle SDK events (ready, exposure, goal, etc.)                                                                                                                   |
