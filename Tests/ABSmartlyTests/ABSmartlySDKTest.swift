@@ -133,6 +133,23 @@ final class ABsmartlySDKTest: XCTestCase {
 		XCTAssertEqual(1, context.peekTreatment("exp_test_ab"))
 	}
 
+	// Through the real factory, `app_version` is absent from evaluation even with a configured
+	// application version: a `null` check on it matches, so no value (not even "0") is injected.
+	func testCreateContextLeavesAppVersionUnset() throws {
+		for applicationVersion in ["1.2.3", "1004", "0"] {
+			let sdk = try ABsmartlySDK(
+				endpoint: "https://test.absmartly.io/v1", apiKey: "test-api-key", application: "website",
+				environment: "production", applicationVersion: applicationVersion)
+
+			let contextData = try strictAudienceContextData(filter: "[{\"null\":{\"var\":\"app_version\"}}]")
+			let config = ContextConfig()
+			config.setUnit(unitType: "session_id", uid: "123456789")
+			let context = sdk.createContextWithData(config: config, contextData: contextData)
+			XCTAssertEqual(1, context.peekTreatment("exp_test_ab"), applicationVersion)
+			XCTAssertNil(context.getAttribute(name: "app_version"), applicationVersion)
+		}
+	}
+
 	func testGetContextData() {
 		setUpSDK()
 

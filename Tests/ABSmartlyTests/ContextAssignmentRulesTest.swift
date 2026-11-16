@@ -417,6 +417,95 @@ final class ContextAssignmentRulesTest: XCTestCase {
 		XCTAssertEqual("exp", data.experiments[0].name)
 	}
 
+	// MARK: - system attributes
+
+	// Rule scope (`environments`) uses the configured environment, even when the user sets an
+	// `environment` attribute; that attribute only feeds the rule's conditions.
+	func testRuleScopeUsesConfiguredEnvironmentNotUserAttribute() throws {
+		let stagingCondition = "{\"eq\":[{\"var\":\"environment\"},{\"value\":\"staging\"}]}"
+		let productionScoped = try contextData(
+			experimentJSON(
+				rules: rules(
+					"{\"type\":\"assign\",\"variant\":2,\"environments\":[\"production\"],\"conditions\":\(stagingCondition)}"
+				)))
+		let context = createContext(productionScoped, environment: "production") {
+			$0.setAttribute(name: "environment", value: "staging")
+		}
+		XCTAssertEqual(2, context.getTreatment("exp"))
+		XCTAssertEqual(true, exposures(context).last?.ruleOverride)
+
+		let stagingScoped = try contextData(
+			experimentJSON(rules: rules("{\"type\":\"assign\",\"variant\":2,\"environments\":[\"staging\"]}")))
+		let other = createContext(stagingScoped, environment: "production") {
+			$0.setAttribute(name: "environment", value: "staging")
+		}
+		XCTAssertNotEqual(2, other.getTreatment("exp"))
+		XCTAssertEqual(false, exposures(other).last?.ruleOverride)
+	}
+
+	// MARK: - revalidation
+
+	final class CountingMatcher: AudienceMatcher {
+		var evaluations = 0
+
+		override func evaluate(_ audience: String, _ attributes: [String: JSON]) -> Bool? {
+			evaluations += 1
+			return super.evaluate(audience, attributes)
+		}
+	}
+
+	// A revalidation that keeps the outcome stamps the assignment, so later reads use the cache
+	// instead of evaluating again: once after an unrelated attribute change, once after a refresh
+	// whose rules changed without changing the outcome. The rule does not match, so revalidation
+	// also evaluates the audience, which is what is counted.
+	func testSameOutcomeRevalidationIsNotRepeated() throws {
+		let matcher = CountingMatcher()
+		let provider = ContextDataProviderMock()
+		let audience = "{\"filter\":[{\"eq\":[{\"var\":\"country\"},{\"value\":\"DE\"}]}]}"
+		let first = try contextData(
+			experimentJSON(
+				rules: rules("{\"type\":\"assign\",\"variant\":2,\"conditions\":\(countryNL)}"), audience: audience))
+		let config = ContextConfig()
+		config.setUnit(unitType: "session_id", uid: "unit-1")
+		config.setAttribute(name: "country", value: "DE")
+		let context = Context(
+			config: config, clock: clock, scheduler: scheduler, handler: handler, provider: provider,
+			logger: logger, parser: DefaultVariableParser(), matcher: matcher,
+			promise: Promise<ContextData>.value(first), application: "website", environment: "production")
+
+		let variant = context.getTreatment("exp")
+		XCTAssertEqual(splitVariant("unit-1", [0.34, 0.33, 0.33], seedHi: seedHi, seedLo: seedLo), variant)
+		XCTAssertEqual(1, matcher.evaluations)
+
+		func readRepeatedly() {
+			for _ in 0..<3 {
+				XCTAssertEqual(variant, context.getTreatment("exp"))
+				XCTAssertEqual(variant, context.peekTreatment("exp"))
+				XCTAssertEqual(JSON(variant), context.getVariableValue("color"))
+			}
+		}
+
+		context.setAttribute(name: "unrelated", value: true)
+		readRepeatedly()
+		XCTAssertEqual(2, matcher.evaluations)
+
+		// A refresh with a differently written rule set that still does not match.
+		provider.getContextDataReturnValue = Promise<ContextData>.value(
+			try contextData(
+				experimentJSON(
+					rules: rules(
+						"{\"type\":\"assign\",\"variant\":1,\"conditions\":\(countryNL)}",
+						"{\"type\":\"assign\",\"variant\":2,\"environments\":[\"staging\"]}"),
+					audience: audience)))
+		let refreshed = expectation(description: "refresh")
+		context.refresh().done { refreshed.fulfill() }.catch { XCTFail($0.safeLocalizedDescription) }
+		wait(for: [refreshed], timeout: 1.0)
+
+		readRepeatedly()
+		XCTAssertEqual(3, matcher.evaluations)
+		XCTAssertEqual(1, exposures(context).count)
+	}
+
 	// MARK: - parsing
 
 	func testParseSplitPercentages() {
