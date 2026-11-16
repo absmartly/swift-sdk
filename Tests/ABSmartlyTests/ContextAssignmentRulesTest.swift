@@ -343,6 +343,26 @@ final class ContextAssignmentRulesTest: XCTestCase {
 		}
 	}
 
+	// parseFloat skips ECMAScript WhiteSpace and LineTerminator characters only: a split led by
+	// U+FEFF (or another of them) is applied, one led by U+001E or U+0085 (Unicode whitespace that
+	// ECMAScript does not skip) is invalid, so the next rule decides.
+	func testSplitSkipsOnlyEcmaScriptWhitespace() throws {
+		// Escaped in the rules JSON, since control characters are not allowed raw in a JSON string.
+		let applied = ["\\ufeff", "\\u000b", "\\u000c", "\\u00a0", "\\u1680", "\\u2028", "\\u3000", "\\t", "\\n"]
+		let invalid = ["\\u001e", "\\u0085", "\\u180e", "\\u200b"]
+		for (prefixes, expected) in [(applied, 2), (invalid, 1)] {
+			for prefix in prefixes {
+				let data = try contextData(
+					experimentJSON(
+						rules: rules(
+							"{\"type\":\"split\",\"percentages\":\"\(prefix)0/0/100\"}", "{\"type\":\"assign\",\"variant\":1}")))
+				let context = createContext(data)
+				XCTAssertEqual(expected, context.getTreatment("exp"), prefix)
+				XCTAssertEqual(true, exposures(context).last?.ruleOverride, prefix)
+			}
+		}
+	}
+
 	func testSplitWithinTolerance() throws {
 		let data = try contextData(
 			experimentJSON(
@@ -423,6 +443,11 @@ final class ContextAssignmentRulesTest: XCTestCase {
 		XCTAssertEqual(.infinity, AudienceMatcher.parseFloat("Infinity"))
 		XCTAssertTrue(AudienceMatcher.parseFloat("").isNaN)
 		XCTAssertTrue(AudienceMatcher.parseFloat("abc").isNaN)
+		XCTAssertEqual(0, AudienceMatcher.parseFloat("\u{FEFF}0"))
+		XCTAssertEqual(7, AudienceMatcher.parseFloat("\u{2029}\u{205F}\u{202F}7"))
+		XCTAssertTrue(AudienceMatcher.parseFloat("\u{1E}0").isNaN)
+		XCTAssertTrue(AudienceMatcher.parseFloat("\u{85}0").isNaN)
+		XCTAssertTrue(AudienceMatcher.parseFloat("\u{200B}0").isNaN)
 		XCTAssertTrue(AudienceMatcher.parseFloat(".").isNaN)
 	}
 }

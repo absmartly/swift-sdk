@@ -112,12 +112,24 @@ extension AudienceMatcher {
 		return values.map { $0 / 100 }
 	}
 
+	// ECMAScript WhiteSpace and LineTerminator, the characters parseFloat skips: tab, vertical tab,
+	// form feed, space, no-break space, U+FEFF, the Space_Separator category, LF, CR, U+2028 and
+	// U+2029. Unlike Unicode White_Space, U+0085 is not included.
+	private static func isEcmaScriptWhitespace(_ c: Unicode.Scalar) -> Bool {
+		switch c.value {
+		case 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x20, 0xA0, 0xFEFF, 0x2028, 0x2029:
+			return true
+		default:
+			return c.properties.generalCategory == .spaceSeparator
+		}
+	}
+
 	// JavaScript parseFloat: leading whitespace is skipped and the longest decimal prefix is parsed,
 	// so "50abc" is 50 and "abc" is NaN.
 	static func parseFloat<S: StringProtocol>(_ s: S) -> Double {
 		let chars = Array(s.unicodeScalars)
 		var i = 0
-		while i < chars.count && chars[i].properties.isWhitespace {
+		while i < chars.count && isEcmaScriptWhitespace(chars[i]) {
 			i += 1
 		}
 
