@@ -489,7 +489,7 @@ public final class Context {
 	public func getTreatment(_ experimentName: String) -> Int {
 		guard ensureReady(true) else { return 0 }
 
-		let (assignment, claimed) = getAssignmentClaimingExposure(experimentName, claim: true)
+		let (assignment, claimed) = getAssignmentClaimingExposure(experimentName)
 		if claimed {
 			queueExposure(assignment)
 		}
@@ -500,15 +500,19 @@ public final class Context {
 	// Looks the assignment up and marks it exposed in one `contextLock` section, so `setUnit` cannot
 	// evict it in between and let a later call expose a second, different variant. `claimed` is true
 	// when this call marked it exposed and must queue the exposure; with `requireVariables`, only an
-	// assignment whose variant has variables is claimed.
+	// assignment whose variant has variables is claimed. An already-exposed assignment returns as
+	// soon as it is found.
 	private func getAssignmentClaimingExposure(
-		_ experimentName: String, claim: Bool, requireVariables: Bool = false
+		_ experimentName: String, requireVariables: Bool = false
 	) -> (Assignment, claimed: Bool) {
 		contextLock.lock()
 		defer { contextLock.unlock() }
 
-		let assignment = getAssignment(experimentName)
-		guard claim, !requireVariables || assignment.variables != nil, !closed.load(ordering: .acquiring), !closing.load(ordering: .acquiring) else {
+		let assignment = lookupAssignment(experimentName)
+		guard !assignment.exposed.load(ordering: .acquiring),
+			!requireVariables || assignment.variables != nil,
+			!closed.load(ordering: .acquiring), !closing.load(ordering: .acquiring)
+		else {
 			return (assignment, false)
 		}
 		let claimed = assignment.exposed.compareExchange(
@@ -929,6 +933,12 @@ public final class Context {
 		contextLock.lock()
 		defer { contextLock.unlock() }
 
+		return lookupAssignment(experimentName)
+	}
+
+	// The cached assignment if still up to date, else a newly computed and cached one. The caller
+	// holds `contextLock`.
+	private func lookupAssignment(_ experimentName: String) -> Assignment {
 		let experiment: ExperimentVariables? = getExperiment(experimentName)
 
 		if let assignment = assignmentCache[experimentName] {
@@ -1056,8 +1066,10 @@ public final class Context {
 		}
 
 		for experimentVariables in keyExperimentVariables {
-			let (assignment, claimed) = getAssignmentClaimingExposure(
-				experimentVariables.data.name, claim: !peek, requireVariables: true)
+			let (assignment, claimed) =
+				peek
+				? (getAssignment(experimentVariables.data.name), false)
+				: getAssignmentClaimingExposure(experimentVariables.data.name, requireVariables: true)
 			if let variables = assignment.variables {
 				if claimed {
 					queueExposure(assignment)
