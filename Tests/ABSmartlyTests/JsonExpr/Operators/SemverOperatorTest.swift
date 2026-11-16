@@ -80,6 +80,82 @@ final class SemverOperatorTest: XCTestCase {
 		XCTAssertEqual(1, SemverComparator.compare("1..0", "1.0.0"))
 	}
 
+	// Strings compare by UTF-16 code unit identity and order, like JavaScript's === and <, not by
+	// Swift's canonical equivalence: a precomposed "é" (U+00E9) sorts after "e" + U+0301.
+	func testComparesUtf16CodeUnitsNotCanonicalEquivalence() {
+		let composed = "1.0.0-\u{00E9}"
+		let decomposed = "1.0.0-e\u{0301}"
+		XCTAssertEqual(1, SemverComparator.compare(composed, decomposed))
+		XCTAssertEqual(-1, SemverComparator.compare(decomposed, composed))
+		XCTAssertEqual(0, SemverComparator.compare(composed, composed))
+		XCTAssertEqual(0, SemverComparator.compare(decomposed, decomposed))
+		XCTAssertEqual(1, SemverComparator.compare("1.\u{00E9}", "1.e\u{0301}"))
+
+		// A separator followed by a combining mark still separates, as JavaScript splits on code units.
+		XCTAssertEqual(-1, SemverComparator.compare("1.0.0-\u{0301}", "1.0.0"))
+		XCTAssertEqual(0, SemverComparator.compare("1.0.0+\u{0301}", "1.0.0"))
+		XCTAssertEqual(0, SemverComparator.compare("v\u{0301}1", "\u{0301}1"))
+		XCTAssertEqual(1, SemverComparator.compare("1.\u{0301}", "1.0"))
+		XCTAssertEqual(-1, SemverComparator.compare("2.\u{0301}", "10"))
+
+		let jsonExpr = JsonExpr()
+		let vars: [String: JSON] = ["app_version": JSON(composed)]
+		XCTAssertFalse(
+			jsonExpr.evaluateBooleanExpr(["semver_eq": [["var": "app_version"], ["value": decomposed]]], vars: vars))
+		XCTAssertTrue(
+			jsonExpr.evaluateBooleanExpr(["semver_gt": [["var": "app_version"], ["value": decomposed]]], vars: vars))
+	}
+
+	// A number is converted like JavaScript's x.toFixed(15) with trailing zeros stripped: the exact
+	// binary value rounded half up, plain digits below 1e21 and the shortest exponential form above.
+	func testNumberConversionMatchesJavaScript() {
+		let cases: [(Double, String)] = [
+			(1.2, "1.2"),
+			(1, "1"),
+			(0, "0"),
+			(-0.0, "0"),
+			(-1.5, "-1.5"),
+			(0.1 + 0.2, "0.3"),
+			(123.456, "123.456000000000003"),
+			(0.000001, "0.000001"),
+			(5e-16, "0.000000000000001"),
+			(1e-20, "0"),
+			(-1e-20, "-0"),
+			(1.0000000000000002, "1"),
+			(pow(2, -16), "0.000015258789063"),
+			(-pow(2, -16), "-0.000015258789063"),
+			(3 * pow(2, -16), "0.000045776367188"),
+			(9_007_199_254_740_994, "9007199254740994"),
+			(1.2345678901234568e20, "123456789012345683968"),
+			(1e21, "1e+21"),
+			(1.2345e22, "1.2345e+22"),
+			// JavaScript's trailing-zero strip also eats the exponent's zeros.
+			(1e100, "1e+1"),
+			(.leastNonzeroMagnitude, "0"),
+			(.greatestFiniteMagnitude, "1.7976931348623157e+308"),
+			(.infinity, "Infinity"),
+			(-.infinity, "-Infinity"),
+		]
+		for (value, expected) in cases {
+			XCTAssertEqual(expected, SemverComparator.jsNumberString(value), "\(value)")
+		}
+
+		XCTAssertEqual(0, SemverComparator.compare(evaluator, JSON(123.456), "123.456000000000003"))
+		XCTAssertEqual(0, SemverComparator.compare(evaluator, JSON(1.2), "1.2"))
+		XCTAssertEqual(0, SemverComparator.compare(evaluator, JSON(1e21), "1e+21"))
+	}
+
+	// The conversion does not depend on the locale, unlike the evaluator's number formatter, which
+	// gives Eastern Arabic digits under ar_EG.
+	func testNumberConversionIsLocaleIndependent() {
+		for identifier in ["ar_EG", "fa_IR", "de_DE"] {
+			let localised = ExprEvaluator(operators: JsonExpr.operators, vars: [:])
+			localised.formatter.locale = Locale(identifier: identifier)
+			XCTAssertEqual(0, SemverComparator.compare(localised, JSON(1.2), "1.2"), identifier)
+			XCTAssertEqual(1, SemverComparator.compare(localised, JSON(1.25), "1.2.9"), identifier)
+		}
+	}
+
 	func testOperators() {
 		let jsonExpr = JsonExpr()
 		let vars: [String: JSON] = ["app_version": "1.4.2"]

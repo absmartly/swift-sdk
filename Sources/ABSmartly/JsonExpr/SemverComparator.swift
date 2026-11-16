@@ -5,24 +5,31 @@ import Foundation
 // numerically (leading zeros ignored) and rank below alphanumeric ones, and a release ranks above
 // its pre-releases. Parsing is as permissive as the JavaScript SDK's, so a non-numeric core part
 // ("1.x") is compared as an alphanumeric identifier rather than rejected.
+//
+// Versions are handled as UTF-16 code units, like JavaScript strings: identifiers are equal only
+// when their code units are, and ordered by code unit, so canonically equivalent but differently
+// encoded strings ("é" and "e" + U+0301) differ, and a separator followed by a combining mark still
+// separates.
 enum SemverComparator {
+	private typealias Units = ArraySlice<UInt16>
+
 	// -1, 0 or 1, or nil when either side does not convert to a string or has an empty version core
 	// (for example "", "v", "+build" or "-beta").
 	static func compare(_ evaluator: Evaluator, _ lhs: JSON, _ rhs: JSON) -> Int? {
-		guard let l = evaluator.stringConvert(lhs).string, let r = evaluator.stringConvert(rhs).string else {
+		guard let l = stringConvert(evaluator, lhs), let r = stringConvert(evaluator, rhs) else {
 			return nil
 		}
 		return compare(l, r)
 	}
 
 	static func compare(_ lhs: String, _ rhs: String) -> Int? {
-		guard let l = parse(lhs), let r = parse(rhs) else {
+		guard let l = parse(Units(lhs.utf16)), let r = parse(Units(rhs.utf16)) else {
 			return nil
 		}
 
 		for i in 0..<max(l.parts.count, r.parts.count) {
 			let result = compareIdentifiers(
-				i < l.parts.count ? l.parts[i] : "0", i < r.parts.count ? r.parts[i] : "0")
+				i < l.parts.count ? l.parts[i] : zero, i < r.parts.count ? r.parts[i] : zero)
 			if result != 0 {
 				return result
 			}
@@ -45,54 +52,119 @@ enum SemverComparator {
 		return 0
 	}
 
-	private static func parse(_ version: String) -> (parts: [String], preRelease: String)? {
-		var v = Substring(version)
-		if v.hasPrefix("v") || v.hasPrefix("V") {
+	// Numbers are converted locale-independently, like JavaScript's x.toFixed(15) with trailing
+	// zeros stripped, rather than through the evaluator's NumberFormatter, which follows the locale.
+	private static func stringConvert(_ evaluator: Evaluator, _ x: JSON) -> String? {
+		if x.type == .number, let number = x.number {
+			return jsNumberString(number.doubleValue)
+		}
+		return evaluator.stringConvert(x).string
+	}
+
+	// JavaScript's x.toFixed(15).replace(/\.?0{0,15}$/, ""). Below 1e21 the exact binary value is
+	// rounded half up to 15 decimals; from 1e21 the shortest round-trip exponential form is used.
+	static func jsNumberString(_ x: Double) -> String {
+		if x.isNaN { return "NaN" }
+
+		var string: String
+		if x.isInfinite {
+			string = x < 0 ? "-Infinity" : "Infinity"
+		} else if abs(x) >= 1e21 {
+			// Swift's description is the shortest round-trip form, exponential at this magnitude
+			// ("1e+21", "1.2345e+22"), as JavaScript's Number::toString.
+			string = x.description
+		} else {
+			string = (x < 0 ? "-" : "") + fixed15(abs(x))
+		}
+
+		// The regex strips at most 15 trailing zeros, then a "." left at the end.
+		var zeros = 0
+		while zeros < 15, string.utf8.last == UInt8(ascii: "0") {
+			string.removeLast()
+			zeros += 1
+		}
+		if string.utf8.last == UInt8(ascii: ".") {
+			string.removeLast()
+		}
+		return string
+	}
+
+	// Rounds a non-negative finite value below 1e21 to 15 decimals, half up on its exact binary value
+	// as toFixed does (printf rounds ties to even). "%.1074f" prints the exact value, which never has
+	// more fractional digits than that.
+	private static func fixed15(_ x: Double) -> String {
+		let exact = Array(String(format: "%.1074f", x).utf8)
+		guard let dot = exact.firstIndex(of: UInt8(ascii: ".")) else { return String(format: "%.15f", x) }
+
+		var digits = Array(exact[..<dot]) + Array(exact[(dot + 1)...(dot + 15)])
+		if exact[dot + 16] >= UInt8(ascii: "5") {
+			var i = digits.count - 1
+			while i >= 0 && digits[i] == UInt8(ascii: "9") {
+				digits[i] = UInt8(ascii: "0")
+				i -= 1
+			}
+			if i >= 0 {
+				digits[i] += 1
+			} else {
+				digits.insert(UInt8(ascii: "1"), at: 0)
+			}
+		}
+		let integerCount = digits.count - 15
+		return String(decoding: digits[..<integerCount], as: UTF8.self) + "."
+			+ String(decoding: digits[integerCount...], as: UTF8.self)
+	}
+
+	private static let zero: Units = [0x30]
+
+	private static func parse(_ version: Units) -> (parts: [Units], preRelease: Units)? {
+		var v = version
+		if let first = v.first, first == 0x76 || first == 0x56 {  // "v", "V"
 			v = v.dropFirst()
 		}
-		if let plus = v.firstIndex(of: "+") {
+		if let plus = v.firstIndex(of: 0x2B) {  // "+"
 			v = v[..<plus]
 		}
 		if v.isEmpty {
 			return nil
 		}
 
-		let core: Substring
-		let preRelease: Substring
-		if let dash = v.firstIndex(of: "-") {
+		let core: Units
+		let preRelease: Units
+		if let dash = v.firstIndex(of: 0x2D) {  // "-"
 			core = v[..<dash]
-			preRelease = v[v.index(after: dash)...]
+			preRelease = v[(dash + 1)...]
 		} else {
 			core = v
-			preRelease = ""
+			preRelease = []
 		}
 		if core.isEmpty {
 			return nil
 		}
-		return (split(String(core)), String(preRelease))
+		return (split(core), preRelease)
 	}
 
-	// Keeps empty components, so "1..0" has three parts.
-	private static func split(_ s: String) -> [String] {
-		return s.split(separator: ".", omittingEmptySubsequences: false).map(String.init)
+	// Splits on "." keeping empty components, so "1..0" has three parts.
+	private static func split(_ s: Units) -> [Units] {
+		return s.split(separator: 0x2E, omittingEmptySubsequences: false)
 	}
 
-	private static func isNumeric(_ s: String) -> Bool {
-		return !s.isEmpty && s.utf8.allSatisfy { $0 >= 0x30 && $0 <= 0x39 }
+	// ASCII digits only, like JavaScript's /^\d+$/.
+	private static func isNumeric(_ s: Units) -> Bool {
+		return !s.isEmpty && s.allSatisfy { $0 >= 0x30 && $0 <= 0x39 }
 	}
 
-	private static func stripLeadingZeros(_ s: String) -> String {
-		let stripped = s.drop(while: { $0 == "0" })
-		return stripped.isEmpty ? "0" : String(stripped)
+	private static func stripLeadingZeros(_ s: Units) -> Units {
+		let stripped = s.drop(while: { $0 == 0x30 })
+		return stripped.isEmpty ? zero : stripped
 	}
 
-	// UTF-16 code unit order, like JavaScript string comparison.
-	private static func compareCodeUnits(_ a: String, _ b: String) -> Int {
-		if a == b { return 0 }
-		return a.utf16.lexicographicallyPrecedes(b.utf16) ? -1 : 1
+	// Code unit identity and order, like JavaScript's === and <.
+	private static func compareCodeUnits(_ a: Units, _ b: Units) -> Int {
+		if a.elementsEqual(b) { return 0 }
+		return a.lexicographicallyPrecedes(b) ? -1 : 1
 	}
 
-	private static func compareIdentifiers(_ a: String, _ b: String) -> Int {
+	private static func compareIdentifiers(_ a: Units, _ b: Units) -> Int {
 		let aIsNum = isNumeric(a)
 		let bIsNum = isNumeric(b)
 
