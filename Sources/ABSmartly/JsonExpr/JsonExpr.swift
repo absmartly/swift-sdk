@@ -15,6 +15,11 @@ final class JsonExpr {
 		"gte": GreaterThanOrEqualOperator(),
 		"lt": LessThanOperator(),
 		"lte": LessThanOrEqualOperator(),
+		"semver_eq": SemverEqualsOperator(),
+		"semver_gt": SemverGreaterThanOperator(),
+		"semver_gte": SemverGreaterThanOrEqualOperator(),
+		"semver_lt": SemverLessThanOperator(),
+		"semver_lte": SemverLessThanOrEqualOperator(),
 	]
 
 	public func evaluateBooleanExpr(_ expr: JSON, vars: [String: JSON]) -> Bool {

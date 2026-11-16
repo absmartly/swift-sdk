@@ -1,0 +1,52 @@
+name: Publish Swift-SDK
+
+# Swift Package Manager resolves releases straight from the git tag; this publishes the same
+# version to the CocoaPods trunk. Requires the COCOAPODS_TRUNK_TOKEN secret (a trunk session token
+# of a registered owner of the ABSmartlySwiftSDK pod).
+on:
+  push:
+    tags:
+      - v*
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  cocoapods:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      # The tag, the podspec and the X-Agent version must agree, or the pod and the version the
+      # SDK reports would not match the code SwiftPM users get from the tag.
+      - name: Check versions match the tag
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="${TAG#v}"
+          podspec_version=$(sed -nE "s/^[[:space:]]*spec\.version[[:space:]]*=[[:space:]]*'([^']+)'.*/\1/p" ABSmartlySwiftSDK.podspec)
+          sdk_version=$(sed -nE 's/^[[:space:]]*static let version = "([^"]+)".*/\1/p' Sources/ABSmartly/SDKVersion.swift)
+          echo "tag=$version podspec=$podspec_version sdk=$sdk_version"
+          if [ "$version" != "$podspec_version" ] || [ "$version" != "$sdk_version" ]; then
+            echo "::error::Tag $TAG does not match podspec ($podspec_version) and SDKVersion ($sdk_version)"
+            exit 1
+          fi
+
+      - name: Build and test
+        run: swift test
+
+      - name: Publish to CocoaPods trunk
+        env:
+          COCOAPODS_TRUNK_TOKEN: ${{ secrets.COCOAPODS_TRUNK_TOKEN }}
+        run: |
+          if [ -z "$COCOAPODS_TRUNK_TOKEN" ]; then
+            echo "::error::COCOAPODS_TRUNK_TOKEN secret is not set"
+            exit 1
+          fi
+          pod trunk push ABSmartlySwiftSDK.podspec --allow-warnings --skip-tests

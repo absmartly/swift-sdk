@@ -84,7 +84,7 @@ let sdk = try ABsmartlySDK(
     apiKey: "YOUR-API-KEY",
     application: "website",
     environment: "production",
-    applicationVersion: "1.0.0",
+    applicationVersion: "10000",   // An integer; sent as "0" otherwise
     timeout: 5.0,           // Default: 3.0 seconds
     retries: 5              // Default: 3
 )
@@ -115,7 +115,7 @@ let sdk = try ABsmartlySDK(config: sdkConfig)
 | apiKey                  | `String`                          | &#9989;   | `nil`       | Your API key which can be found on the Web Console.                                                                                                                           |
 | application             | `String`                          | &#9989;   | `nil`       | The name of the application where the SDK is installed. Applications are created on the Web Console and should match the applications where your experiments will be running. |
 | environment             | `String`                          | &#9989;   | `nil`       | The environment of the platform where the SDK is installed. Environments are created on the Web Console and should match the available environments in your infrastructure.   |
-| applicationVersion      | `String`                          | &#10060;  | `"0"`       | The version of your application.                                                                                                                                              |
+| applicationVersion      | `String`                          | &#10060;  | `"0"`       | The version of your application, as an integer (e.g. `"10203"`). The collector only accepts digits, so any other value is sent as `"0"`.                                                                                                                                            |
 | timeout                 | `TimeInterval`                    | &#10060;  | `3.0`       | Network request timeout in seconds.                                                                                                                                           |
 | retries                 | `UInt`                            | &#10060;  | `3`         | Number of retry attempts for failed network requests.                                                                                                                         |
 | contextEventLogger      | `ContextEventLogger`              | &#10060;  | `nil`       | Callback to handle SDK events (ready, exposure, goal, etc.)                                                                                                                   |
@@ -273,6 +273,25 @@ context.setAttributes([
     "screen": "product"
 ])
 ```
+
+The configured `application` and `environment` names are always available to audience filters and
+assignment-rule conditions as the `application` and `environment` attributes, so experiments can be
+targeted by them without setting anything. A user-set attribute of the same name wins, even when set
+after the context is created. These attributes are evaluation-only: they are not sent on the publish
+payload (the collector adds them server-side) and are not returned by `getAttributes()`.
+
+Audience filters and rule conditions can compare versions with `semver_eq`, `semver_gt`, `semver_gte`,
+`semver_lt` and `semver_lte` (a leading `v` and build metadata are ignored, and a release ranks above
+its pre-releases).
+
+### Assignment Rules
+
+Experiments can carry ordered assignment rules, set up in the A/B Smartly dashboard. The first rule
+whose environments and conditions match decides the variant: an `assign` rule sets a fixed variant, and
+a `split` rule spreads matching units over the variants by its percentages (hashed with the
+experiment's own seed). A matching rule wins over the audience, traffic allocation, full-on and custom
+assignments; only `setOverride` beats it. Its exposures carry `ruleOverride: true` and are kept out of
+the experiment's analysis.
 
 ### Tracking Goals
 

@@ -6,7 +6,12 @@ public final class DefaultClient: Client {
 	private let httpClient: HTTPClient
 	private let url: String
 	private let getQuery: [String: String]
-	private let putHeaders: [String: String]
+	private let headers: [String: String]
+	// Captured at init, like getQuery/headers, so audience evaluation always sees the same
+	// application/environment names used to fetch context data and publish exposures, even if the
+	// caller mutates ClientConfig afterwards.
+	private let application: String
+	private let environment: String
 
 	public convenience init(config: ClientConfig) throws {
 		try self.init(config: config, httpClient: DefaultHTTPClient(config: DefaultHTTPClientConfig()))
@@ -32,21 +37,38 @@ public final class DefaultClient: Client {
 			throw ABSmartlyError("Missing Environment configuration")
 		}
 
+		application = config.application
+		environment = config.environment
+
 		url = config.endpoint + "/context"
 		getQuery = ["application": config.application, "environment": config.environment]
-		putHeaders = [
+		// Sent on both the context GET and the publish PUT, as javascript-sdk does on every request.
+		headers = [
 			"Content-Type": "application/json; charset=utf-8",
-			"X-Agent": "absmartly-swift-sdk",
+			"X-Agent": SDKVersion.agent,
 			"X-API-Key": config.apiKey,
 			"X-Environment": config.environment,
 			"X-Application": config.application,
-			"X-Application-Version": config.applicationVersion,
+			"X-Application-Version": DefaultClient.wireApplicationVersion(config.applicationVersion),
 		]
+	}
+
+	// The collector binds X-Application-Version as a Long and rejects anything else with HTTP 400,
+	// which would stop the context from loading. Like the Java SDK, only the header value is
+	// normalised: trimmed, 1–18 ASCII digits are sent as-is, anything else as "0".
+	static func wireApplicationVersion(_ version: String) -> String {
+		let trimmed = version.unicodeScalars.drop(while: { $0.value <= 0x20 }).reversed().drop(while: {
+			$0.value <= 0x20
+		}).reversed()
+		guard (1...18).contains(trimmed.count), trimmed.allSatisfy({ $0 >= "0" && $0 <= "9" }) else {
+			return "0"
+		}
+		return String(String.UnicodeScalarView(trimmed))
 	}
 
 	public func getContextData() -> Promise<ContextData> {
 		return Promise<ContextData> { seal in
-			httpClient.get(url: url, query: getQuery, headers: nil).done(on: DispatchQueue.global()) { response in
+			httpClient.get(url: url, query: getQuery, headers: headers).done(on: DispatchQueue.global()) { response in
 				guard (200...299).contains(response.status) else {
 					seal.reject(ABSmartlyHTTPError(response.status, response.statusMessage))
 					return
@@ -67,7 +89,7 @@ public final class DefaultClient: Client {
 		return Promise<Void> { seal in
 			do {
 				let data = try JSONEncoder().encode(event)
-				httpClient.put(url: url, query: nil, headers: putHeaders, body: data).done(on: DispatchQueue.global()) { response in
+				httpClient.put(url: url, query: nil, headers: headers, body: data).done(on: DispatchQueue.global()) { response in
 					guard (200...299).contains(response.status) else {
 						seal.reject(ABSmartlyHTTPError(response.status, response.statusMessage))
 						return
@@ -84,5 +106,16 @@ public final class DefaultClient: Client {
 
 	public func close() -> Promise<Void> {
 		return httpClient.close()
+	}
+
+	// The configured names audiences and assignment-rule conditions target, captured at init so they
+	// stay consistent with the HTTP metadata. Empty values are reported as `nil` so the context
+	// leaves the key out of the evaluation map.
+	public func getApplication() -> String? {
+		return application.isEmpty ? nil : application
+	}
+
+	public func getEnvironment() -> String? {
+		return environment.isEmpty ? nil : environment
 	}
 }
