@@ -1180,22 +1180,6 @@ public final class Context {
 		return false
 	}
 
-	// Test hooks: the identity of the cached assignment, and a holdout arm resolved as the trigger
-	// path would resolve it.
-	func cachedAssignmentIdentity(_ experimentName: String) -> ObjectIdentifier {
-		return ObjectIdentifier(getAssignment(experimentName))
-	}
-
-	func resolveHoldoutArm(_ holdout: Experiment, unitType: String) -> (
-		variant: Int, iteration: Int, exposed: Bool
-	)? {
-		contextLock.lock()
-		defer { contextLock.unlock() }
-		return getHoldoutAssignment(holdout, unitType: unitType).map {
-			($0.variant, $0.iteration, $0.exposed.load(ordering: .acquiring))
-		}
-	}
-
 	// The unit's arm in a holdout, hashed with the covered experiment's unit type, or nil while that
 	// unit is missing. The caller holds `contextLock`.
 	private func getHoldoutAssignment(_ holdout: Experiment, unitType: String) -> Assignment? {
@@ -1487,6 +1471,26 @@ public final class Context {
 		logEvent(event: .error(error: error))
 	}
 }
+
+#if DEBUG
+extension Context {
+	// Test hooks: the identity of the cached assignment, and a holdout arm resolved as the trigger
+	// path would resolve it.
+	func cachedAssignmentIdentity(_ experimentName: String) -> ObjectIdentifier {
+		return ObjectIdentifier(getAssignment(experimentName))
+	}
+
+	func resolveHoldoutArm(_ holdout: Experiment, unitType: String) -> (
+		variant: Int, iteration: Int, exposed: Bool
+	)? {
+		contextLock.lock()
+		defer { contextLock.unlock() }
+		return getHoldoutAssignment(holdout, unitType: unitType).map {
+			($0.variant, $0.iteration, $0.exposed.load(ordering: .acquiring))
+		}
+	}
+}
+#endif
 
 private class ExperimentVariables {
 	let data: Experiment

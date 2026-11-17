@@ -1685,6 +1685,19 @@ final class ContextHoldoutTest: XCTestCase {
 			try publishedBytes(contextData(dangling, holdouts: [holdout(11, "unreferenced", seeds: Self.holdoutA)])))
 	}
 
+	// A malformed id in `holdoutIds` is dropped on its own (JavaScript skips ids with no holdout); the
+	// valid ids still cover the experiment.
+	func testMalformedHoldoutIdIsDroppedAlone() throws {
+		var covered = experiment(1, "exp_mixed_ids", holdoutIds: [])
+		covered["holdoutIds"] = [11, "x", NSNull(), 1.5, ["id": 12]] as [Any]
+		let data = contextData([covered], holdouts: [holdout(11, "holdout_a", seeds: Self.holdoutA)])
+
+		XCTAssertEqual([11], data.experiments[0].holdoutIds)
+		let context = createContext(data)
+		XCTAssertEqual(0, context.getTreatment("exp_mixed_ids"))
+		XCTAssertEqual([holdoutExposure(11, "holdout_a", 0)], loggedExposures())
+	}
+
 	// The plain constructors are unchanged and the holdouts overload defaults to none.
 	func testContextDataConstructorsAndEquality() {
 		let experiments = contextData([experiment(1, "exp", holdoutIds: [11])]).experiments
