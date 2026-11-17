@@ -1415,6 +1415,33 @@ final class ContextHoldoutTest: XCTestCase {
 			])
 	}
 
+	// A stale reference draws against the live definition, and the arm count pinned with the arm is
+	// the live split's: a 2-arm stale reference to a refreshed 3-arm holdout still reads arm 1 as
+	// "full-on only".
+	func testStaleHoldoutReferencePinsTheLiveArmCount() throws {
+		let context = createContext(
+			contextData([experiment(1, "exp_a")], holdouts: [holdout(21, "holdout_arity_stale", seeds: Self.holdoutB)]))
+
+		context.setData(
+			contextData(
+				[experiment(1, "exp_a"), experiment(2, "exp_b", holdoutIds: [21])],
+				holdouts: [
+					holdout(
+						21, "holdout_arity_stale", seeds: Self.threeArm1, split: Self.threeArmSplit, holdoutType: nil,
+						iteration: 2)
+				]))
+
+		#if DEBUG
+		let stale = contextData([], holdouts: [holdout(21, "holdout_arity_stale", seeds: Self.holdoutB)]).holdouts![0]
+		let resolved = try XCTUnwrap(context.resolveHoldoutArm(stale, unitType: Self.unitType))
+		XCTAssertEqual(1, resolved.variant)
+		XCTAssertEqual(2, resolved.iteration)
+		#endif
+
+		XCTAssertEqual(0, context.getTreatment("exp_b"))
+		try assertPublished(context, [holdoutExposure(21, "holdout_arity_stale", 1)])
+	}
+
 	// The override fast path revalidates coverage too: a holdout added by a refresh rebuilds the
 	// overridden assignment (re-exposing it) and fires the new holdout.
 	func testHoldoutBecomingApplicableAfterRefreshStillFiresForOverriddenExperiment() throws {

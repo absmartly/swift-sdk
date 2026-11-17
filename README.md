@@ -307,7 +307,9 @@ The SDK draws the unit's arm in each covering holdout (hashed with the experimen
 A unit held out by any covering holdout is held out. `getTreatment` and `getVariableValue` publish one
 exposure per covering holdout (its name and arm) the first time they read a covered experiment, even
 when the unit is not held out; `peekTreatment` and `peekVariableValue` publish nothing. `setOverride`
-and a matching assignment rule still win over a holdout, and its exposure is still published.
+and a matching assignment rule still win over a holdout, and its exposure is still published. A
+malformed holdout entry (for example one without a `name`) or a malformed id in `holdoutIds` is ignored
+on its own.
 
 ```swift
 // Held out by a covering holdout: 0, and only the holdout's exposure is published.
