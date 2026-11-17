@@ -66,11 +66,15 @@ final class AsyncAPITest: XCTestCase {
 	func testRefreshAwaitsTheFetch() async throws {
 		let context = makeContext(Promise.value(try contextData()))
 		provider.getContextDataReturnValue = Promise.value(try contextData(source: "refreshed"))
+		handler.publishEventReturnValue = Promise.value(())
+		context.track("goal1", properties: nil)
 
 		try await context.refresh()
 
 		XCTAssertEqual(1, provider.getContextDataCallsCount)
 		XCTAssertTrue(context.getExperiments().contains("exp_test_new"))
+		XCTAssertEqual(0, handler.publishEventCallsCount)
+		XCTAssertFalse(context.isClosed())
 	}
 
 	func testRefreshThrowsTheFetchError() async throws {
@@ -89,11 +93,41 @@ final class AsyncAPITest: XCTestCase {
 		let context = makeContext(Promise.value(try contextData()))
 		context.track("goal1", properties: nil)
 		handler.publishEventReturnValue = Promise.value(())
+		provider.getContextDataReturnValue = Promise.value(try contextData())
 
 		try await context.publish()
 
 		XCTAssertEqual(0, context.getPendingCount())
 		XCTAssertEqual(["goal1"], handler.publishEventReceivedEvent?.goals.map { $0.name })
+		XCTAssertEqual(0, provider.getContextDataCallsCount)
+	}
+
+	// Each overload returns only once the Promise it wraps has settled.
+	func testOverloadsWaitForTheirPromise() async throws {
+		let context = makeContext(Promise.value(try contextData()))
+		let settled = ManagedFlag()
+
+		context.track("goal1", properties: nil)
+		let (publish, publishResolver) = Promise<Void>.pending()
+		handler.publishEventReturnValue = publish
+		DispatchQueue.global().asyncAfter(deadline: .now() + 0.1) {
+			settled.set()
+			publishResolver.fulfill(())
+		}
+		try await context.publish()
+		XCTAssertTrue(settled.isSet)
+
+		let refreshSettled = ManagedFlag()
+		let (refresh, refreshResolver) = Promise<ContextData>.pending()
+		provider.getContextDataReturnValue = refresh
+		DispatchQueue.global().asyncAfter(deadline: .now() + 0.1) {
+			refreshSettled.set()
+			refreshResolver.fulfill(try! self.contextData())
+		}
+		try await context.refresh()
+		XCTAssertTrue(refreshSettled.isSet)
+		XCTAssertEqual(1, provider.getContextDataCallsCount)
+		XCTAssertEqual(1, handler.publishEventCallsCount)
 	}
 
 	func testPublishThrowsThePublishError() async throws {
@@ -114,11 +148,13 @@ final class AsyncAPITest: XCTestCase {
 		let context = makeContext(Promise.value(try contextData()))
 		context.track("goal1", properties: nil)
 		handler.publishEventReturnValue = Promise.value(())
+		provider.getContextDataReturnValue = Promise.value(try contextData())
 
 		try await context.close()
 
 		XCTAssertTrue(context.isClosed())
 		XCTAssertEqual(1, handler.publishEventCallsCount)
+		XCTAssertEqual(0, provider.getContextDataCallsCount)
 	}
 
 	func testCloseThrowsWhenTheFinalPublishFails() async throws {
@@ -269,5 +305,22 @@ private func XCTAssertThrowsAsync<T>(
 		XCTFail("expected an error", file: file, line: line)
 	} catch {
 		XCTAssertEqual(message, (error as? ABSmartlyError)?.errorMessage, file: file, line: line)
+	}
+}
+
+private final class ManagedFlag {
+	private let lock = NSLock()
+	private var value = false
+
+	func set() {
+		lock.lock()
+		value = true
+		lock.unlock()
+	}
+
+	var isSet: Bool {
+		lock.lock()
+		defer { lock.unlock() }
+		return value
 	}
 }

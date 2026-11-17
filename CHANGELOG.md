@@ -92,10 +92,11 @@ security fixes, from the `release/1.x` branch) for 12 months after 2.0 ships.
 - No compiler warnings in the SDK with Swift 5.10–6.4 toolchains.
 
 ### Compatibility notes
-- Measured: the 1.4.0 test suite and an app written against the 1.4.0 README compile unchanged
-  against 1.5.0, and `swift-api-digester` reports no source-breaking or ABI-breaking change (built with
-  library evolution) from 1.4.0's public API. Its remaining failures are the contract and bug-fix
-  changes above.
+- Checked on Linux before release: the 1.4.0 test suite and an app written against the 1.4.0 README
+  compile unchanged against 1.5.0 (the 1.4.0 tests that fail are the contract changes above), and
+  `swift-api-digester` found no source-breaking change in 1.4.0's public API. It found no ABI break
+  either, comparing library-evolution builds of 1.4.0 (with Linux shims for CommonCrypto and OSLog)
+  and 1.5.0. Apple ABI was not measured.
 - On Linux, `ABSmartlyError` subclasses `NSError`, because Foundation in Swift 6.0 and 6.1 crashes
   when `localizedDescription` is read on a class-based error that is not an `NSError`
   ([swift-corelibs-foundation#5221](https://github.com/swiftlang/swift-corelibs-foundation/issues/5221)).

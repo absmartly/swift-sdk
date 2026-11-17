@@ -1,15 +1,17 @@
 // swift-tools-version:5.9
 // Same as Package.swift, except that the SwiftyJSON condition also lists Mac Catalyst and
-// visionOS, which need tools-version 5.5 and 5.9. Keep the two manifests in sync.
+// visionOS, which need tools-version 5.5 and 5.9. Keep the two manifests in sync. The platform
+// minimums are the same as Package.swift's; they are written as strings because newer toolchains
+// deprecate the `.v10`-style constants and would warn on every build.
 import PackageDescription
 
 let package = Package(
     name: "ABSmartly",
     platforms: [
-        .iOS(.v10),
-        .tvOS(.v10),
-        .macOS(.v10_14),
-        .watchOS(.v3)
+        .iOS("10.0"),
+        .tvOS("10.0"),
+        .macOS("10.14"),
+        .watchOS("3.0")
     ],
     products: [
         .library(

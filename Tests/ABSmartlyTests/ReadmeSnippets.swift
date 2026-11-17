@@ -85,6 +85,7 @@ func readmeSnippet5(sdk: ABSmartlySDK, context: Context, config: ContextConfig, 
 
 // README block 6
 
+@available(iOS 13, macOS 10.15, tvOS 13, watchOS 6, *)
 @MainActor
 final class ExperimentsModel {
     let sdk: ABSmartlySDK
@@ -455,39 +456,34 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 @available(iOS 13, macOS 10.15, *)
 class ExperimentManager {
     private var sdk: ABSmartlySDK!
-    private var contextTask: Task<Context, Error>?
+    private var loadTask: Task<Void, Never>?
 
     func loadExperiment(deviceId: String) {
-        contextTask = Task {
+        loadTask = Task {
             let contextConfig = ContextConfig()
             contextConfig.setUnit(unitType: "device_id", uid: deviceId)
 
             let context = sdk.createContext(config: contextConfig)
-            try await context.waitUntilReady()
-
-            return context
-        }
-
-        Task {
             do {
-                let context = try await contextTask!.value
-                print("Context ready!")
-                await handleExperiment(context: context)
-            } catch is CancellationError {
-                print("Context loading cancelled")
+                try await context.waitUntilReady()
             } catch {
                 print("Context failed: \(error)")
+                return
             }
+            if Task.isCancelled {
+                return  // the screen went away while loading
+            }
+            handleExperiment(context: context)
         }
     }
 
     func cancelLoad() {
-        contextTask?.cancel()
-        print("Cancelling context load...")
+        loadTask?.cancel()
     }
 
-    private func handleExperiment(context: Context) async {
+    private func handleExperiment(context: Context) {
         let treatment = context.getTreatment("experiment_name")
+        print("treatment \(treatment)")
     }
 }
 

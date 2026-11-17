@@ -9,8 +9,13 @@ import PromiseKit
 // existing method returns, so it behaves exactly like it: same work, same result, same error.
 //
 // Cancelling the calling Task does not cancel the underlying work (a fetch, publish or close
-// keeps going, as with the Promise), and the call still waits for it to settle; check
-// `Task.isCancelled` afterwards if needed.
+// keeps going, as with the Promise), and the call still waits for it to settle and returns its
+// result; check `Task.isCancelled` afterwards if needed.
+//
+// Outside an async context (e.g. a plain `do {}` in synchronous code), `try await
+// context.waitUntilReady()` resolves to the Promise method and does not wait; the compiler
+// warns "no 'async' operations occur within 'await' expression". Call it from an async function
+// or a `Task {}`.
 //
 // With Swift 6 compilers the methods run in the caller's isolation (`#isolation`), so a
 // `Context` can be awaited from a `@MainActor` or actor method without a Sendable diagnostic.
@@ -19,6 +24,7 @@ import PromiseKit
 // 5.3) from parsing the async syntax inside.
 #if compiler(>=5.5)
 
+@available(iOS 13, macOS 10.15, tvOS 13, watchOS 6, *)
 extension Promise {
 	#if compiler(>=6.0)
 	func asyncValue(isolation: isolated (any Actor)? = #isolation) async throws -> T {

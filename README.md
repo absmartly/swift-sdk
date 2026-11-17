@@ -175,12 +175,17 @@ Cancelling the calling `Task` does not cancel the underlying request: the call s
 fetch, publish or close to finish and returns its result. Check `Task.isCancelled` afterwards if you
 need to.
 
+Call the async methods from an `async` function or a `Task {}`. In synchronous code, `try await
+context.waitUntilReady()` picks the Promise method and returns without waiting; the compiler warns
+"no 'async' operations occur within 'await' expression" when that happens.
+
 From a `@MainActor` view model or an actor, the calls run in the caller's isolation, so they compile
 without Sendable warnings in Swift 6 apps:
 
 ```swift
 import ABSmartlyAsync
 
+@available(iOS 13, macOS 10.15, tvOS 13, watchOS 6, *)
 @MainActor
 final class ExperimentsModel {
     let sdk: ABSmartlySDK
@@ -635,10 +640,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 The SDK's Promises cannot be cancelled: a context load, refresh, publish or close always runs to
 completion. If the result is no longer needed (for example the screen went away), ignore it.
 
-### iOS 13+ async/await with Task Cancellation
+### iOS 13+ async/await and Task Cancellation
 
-Cancelling the task stops your code from continuing after the await; the context still finishes
-loading in the background.
+The async methods do not respond to task cancellation: a cancelled task still waits for the context
+to load (or the publish/close to finish) and gets its result. To stop work after a cancelled load,
+check `Task.isCancelled` yourself:
 
 ```swift
 import ABSmartlyAsync
@@ -646,39 +652,34 @@ import ABSmartlyAsync
 @available(iOS 13, macOS 10.15, *)
 class ExperimentManager {
     private var sdk: ABSmartlySDK!
-    private var contextTask: Task<Context, Error>?
+    private var loadTask: Task<Void, Never>?
 
     func loadExperiment(deviceId: String) {
-        contextTask = Task {
+        loadTask = Task {
             let contextConfig = ContextConfig()
             contextConfig.setUnit(unitType: "device_id", uid: deviceId)
 
             let context = sdk.createContext(config: contextConfig)
-            try await context.waitUntilReady()
-
-            return context
-        }
-
-        Task {
             do {
-                let context = try await contextTask!.value
-                print("Context ready!")
-                await handleExperiment(context: context)
-            } catch is CancellationError {
-                print("Context loading cancelled")
+                try await context.waitUntilReady()
             } catch {
                 print("Context failed: \(error)")
+                return
             }
+            if Task.isCancelled {
+                return  // the screen went away while loading
+            }
+            handleExperiment(context: context)
         }
     }
 
     func cancelLoad() {
-        contextTask?.cancel()
-        print("Cancelling context load...")
+        loadTask?.cancel()
     }
 
-    private func handleExperiment(context: Context) async {
+    private func handleExperiment(context: Context) {
         let treatment = context.getTreatment("experiment_name")
+        print("treatment \(treatment)")
     }
 }
 ```
