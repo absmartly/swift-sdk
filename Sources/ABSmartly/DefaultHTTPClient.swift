@@ -29,7 +29,6 @@ public class DefaultHTTPClient: HTTPClient {
 		let sessionConfig = URLSessionConfiguration.ephemeral
 		sessionConfig.timeoutIntervalForRequest = config.connectionRequestTimeout
 		sessionConfig.timeoutIntervalForResource = config.connectionResourceTimeout
-		sessionConfig.httpMaximumConnectionsPerHost = 4
 		self.session = URLSession(configuration: sessionConfig)
 	}
 
@@ -79,7 +78,7 @@ public class DefaultHTTPClient: HTTPClient {
 					let capturedSession = self.session
 					self.sessionLock.unlock()
 					guard let session = capturedSession else {
-						seal.reject(ABSmartlyError("HTTP client is closed"))
+						seal.reject(URLError(.cancelled))
 						return
 					}
 
@@ -142,13 +141,7 @@ public class DefaultHTTPClient: HTTPClient {
 			})
 	}
 
-	/// Initiates shutdown: in-flight requests are allowed to finish, new ones are rejected.
-	/// The returned promise resolves once shutdown has been initiated, not when pending tasks settle.
 	public func close() -> Promise<Void> {
-		sessionLock.lock()
-		session?.finishTasksAndInvalidate()
-		session = nil
-		sessionLock.unlock()
 		return Promise<Void>.value(())
 	}
 }

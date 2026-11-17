@@ -181,7 +181,7 @@ final class ConcurrencyTests: XCTestCase {
 
 		XCTAssertEqual(0, context.peekTreatment("exp_test_ab"))
 		if case let .error(error) = logger.handleEventContextEventReceivedArguments?.event {
-			XCTAssertEqual((error as? ABSmartlyError)?.errorMessage, "ABsmartly Context is not yet ready.")
+			XCTAssertEqual((error as? ABSmartlyError)?.errorMessage, "ABSmartly Context is not yet ready.")
 		} else {
 			XCTFail("expected an error event")
 		}

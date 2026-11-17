@@ -1,8 +1,6 @@
 import Foundation
 #if canImport(CommonCrypto)
 import CommonCrypto
-#else
-import Crypto
 #endif
 
 // NOTE: MD5 is used here for non-cryptographic purposes only.
@@ -22,9 +20,8 @@ public class Hashing {
 			return hash
 		}
 		#else
-		// Linux with Swift Crypto
-		let digest = Insecure.MD5.hash(data: data)
-		let md5 = Array(digest)
+		// Linux: the SDK's own MD5 (MD5.swift)
+		let md5 = MD5.digest(Array(data))
 		#endif
 
 		let base64Str = Data(md5).base64EncodedString()

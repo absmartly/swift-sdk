@@ -20,37 +20,24 @@ final class MatchOperatorTest: OperatorTest {
 		XCTAssertEqual(JSON.null, matchOperator.evaluate(evaluator, ["abcdefghijk", JSON.null]))
 	}
 
-	func testRejectsLongPattern() {
-		let longPattern = String(repeating: "a", count: 1001)
-		let result = matchOperator.evaluate(evaluator, ["test", longPattern])
-		XCTAssertEqual(JSON.null, result)
+	// v1.4.0 had no pattern or input length limits and no nested-quantifier rejection; long patterns,
+	// long inputs and nested quantifiers that do not blow up still match normally. Only a match that
+	// runs past the timeout gives up (testOverlappingAlternationTimesOut).
+	func testLongPatternAndInputMatchAsBefore() {
+		XCTAssertEqual(JSON(false), matchOperator.evaluate(evaluator, ["test", String(repeating: "a", count: 1001)]))
+		XCTAssertEqual(JSON(true), matchOperator.evaluate(evaluator, [String(repeating: "a", count: 10001), "a"]))
 	}
 
-	func testRejectsLongInput() {
-		let longInput = String(repeating: "a", count: 10001)
-		let result = matchOperator.evaluate(evaluator, [longInput, "a"])
-		XCTAssertEqual(JSON.null, result)
+	func testNestedQuantifiersMatchAsBefore() {
+		XCTAssertEqual(JSON(false), matchOperator.evaluate(evaluator, ["test", "(a+)+b"]))
+		XCTAssertEqual(JSON(true), matchOperator.evaluate(evaluator, ["aaab", "(a+)+b"]))
+		XCTAssertEqual(JSON(true), matchOperator.evaluate(evaluator, ["test", "(?:x|a+)*"]))
 	}
 
-	func testRejectsNestedQuantifiers() {
-		let result = matchOperator.evaluate(evaluator, ["test", "(a+)+b"])
-		XCTAssertEqual(JSON.null, result)
-	}
-
-	func testRejectsOtherNestedQuantifierForms() {
-		for pattern in ["(a*)*b", "((a+)b)+", "(a{1,})+", "(a+){2,}", "(?:x|a+)*"] {
-			XCTAssertEqual(JSON.null, matchOperator.evaluate(evaluator, ["test", pattern]), pattern)
-		}
-	}
-
-	func testAcceptsSequentialQuantifiers() {
+	func testSequentialQuantifiers() {
 		XCTAssertEqual(JSON(true), matchOperator.evaluate(evaluator, ["ABC-123", "^([A-Z]+)-[0-9]+$"]))
 		XCTAssertEqual(JSON(true), matchOperator.evaluate(evaluator, ["ab12", "(a|b)+[0-9]{2}"]))
-		XCTAssertEqual(JSON(true), matchOperator.evaluate(evaluator, ["a+b", "(a\\+)b+"]))
-		XCTAssertEqual(JSON(true), matchOperator.evaluate(evaluator, ["aa", "([a+])+"]))
-		XCTAssertEqual(JSON(true), matchOperator.evaluate(evaluator, ["1234", "^([0-9]{2}){2}$"]))
 		XCTAssertEqual(JSON(true), matchOperator.evaluate(evaluator, ["192.168.1.1", "^([0-9]{1,3}\\.){3}[0-9]{1,3}$"]))
-		XCTAssertEqual(JSON(true), matchOperator.evaluate(evaluator, ["abab", "^(ab+){1,3}$"]))
 	}
 
 	func testOverlappingAlternationTimesOut() {

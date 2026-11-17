@@ -165,15 +165,15 @@ final class ContextTest: XCTestCase {
 		XCTAssertTrue(context.isFailed())
 	}
 
-	func testFailedContextHoldsEmptyDataAndReturnsDefaults() throws {
+	func testFailedContextHasNoDataAndReturnsDefaults() throws {
 		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
 		let context = try createContext(
 			config: contextConfig, data: Promise<ContextData>.init(error: ABSmartlyError("test")))
 		XCTAssertTrue(context.isReady())
 		XCTAssertTrue(context.isFailed())
-		let data = context.getContextData()
-		XCTAssertNotNil(data)
-		XCTAssertEqual(0, data?.experiments.count)
+		// As in v1.4.0, a failed context has no data.
+		XCTAssertNil(context.getContextData())
+		XCTAssertEqual([], context.getExperiments())
 		XCTAssertEqual(0, context.getTreatment("exp_test_ab"))
 		XCTAssertEqual(17, context.getVariableValue("banner.size", defaultValue: 17))
 	}
@@ -2884,7 +2884,7 @@ final class ContextTest: XCTestCase {
 		wait(for: [closed], timeout: 2.0)
 
 		XCTAssertEqual(0, context.getTreatment("exp_test_ab"))
-		XCTAssertEqual(["ABsmartly Context is finalized."], loggedErrorMessages())
+		XCTAssertEqual(["ABSmartly Context is closed."], loggedErrorMessages())
 		XCTAssertEqual(0, context.getPendingCount())
 	}
 
@@ -2995,7 +2995,7 @@ final class ContextTest: XCTestCase {
 		context.setUnit(unitType: "user_id", uid: 125)
 		XCTAssertEqual([], loggedErrorMessages())
 		context.setUnit(unitType: "user_id", uid: "125")
-		XCTAssertEqual(["Unit 'user_id' UID already set."], loggedErrorMessages())
+		XCTAssertEqual(["Unit 'user_id' already set."], loggedErrorMessages())
 		XCTAssertEqual(JSON(125), context.getUnitValue(unitType: "user_id"))
 
 		// JS hashes numbers with toFixed(0): 125.75 -> "126".
@@ -3172,8 +3172,9 @@ final class ContextTest: XCTestCase {
 		XCTAssertNil(context.getContextData())
 		XCTAssertEqual(0, context.getPendingCount())
 
-		XCTAssertEqual(10, loggedErrorMessages().count)
-		XCTAssertEqual(["ABsmartly Context is not yet ready."], Set(loggedErrorMessages()).sorted())
+		// getCustomFieldValue/getCustomFieldValueType return nil without an error event, as in v1.4.0.
+		XCTAssertEqual(8, loggedErrorMessages().count)
+		XCTAssertEqual(["ABSmartly Context is not yet ready."], Set(loggedErrorMessages()).sorted())
 	}
 
 	func testErrorHandlerReadingContextOnFailedLoadDoesNotRecurse() throws {
@@ -3212,7 +3213,7 @@ final class ContextTest: XCTestCase {
 		XCTAssertNil(context.getContextData())
 		XCTAssertNil(context.getContextData())
 		XCTAssertEqual(2, nestedReads)
-		XCTAssertEqual(Array(repeating: "ABsmartly Context is not yet ready.", count: 2), loggedErrorMessages())
+		XCTAssertEqual(Array(repeating: "ABSmartly Context is not yet ready.", count: 2), loggedErrorMessages())
 	}
 
 	func testWritesAfterCloseAreIgnoredWithErrorEvent() throws {
@@ -3228,7 +3229,7 @@ final class ContextTest: XCTestCase {
 		XCTAssertEqual(0, context.getPendingCount())
 		XCTAssertNil(context.getAttribute(name: "attr"))
 		XCTAssertNil(context.getUnit(unitType: "device_id"))
-		XCTAssertEqual(Array(repeating: "ABsmartly Context is finalized.", count: 3), loggedErrorMessages())
+		XCTAssertEqual(Array(repeating: "ABSmartly Context is closed.", count: 3), loggedErrorMessages())
 	}
 
 	func testReadsInsideReadyHandlerSeeTheData() throws {
@@ -3616,5 +3617,112 @@ final class ContextTest: XCTestCase {
 		XCTAssertEqual(["age": JSON(25)], context.getAttributes())
 		XCTAssertNil(context.getAttribute(name: "environment"))
 		XCTAssertNil(context.getAttribute(name: "application"))
+	}
+}
+
+// Behaviour kept from v1.4.0 for the 1.5.0 release (see CHANGELOG "Compatibility").
+final class ContextV140BehaviourTest: XCTestCase {
+	var clock = ClockMock()
+	var scheduler = SchedulerMock()
+	var handler = ContextEventHandlerMock()
+	var provider = ContextDataProviderMock()
+	var logger = ContextEventLoggerMock()
+
+	override func setUp() {
+		clock.millisReturnValue = 1_620_000_000_000
+		scheduler.scheduleAfterExecuteReturnValue = ScheduledHandleMock()
+		scheduler.scheduleWithFixedDelayAfterRepeatingExecuteReturnValue = ScheduledHandleMock()
+	}
+
+	private func contextData() throws -> ContextData {
+		let path = TestResources.path(forResource: "context", ofType: "json")
+		return try JSONDecoder().decode(ContextData.self, from: Data(contentsOf: URL(fileURLWithPath: path)))
+	}
+
+	private func makeContext(_ config: ContextConfig, _ data: Promise<ContextData>) -> Context {
+		return Context(
+			config: config, clock: clock, scheduler: scheduler, handler: handler, provider: provider, logger: logger,
+			parser: DefaultVariableParser(), matcher: AudienceMatcher(), promise: data)
+	}
+
+	private func config() -> ContextConfig {
+		let config = ContextConfig()
+		config.setUnit(unitType: "session_id", uid: "e791e240fcd3df7d238cfc285f475e8152fcc0ec")
+		return config
+	}
+
+	func testRefreshOnFailedContextFetchesAgain() throws {
+		let context = makeContext(config(), Promise(error: ABSmartlyError("load failed")))
+		XCTAssertTrue(context.isFailed())
+
+		provider.getContextDataReturnValue = Promise.value(try contextData())
+		let refreshed = XCTestExpectation()
+		_ = context.refresh().done { refreshed.fulfill() }
+		wait(for: [refreshed], timeout: 1.0)
+
+		XCTAssertEqual(1, provider.getContextDataCallsCount)
+		XCTAssertNotNil(context.getContextData())
+	}
+
+	func testNegativePublishDelaySchedulesPublishAsBefore() throws {
+		let config = self.config()
+		config.publishDelay = -1
+		let context = makeContext(config, Promise.value(try contextData()))
+
+		context.track("goal1", properties: nil)
+
+		XCTAssertEqual(1, scheduler.scheduleAfterExecuteCallsCount)
+		XCTAssertEqual(-1, scheduler.scheduleAfterExecuteReceivedArguments?.after)
+	}
+
+	func testCustomFieldValuesKeepV140Coercion() throws {
+		let json = """
+			{"experiments": [{"id": 1, "name": "exp", "customFieldValues": [
+				{"name": "upper", "type": "boolean", "value": "TRUE"},
+				{"name": "no", "type": "boolean", "value": "false"},
+				{"name": "array", "type": "json", "value": "[1, 2]"},
+				{"name": "scalar", "type": "json", "value": "5"}
+			]}]}
+			"""
+		let data = try JSONDecoder().decode(ContextData.self, from: Data(json.utf8))
+		let context = makeContext(config(), Promise.value(data))
+
+		XCTAssertNil(context.getCustomFieldValue(experimentName: "exp", key: "upper"))
+		XCTAssertEqual(false, context.getCustomFieldValue(experimentName: "exp", key: "no") as? Bool)
+		XCTAssertNil(context.getCustomFieldValue(experimentName: "exp", key: "array"))
+		XCTAssertNil(context.getCustomFieldValue(experimentName: "exp", key: "scalar"))
+		XCTAssertEqual("json", context.getCustomFieldValueType(experimentName: "exp", key: "array"))
+	}
+
+	func testCustomFieldReadsAfterCloseLogNoError() throws {
+		let context = makeContext(config(), Promise.value(try contextData()))
+		let closed = XCTestExpectation()
+		_ = context.close().done { closed.fulfill() }
+		wait(for: [closed], timeout: 1.0)
+		logger.handleEventContextEventReceivedInvocations = []
+
+		XCTAssertEqual("string", context.getCustomFieldValueType(experimentName: "exp_test_ab", key: "country"))
+		XCTAssertNotNil(context.getCustomFieldValue(experimentName: "exp_test_ab", key: "country"))
+		XCTAssertFalse(context.getCustomFieldKeys(experimentName: "exp_test_ab").isEmpty)
+		XCTAssertFalse(context.getCustomFieldKeys().isEmpty)
+		let errors = logger.handleEventContextEventReceivedInvocations.filter {
+			if case .error = $0.event { return true }
+			return false
+		}
+		XCTAssertEqual(0, errors.count)
+	}
+
+	func testV140NamesAreTheRealTypes() throws {
+		// v1.4.0 consumers' code names these types; the cross-SDK spellings are aliases of them.
+		let client = ClientMock()
+		let config = ABSmartlyConfig(
+			contextDataProvider: nil, contextEventHandler: DefaultContextEventHandler(client: client),
+			contextEventLogger: nil, variableParser: nil, scheduler: nil, client: client)
+		XCTAssertTrue(config.contextPublisher is DefaultContextPublisher)
+		let sdk: ABsmartlySDK = try ABSmartlySDK(config: config)
+		XCTAssertEqual("\(type(of: sdk))", "ABSmartlySDK")
+		XCTAssertEqual("\(ABsmartlyConfig.self)", "ABSmartlyConfig")
+		XCTAssertEqual("\(DefaultContextPublisher.self)", "DefaultContextEventHandler")
+		XCTAssertEqual("0", ClientConfig(apiKey: "k", application: "a", endpoint: "e", environment: "p").applicationVersion)
 	}
 }

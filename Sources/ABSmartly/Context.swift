@@ -240,7 +240,7 @@ public final class Context {
 	}
 
 	public func getCustomFieldKeys() -> Set<String> {
-		guard ensureReady(true) else { return [] }
+		guard ensureReady(false) else { return [] }
 
 		var keys: Set<String> = []
 
@@ -261,7 +261,6 @@ public final class Context {
 	}
 
 	public func getCustomFieldKeys(experimentName: String) -> [String] {
-		guard ensureReady(true) else { return [] }
 
 		dataLock.lock()
 		defer { dataLock.unlock() }
@@ -274,7 +273,6 @@ public final class Context {
 	}
 
 	public func getCustomFieldValue(experimentName: String, key: String) -> Any? {
-		guard ensureReady(true) else { return nil }
 
 		dataLock.lock()
 		defer { dataLock.unlock() }
@@ -283,7 +281,6 @@ public final class Context {
 	}
 
 	public func getCustomFieldValueType(experimentName: String, key: String) -> String? {
-		guard ensureReady(true) else { return nil }
 
 		dataLock.lock()
 		defer { dataLock.unlock() }
@@ -407,7 +404,7 @@ public final class Context {
 		defer { contextLock.unlock() }
 
 		if let previous = unitValues[unitType], !Self.sameUID(previous, stored) {
-			throw ABSmartlyError("Unit '\(unitType)' UID already set.")
+			throw ABSmartlyError("Unit '\(unitType)' already set.")
 		}
 
 		unitValues[unitType] = stored
@@ -608,11 +605,6 @@ public final class Context {
 			return Promise<Void>(error: error)
 		}
 
-		// A failed context stays failed: refresh is a no-op that succeeds (JS context.ts _refresh).
-		if isFailed() {
-			return Promise<Void>.value(())
-		}
-
 		promiseLock.lock()
 		defer { promiseLock.unlock() }
 
@@ -666,7 +658,7 @@ public final class Context {
 		// before deciding whether a final flush is needed.
 		// The closures hold the context strongly: once close() starts, the final flush must
 		// complete even if the caller drops its last reference (e.g. close() from deinit).
-		awaitInFlightPublishes().done(on: DispatchQueue.global()) { [self] in
+		_ = awaitInFlightPublishes().done(on: DispatchQueue.global()) { [self] in
 			if self.pendingCount.load(ordering: .acquiring) > 0 {
 				self.flush().done(on: DispatchQueue.global()) { [self] in
 					self.closed.store(true, ordering: .releasing)
@@ -780,7 +772,7 @@ public final class Context {
 						self.logError(error: error)
 						throw error
 					}
-					publishPromise.ensure(on: DispatchQueue.global()) { [weak self] in
+					_ = publishPromise.ensure(on: DispatchQueue.global()) { [weak self] in
 						if let self = self {
 							self.eventLock.lock()
 							self.inFlightPublishes[publishId] = nil
@@ -805,7 +797,7 @@ public final class Context {
 
 	private func checkReady(_ expectNotClosed: Bool) throws {
 		if !isReady() {
-			throw ABSmartlyError("ABsmartly Context is not yet ready.")
+			throw ABSmartlyError("ABSmartly Context is not yet ready.")
 		}
 		if expectNotClosed {
 			try checkNotClosed()
@@ -814,10 +806,10 @@ public final class Context {
 
 	private func checkNotClosed() throws {
 		if isClosed() {
-			throw ABSmartlyError("ABsmartly Context is finalized.")
+			throw ABSmartlyError("ABSmartly Context is closed.")
 		}
 		if isClosing() {
-			throw ABSmartlyError("ABsmartly Context is finalizing.")
+			throw ABSmartlyError("ABSmartly Context is closing.")
 		}
 	}
 
@@ -1115,7 +1107,6 @@ public final class Context {
 
 	private func setTimeout() {
 		guard isReady() else { return }
-		guard publishDelay >= 0 else { return }
 
 		timeoutLock.lock()
 		defer { timeoutLock.unlock() }
@@ -1224,24 +1215,9 @@ public final class Context {
 
 					if let customValue = customFieldValue.value {
 						if fieldType.starts(with: "json") {
-							// An object goes through the configured VariableParser; other JSON is a `JSON`.
-							do {
-								let json = try JSON(data: Data(customValue.utf8), options: .fragmentsAllowed)
-								switch json.type {
-								case .dictionary:
-									value.value = parser.parse(experimentName: experiment.name, config: customValue)
-								case .null:
-									value.value = nil
-								default:
-									value.value = json
-								}
-							} catch {
-								let truncated = customValue.count > 100 ? "\(customValue.prefix(100))..." : customValue
-								Logger.error("Failed to parse JSON custom field '\(fieldName)' for experiment '\(experiment.name)': \(error.safeLocalizedDescription). Original value: '\(truncated)'")
-								value.value = nil
-							}
+							value.value = parser.parse(experimentName: experiment.name, config: customValue)
 						} else if fieldType.starts(with: "boolean") {
-							value.value = customValue == "true"
+							value.value = Bool(customValue)
 						} else if fieldType.starts(with: "number") {
 							value.value = Double(customValue)
 						} else {
@@ -1272,7 +1248,7 @@ public final class Context {
 		index = [:]
 		indexVariables = [:]
 		customFieldValues = [:]
-		data = ContextData()
+		data = nil
 		failedError = error
 	}
 
