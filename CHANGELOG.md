@@ -1,5 +1,45 @@
 # Changelog
 
+## 2.0.0 (unreleased)
+
+A new API for Swift 6 over the 1.5.0 engine. Assignment, audiences, assignment rules, exposures,
+goals and the publish payload are unchanged from 1.5.0 (a parity test replays 1.5.0's recorded
+output); the `X-Agent` header is `absmartly-swift-sdk/2.0.0`. See [MIGRATING.md](MIGRATING.md) for every
+1.x API and its replacement, and [SUPPORT.md](SUPPORT.md) for the 1.x support window.
+
+### BREAKING (everyone moves)
+- Module and pod renamed to `ABsmartly` (was module `ABSmartly`, pod `ABSmartlySwiftSDK`); the entry type is `ABsmartlyClient`. Update `import` lines and the dependency.
+- `async`/`await` replaces PromiseKit: `ready()`, `publish()`, `refresh()`, `close()` and `fetchContextData()` are `async throws(ABsmartlyError)`.
+- `JSONValue` replaces SwiftyJSON's `JSON` in every API (attributes, variables, goal properties, custom fields, unit values).
+- `ABsmartlyClient.Configuration` replaces `ABsmartlyConfig`, `ClientConfig`, `DefaultHTTPClientConfig`, `Client`/`DefaultClient`, `ContextDataProvider` and `ContextPublisher`; a `Transport` replaces `HTTPClient`. `Scheduler`, `Clock`, `VariableParser`, `AudienceMatcher`, `Hashing` and `MurmurHash` are no longer public.
+- Contexts are created with `client.context(units:...)` (awaited), `client.makeContext(units:...)` or `client.context(units:..., data:)`, instead of `ContextConfig`.
+- Renamed reads and setters, following the Swift API Design Guidelines (`treatment(for:)`, `variable(_:default:)`, `overrides[...]`, `state`, ...).
+- `ContextEventLogger` is replaced by an `EventLogger` closure and `context.events` (`AsyncStream`); `ContextEventLoggerEvent` is `Context.Event`, with no `.finalize` alias.
+- `ABSmartlyError` (a class) is replaced by the `ABsmartlyError` enum. `localizedDescription` keeps the 1.x messages.
+- Minimum platforms raised to iOS 15, macOS 12, tvOS 15, watchOS 8 (1.x: iOS 10, macOS 10.14, tvOS 10, watchOS 3); building needs Swift 6.0 / Xcode 16.
+- `setUnit` throws its error (blank UID, a different UID already set, closed context) in addition to emitting the `.error` event.
+- `client.context(units:...)` throws when the context data cannot be fetched instead of returning a failed context (`makeContext` still returns it).
+- A custom variant-config parser (`VariableParser`) is no longer supported.
+- `customFieldValue(_:in:)` returns `JSONValue?` for every field type (1.x returned `Any?`: `[String: JSON]`, `JSON`, `Double`, `Bool` or `String`).
+
+### Changed
+- The `X-Agent` header is `absmartly-swift-sdk/2.0.0`, so the collector's `agent` column shows 2.0.0 for 2.x clients.
+
+### Added
+- Swift 6 language mode with complete strict concurrency; every public type is `Sendable`.
+- `ABsmartlyUI`, a separate product with SwiftUI property wrappers (`@Treatment`, `@Variable`) and `.absmartlyContext(_:)`.
+- Typed variables (`variable(_:default:)` for any `Decodable & Sendable`), `treatment(for:as:)` for `Int`-backed enums, `isInTreatment(_:)`.
+- `setOverrides(_:)`/`setCustomAssignments(_:)` and `overrides`/`customAssignments` dictionary properties; overrides and custom assignments at context creation.
+- `Context.State` and `context.state`.
+- `EventLogger.osLog`.
+
+### Dependencies
+- None on Apple platforms: PromiseKit, SwiftyJSON and swift-atomics are gone; MD5 comes from CryptoKit. `swift-crypto` (`3.0.0..<5.0.0`) on Linux only.
+
+### Release
+- The publish workflow creates the GitHub release; 1.x tags are created with `--latest=false`. CI runs on `main` and `release/**`.
+- The CocoaPods trunk is read-only from 2026-12-02. A 2.0 pod can only be published before then; afterwards 2.x is distributed through Swift Package Manager.
+
 ## 1.5.0 (unreleased)
 
 ### BREAKING

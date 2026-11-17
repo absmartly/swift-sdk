@@ -1,22 +1,25 @@
 name: Publish Swift-SDK
 
-# Swift Package Manager resolves releases straight from the git tag; this publishes the same
-# version to the CocoaPods trunk. Requires the COCOAPODS_TRUNK_TOKEN secret (a trunk session token
-# of a registered owner of the ABSmartlySwiftSDK pod).
+# Swift Package Manager resolves releases straight from the git tag. This workflow checks the tag
+# against the podspec and SDK version, publishes the pod (2.x: pod `ABsmartly`; 1.x on release/1.x
+# keeps pod `ABSmartlySwiftSDK`) and creates the GitHub release. A 1.x tag never becomes the latest
+# release. Requires the COCOAPODS_TRUNK_TOKEN secret (a trunk session token of a registered owner of
+# the pod). The CocoaPods trunk is read-only from 2026-12-02; after that the pod step fails and only
+# the SwiftPM tag and GitHub release are published.
 on:
   push:
     tags:
       - v*
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: publish-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  cocoapods:
+  publish:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -26,17 +29,21 @@ jobs:
       # The tag, the podspec and the X-Agent version must agree, or the pod and the version the
       # SDK reports would not match the code SwiftPM users get from the tag.
       - name: Check versions match the tag
+        id: version
         env:
           TAG: ${{ github.ref_name }}
         run: |
           version="${TAG#v}"
-          podspec_version=$(sed -nE "s/^[[:space:]]*spec\.version[[:space:]]*=[[:space:]]*'([^']+)'.*/\1/p" ABSmartlySwiftSDK.podspec)
-          sdk_version=$(sed -nE 's/^[[:space:]]*static let version = "([^"]+)".*/\1/p' Sources/ABSmartly/SDKVersion.swift)
+          podspec=$(ls *.podspec | head -n 1)
+          podspec_version=$(sed -nE "s/^[[:space:]]*spec\.version[[:space:]]*=[[:space:]]*'([^']+)'.*/\1/p" "$podspec")
+          sdk_version=$(grep -rhE '^[[:space:]]*static let version = "' Sources | sed -nE 's/^[[:space:]]*static let version = "([^"]+)".*/\1/p' | head -n 1)
           echo "tag=$version podspec=$podspec_version sdk=$sdk_version"
           if [ "$version" != "$podspec_version" ] || [ "$version" != "$sdk_version" ]; then
             echo "::error::Tag $TAG does not match podspec ($podspec_version) and SDKVersion ($sdk_version)"
             exit 1
           fi
+          echo "podspec=$podspec" >> "$GITHUB_OUTPUT"
+          echo "major=${version%%.*}" >> "$GITHUB_OUTPUT"
 
       - name: Build and test
         run: swift test
@@ -44,9 +51,21 @@ jobs:
       - name: Publish to CocoaPods trunk
         env:
           COCOAPODS_TRUNK_TOKEN: ${{ secrets.COCOAPODS_TRUNK_TOKEN }}
+          PODSPEC: ${{ steps.version.outputs.podspec }}
         run: |
           if [ -z "$COCOAPODS_TRUNK_TOKEN" ]; then
             echo "::error::COCOAPODS_TRUNK_TOKEN secret is not set"
             exit 1
           fi
-          pod trunk push ABSmartlySwiftSDK.podspec --allow-warnings --skip-tests
+          pod trunk push "$PODSPEC" --allow-warnings --skip-tests
+
+      # Only the newest major is "latest": a 1.x maintenance release is published with --latest=false.
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          MAJOR: ${{ steps.version.outputs.major }}
+        run: |
+          latest=true
+          if [ "$MAJOR" = "1" ]; then latest=false; fi
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "$TAG" --generate-notes --latest=$latest

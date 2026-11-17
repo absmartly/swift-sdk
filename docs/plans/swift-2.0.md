@@ -58,11 +58,24 @@ These are release logistics, not API questions:
   1.5.0 ships. cross-sdk-tests' swift lane is pinned to `feat/swift-2.0` while this PR is open and
   must be re-pinned to `main` after merge.
 
-## Coexistence with 1.x
+## Coexistence with 1.x (owner policy 2026-11-17)
 
-- `release/1.x` is cut from the `v1.5.0` tag and gets bug fixes and cross-SDK contract changes for
-  12 months after 2.0.0 ships.
-- `main` becomes 2.x after 1.5.0 ships.
+Both majors live in this repository, on branches:
+
+- `main` is 2.x once 2.0 merges; tags `v2.*`. This branch (`feat/swift-2.0`) is the `next/major`
+  work in progress.
+- `release/1.x` is cut by the owner from the last 1.x tag (`v1.5.0`) when 2.0 merges; tags `v1.*`.
+  Bug fixes only, for 12 months after 2.0.0 ships (`SUPPORT.md`).
+- Fix flow: fix on `main` first, cherry-pick to `release/1.x` during the window; 1.x-only bugs go
+  straight to `release/1.x`.
+- CI runs on pushes and pull requests to `main` and `release/**`; a `v*` tag publishes, after the
+  tag == podspec == `SDKVersion` check. The same workflow files go to `release/1.x` in a separate
+  small PR once the owner has cut it.
+- Registries: 2.x is the pod and module `ABsmartly`; 1.x keeps pod `ABSmartlySwiftSDK` and module
+  `ABSmartly`, so the two never collide. GitHub releases for `v1.*` tags are created with
+  `--latest=false`, so a 1.x patch never becomes the latest release.
+- cross-sdk-tests runs a `swift` lane on this branch (2.x wrapper) and a `swift-v1` lane on 1.x
+  (`release/1.x`, or `main` until that branch exists) for the whole window.
 - A SwiftPM graph resolves one major version of a package, so an app cannot link 1.x and 2.x at the
   same time. The module rename (`ABSmartly` to `ABsmartly`) therefore costs nothing extra and makes
   the migration explicit: every `import ABSmartly` becomes `import ABsmartly`.
@@ -348,9 +361,10 @@ which SwiftUI `body` cannot do, and would hop executors on the hottest path. So:
 - `Context` is `final class Context: Sendable`. Its mutable state is one value-type struct
   (`ContextState`) guarded by one lock, so every read and write is a single short critical section.
   1.5.0 used a recursive lock, three more locks and six atomics; 2.0 has one lock per context.
-- The lock is `os_unfair_lock` on Apple platforms (heap-allocated, so it never moves) and
-  `Synchronization.Mutex` on Linux. `Mutex` needs iOS 18 / macOS 15, above the floor;
-  `OSAllocatedUnfairLock` needs iOS 16. Both wrap the same primitive, so nothing is lost.
+- The lock is `os_unfair_lock` on Apple platforms and `pthread_mutex_t` on Linux, both
+  heap-allocated so they never move (`Internal/Locked.swift`). `Synchronization.Mutex` needs
+  iOS 18 / macOS 15 and `OSAllocatedUnfairLock` iOS 16, both above the floor; they wrap the same
+  primitives.
 - No user code runs under the lock: the event logger, the event streams and the transport are all
   called after the critical section. There is no recursive locking.
 - I/O (`ready`, `refresh`, `publish`, `close`) is `async`. Timers (auto-publish, auto-refresh) are
@@ -377,6 +391,13 @@ non-2xx statuses to `.httpStatus` and decodes with `JSONDecoder`.
 MD5 comes from CryptoKit's `Insecure.MD5` on Apple platforms and from swift-crypto's identical API
 on Linux; MurmurHash3 and the variant assigner are ported unchanged. (1.x used CommonCrypto's
 `CC_MD5`, deprecated since iOS 13, which would fail a warnings-as-errors build.)
+
+### JSON parsing
+
+Audience, rule and variable JSON is parsed with `JSONSerialization` (the parser 1.5.0's SwiftyJSON
+used) and numbers are classified the way SwiftyJSON did, so `-0.0` keeps its sign and integers
+beyond `Int64` become doubles exactly as in 1.5.0. `JSONDecoder` differs on both and is only used
+for the typed models (`ContextData`) and `JSONValue`'s `Codable` conformance.
 
 ### JSON expressions
 
@@ -452,6 +473,14 @@ Behaviour parity is proven, not asserted:
 - `numberConvert` of a string uses `Double(_:)`, not JS `parseFloat` (`"5abc"` is null, JS 5).
 - A multi-key JSON expression object evaluates the first key in dictionary order (JS: insertion
   order). The backend only produces single-key objects.
+
+## Known 2.0 difference from 1.5.0
+
+- An integer literal from 2^63 to 2^64−1 inside an audience or rule (e.g. `9223372036854775808`)
+  is converted to text as `"9223372036854776000"`. 1.5.0 on Linux prints it as a negative number
+  (a Foundation `NSNumber` formatting bug), on Apple platforms as the unsigned value. Only `match`,
+  `in` and string equality see the text; numeric comparisons are unchanged. The backend does not
+  produce such literals.
 
 ## Migration
 
