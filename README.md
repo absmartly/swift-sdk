@@ -293,6 +293,27 @@ experiment's own seed). A matching rule wins over the audience, traffic allocati
 assignments; only `setOverride` beats it. Its exposures carry `ruleOverride: true` and are kept out of
 the experiment's analysis.
 
+### Holdouts
+
+Holdouts are set up in the A/B Smartly dashboard and need no code. The context data lists them in
+`ContextData.holdouts`, and each experiment names the holdouts covering it in `Experiment.holdoutIds`.
+The SDK draws the unit's arm in each covering holdout (hashed with the experiment's unit type):
+
+- Arm 0 holds the unit out: the experiment returns the control variant (`0`) and its variables'
+  control values, and publishes no exposure of its own.
+- In a holdout with three arms, arm 1 also holds the unit out of experiments that are not full-on;
+  full-on experiments are assigned as usual. Every other arm leaves the experiment alone.
+
+A unit held out by any covering holdout is held out. `getTreatment` and `getVariableValue` publish one
+exposure per covering holdout (its name and arm) the first time they read a covered experiment, even
+when the unit is not held out; `peekTreatment` and `peekVariableValue` publish nothing. `setOverride`
+and a matching assignment rule still win over a holdout, and its exposure is still published.
+
+```swift
+// Held out by a covering holdout: 0, and only the holdout's exposure is published.
+let variant = context.getTreatment("exp_test_ab")
+```
+
 ### Tracking Goals
 
 Goals are created in the A/B Smartly web console.

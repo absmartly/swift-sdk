@@ -41,9 +41,15 @@ public final class Context {
 	private var data: ContextData? = nil
 	private var failedError: Error? = nil
 
+	// Holdouts with a non-empty split, by id. Guarded by `dataLock`.
+	private var holdoutsById: [Int: Experiment] = [:]
+
 	private var hashedUnits: [String: [UInt8]] = [:]
 	private var assigners: [String: VariantAssigner] = [:]
 	private var assignmentCache: [String: Assignment] = [:]
+	// A holdout's arm per (holdout id, covered experiment's unit type), kept across refreshes while the
+	// holdout's iteration is unchanged. Guarded by `contextLock`.
+	private var holdoutAssignments: [HoldoutKey: Assignment] = [:]
 
 	private let contextLock = NSRecursiveLock()
 	// The string each unit is hashed from, and the UID as it was given (string or number).
@@ -413,11 +419,11 @@ public final class Context {
 		unitValues[unitType] = stored
 		units[unitType] = hashSource
 
-		// A split rule resolved without its unit is rebuilt now that the unit is known. An exposed one
-		// is kept, so the user never switches variant or gets a second exposure.
+		// A split rule or a holdout resolved without its unit is rebuilt now that the unit is known. An
+		// exposed one is kept, so the user never switches variant or gets a second exposure.
 		assignmentCache = assignmentCache.filter { _, assignment in
-			assignment.unitType != unitType || !assignment.ruleMissingUnit
-				|| assignment.exposed.load(ordering: .acquiring)
+			assignment.unitType != unitType || assignment.exposed.load(ordering: .acquiring)
+				|| !(assignment.ruleMissingUnit || assignment.holdoutMissingUnit)
 		}
 	}
 
@@ -491,10 +497,37 @@ public final class Context {
 
 		let (assignment, claimed) = getAssignmentClaimingExposure(experimentName)
 		if claimed {
-			queueExposure(assignment)
+			triggerExposures(assignment)
 		}
 
 		return assignment.variant
+	}
+
+	// A held-out experiment publishes no exposure of its own (an override or a matching rule still
+	// does); every holdout covering it publishes its own, once per epoch.
+	private func triggerExposures(_ assignment: Assignment) {
+		if !assignment.suppressed || assignment.overridden || assignment.ruleOverride {
+			queueExposure(assignment)
+		}
+
+		triggerHoldoutExposures(assignment)
+	}
+
+	// Fires the holdout arms pinned when the assignment was resolved, not a live re-resolution, so a
+	// refresh in between cannot publish a holdout exposure from another epoch.
+	private func triggerHoldoutExposures(_ assignment: Assignment) {
+		guard let holdouts = assignment.holdouts, let holdoutAssignments = assignment.holdoutAssignments else {
+			return
+		}
+
+		for (holdout, holdoutAssignment) in zip(holdouts, holdoutAssignments) {
+			guard let holdoutAssignment = holdoutAssignment else { continue }
+			if holdoutAssignment.exposed.compareExchange(
+				expected: false, desired: true, ordering: .acquiringAndReleasing
+			).0 {
+				queueExposure(holdoutAssignment, name: holdout.name)
+			}
+		}
 	}
 
 	// Looks the assignment up and marks it exposed in one `contextLock` section, so `setUnit` cannot
@@ -521,9 +554,9 @@ public final class Context {
 		return (assignment, claimed)
 	}
 
-	private func queueExposure(_ assignment: Assignment) {
+	private func queueExposure(_ assignment: Assignment, name: String? = nil) {
 		let exposure = Exposure(
-			assignment.id, assignment.name, assignment.unitType, assignment.variant,
+			assignment.id, name ?? assignment.name, assignment.unitType, assignment.variant,
 			clock.millis(), assignment.assigned, assignment.eligible,
 			assignment.overridden, assignment.fullOn, assignment.custom, assignment.audienceMismatch,
 			ruleOverride: assignment.ruleOverride)
@@ -859,10 +892,27 @@ public final class Context {
 		return attrs
 	}
 
-	private func experimentMatches(_ experiment: Experiment, _ assignment: Assignment) -> Bool {
+	// Reads the fields through `ExperimentVariables` so a cached read does not copy the whole `Experiment`.
+	private func experimentMatches(_ experimentVariables: ExperimentVariables, _ assignment: Assignment) -> Bool {
+		let experiment = experimentVariables.data
 		return experiment.id == assignment.id && experiment.unitType == assignment.unitType
 			&& experiment.iteration == assignment.iteration && experiment.fullOnVariant == assignment.fullOnVariant
 			&& experiment.trafficSplit == assignment.trafficSplit
+	}
+
+	// The covering holdouts are the same (id, iteration) pairs the assignment was resolved with. A
+	// same-iteration seed or split edit is not a change, so it never forces a second exposure.
+	private func holdoutSetMatches(_ experiment: ExperimentVariables, _ assignment: Assignment) -> Bool {
+		guard let fresh = experiment.holdouts, let pinned = assignment.holdouts else {
+			return experiment.holdouts == nil && assignment.holdouts == nil
+		}
+		guard fresh.count == pinned.count else { return false }
+		for (freshHoldout, pinnedHoldout) in zip(fresh, pinned) {
+			if freshHoldout.id != pinnedHoldout.id || freshHoldout.iteration != pinnedHoldout.iteration {
+				return false
+			}
+		}
+		return true
 	}
 
 	// Whether the cached assignment still holds for the current attributes and rules: the matching
@@ -943,7 +993,9 @@ public final class Context {
 
 		if let assignment = assignmentCache[experimentName] {
 			if let override = overrides[experimentName] {
-				if assignment.overridden && assignment.variant == override {
+				if assignment.overridden && assignment.variant == override
+					&& (experiment == nil || holdoutSetMatches(experiment!, assignment))
+				{
 					// override up-to-date
 					return assignment
 				}
@@ -955,10 +1007,13 @@ public final class Context {
 					return assignment
 				}
 			} else if let exp = experiment {
-				// A matching rule wins over a custom assignment, so a custom mismatch is not staleness.
+				// A held-out experiment is forced to variant 0 and a matching rule wins over a custom
+				// assignment, so a custom mismatch is not staleness.
 				let custom = cassignments[experimentName]
-				if custom == nil || custom == assignment.variant || assignment.ruleOverride {
-					if experimentMatches(exp.data, assignment) && audienceMatches(exp, assignment) {
+				if custom == nil || custom == assignment.variant || assignment.ruleOverride || assignment.suppressed {
+					if experimentMatches(exp, assignment) && audienceMatches(exp, assignment)
+						&& holdoutSetMatches(exp, assignment)
+					{
 						// assignment up-to-date
 						return assignment
 					}
@@ -969,6 +1024,23 @@ public final class Context {
 		let assignment = Assignment()
 		assignment.name = experimentName
 		assignment.eligible = true
+
+		// Resolved for overrides too: the holdouts still publish their exposures.
+		if let experiment = experiment, let holdouts = experiment.holdouts {
+			let unitType = experiment.data.unitType
+			let holdoutAssignments = holdouts.map { holdout in
+				unitType.flatMap { getHoldoutAssignment(holdout, unitType: $0) }
+			}
+
+			assignment.holdouts = holdouts
+			assignment.holdoutAssignments = holdoutAssignments
+			assignment.suppressed = holdoutAssignments.contains { holdoutAssignment in
+				guard let holdoutAssignment = holdoutAssignment else { return false }
+				return Context.isHeldOutBy(
+					holdoutAssignment.variant, armCount: holdoutAssignment.holdoutArmCount,
+					fullOnVariant: experiment.data.fullOnVariant)
+			}
+		}
 
 		if let override = overrides[experimentName] {
 			if let experimentVariables = experiment {
@@ -989,11 +1061,15 @@ public final class Context {
 				assignment.ruleMissingUnit = rule?.missingUnit ?? false
 
 				// A matching assignment rule is an explicit, author-specified assignment: it wins over
-				// the audience, traffic eligibility, full-on and custom assignments; only an override
-				// beats it. It is flagged `ruleOverride` so the collector keeps it out of analysis.
+				// holdout suppression, the audience, traffic eligibility, full-on and custom assignments;
+				// only an override beats it. It is flagged `ruleOverride` so the collector keeps it out of
+				// analysis.
 				if let rule = rule {
 					assignment.variant = rule.variant
 					assignment.ruleOverride = true
+				} else if assignment.suppressed {
+					assignment.assigned = false
+					assignment.variant = 0
 				} else {
 					if let audience = experiment.data.audience {
 						if audience.count > 0 {
@@ -1059,12 +1135,14 @@ public final class Context {
 
 	// Experiments sharing a key are walked in ascending id order, like the JavaScript SDK: each
 	// one visited is exposed (unless peeking), and the first that is assigned, overridden or won by
-	// an assignment rule and whose variant defines the key provides the value.
+	// an assignment rule and whose variant defines the key provides the value. A held-out unit reads
+	// the first held-out experiment's control value, not the default, when nothing else wins.
 	private func resolveVariableValue(_ key: String, defaultValue: JSON?, peek: Bool) -> JSON? {
 		guard let keyExperimentVariables = getVariableExperiments(key) else {
 			return defaultValue
 		}
 
+		var suppressedFallback: [String: JSON]?
 		for experimentVariables in keyExperimentVariables {
 			let (assignment, claimed) =
 				peek
@@ -1072,16 +1150,81 @@ public final class Context {
 				: getAssignmentClaimingExposure(experimentVariables.data.name, requireVariables: true)
 			if let variables = assignment.variables {
 				if claimed {
-					queueExposure(assignment)
+					triggerExposures(assignment)
 				}
 
 				if let value = variables[key], assignment.assigned || assignment.overridden || assignment.ruleOverride {
 					return value
 				}
+
+				if assignment.suppressed && !assignment.overridden && !assignment.ruleOverride
+					&& suppressedFallback == nil
+				{
+					suppressedFallback = variables
+				}
 			}
 		}
 
-		return defaultValue
+		return suppressedFallback?[key] ?? defaultValue
+	}
+
+	// Arm 0 always holds the experiment out. In a 3-arm holdout, arm 1 holds out only an experiment
+	// that is not full-on. The arm count comes from the holdout's split, never its `holdoutType`.
+	static func isHeldOutBy(_ holdoutVariant: Int, armCount: Int, fullOnVariant: Int) -> Bool {
+		if holdoutVariant == 0 {
+			return true
+		}
+		if armCount == 3 && holdoutVariant == 1 {
+			return fullOnVariant == 0
+		}
+		return false
+	}
+
+	// Test hooks: the identity of the cached assignment, and a holdout arm resolved as the trigger
+	// path would resolve it.
+	func cachedAssignmentIdentity(_ experimentName: String) -> ObjectIdentifier {
+		return ObjectIdentifier(getAssignment(experimentName))
+	}
+
+	func resolveHoldoutArm(_ holdout: Experiment, unitType: String) -> (
+		variant: Int, iteration: Int, exposed: Bool
+	)? {
+		contextLock.lock()
+		defer { contextLock.unlock() }
+		return getHoldoutAssignment(holdout, unitType: unitType).map {
+			($0.variant, $0.iteration, $0.exposed.load(ordering: .acquiring))
+		}
+	}
+
+	// The unit's arm in a holdout, hashed with the covered experiment's unit type, or nil while that
+	// unit is missing. The caller holds `contextLock`.
+	private func getHoldoutAssignment(_ holdout: Experiment, unitType: String) -> Assignment? {
+		// `holdout` may predate a refresh; prefer the live definition.
+		let live = getLocked(lock: dataLock, dict: holdoutsById, key: holdout.id) ?? holdout
+
+		let key = HoldoutKey(id: live.id, unitType: unitType)
+		if let cached = holdoutAssignments[key], cached.iteration == live.iteration {
+			return cached
+		}
+
+		guard let uid = units[unitType] else {
+			return nil
+		}
+
+		let assigner = getVariantAssigner(unitType, getUnitHash(unitType, uid))
+		let assignment = Assignment()
+		assignment.id = live.id
+		assignment.name = live.name
+		assignment.iteration = live.iteration
+		assignment.unitType = unitType
+		assignment.variant = assigner.assign(live.split, live.seedHi, live.seedLo)
+		assignment.assigned = true
+		assignment.eligible = true
+		// Pinned with the arm: a same-iteration refresh may change the live split's length.
+		assignment.holdoutArmCount = live.split.count
+
+		holdoutAssignments[key] = assignment
+		return assignment
 	}
 
 	private func getVariableExperiments(_ experimentName: String) -> [ExperimentVariables]? {
@@ -1186,8 +1329,23 @@ public final class Context {
 		var indexVariables: [String: [ExperimentVariables]] = [:]
 		var customFieldValues: [String: [String: ContextCustomFieldValue]] = [:]
 
+		var holdoutsById: [Int: Experiment] = [:]
+		for holdout in data.holdouts ?? [] where !holdout.split.isEmpty {
+			holdoutsById[holdout.id] = holdout
+		}
+
 		for experiment in data.experiments {
 			let experimentVariables = ExperimentVariables(experiment)
+			if let holdoutIds = experiment.holdoutIds, !holdoutsById.isEmpty {
+				// Sorted by id and deduplicated; an id with no holdout entry is ignored.
+				var holdouts: [Experiment] = []
+				for holdoutId in holdoutIds {
+					if let holdout = holdoutsById[holdoutId] {
+						holdouts.insertUniqueSorted(holdout, isSorted: { $0.id < $1.id })
+					}
+				}
+				experimentVariables.holdouts = holdouts.isEmpty ? nil : holdouts
+			}
 			if let assignmentRules = experiment.assignmentRules, !assignmentRules.isEmpty {
 				experimentVariables.rules = matcher.parseRules(assignmentRules)
 				if experimentVariables.rules == nil {
@@ -1259,6 +1417,7 @@ public final class Context {
 
 		dataLock.lock()
 		self.data = data
+		self.holdoutsById = holdoutsById
 		self.index = index
 		self.indexVariables = indexVariables
 		self.customFieldValues = customFieldValues
@@ -1272,6 +1431,7 @@ public final class Context {
 		index = [:]
 		indexVariables = [:]
 		customFieldValues = [:]
+		holdoutsById = [:]
 		data = ContextData()
 		failedError = error
 	}
@@ -1333,6 +1493,8 @@ private class ExperimentVariables {
 	var variables: [[String: JSON]] = []
 	// Parsed `data.assignmentRules`; nil when there are none or they are not valid JSON.
 	var rules: [JSON]?
+	// The holdouts covering this experiment, sorted by id; nil when none.
+	var holdouts: [Experiment]?
 
 	init(_ experiment: Experiment) {
 		data = experiment
@@ -1344,7 +1506,7 @@ private class ContextCustomFieldValue {
 	var value: Any?
 }
 
-private class Assignment: Equatable {
+private final class Assignment: Equatable {
 	static func == (lhs: Assignment, rhs: Assignment) -> Bool {
 		return lhs.id == rhs.id && lhs.iteration == rhs.iteration && lhs.fullOnVariant == rhs.fullOnVariant
 			&& lhs.name == rhs.name && lhs.unitType == rhs.unitType && lhs.trafficSplit == rhs.trafficSplit
@@ -1376,4 +1538,20 @@ private class Assignment: Equatable {
 	var variables: [String: JSON]?
 	var exposed = ManagedAtomic<Bool>(false)
 	var attrsSeq: Int = 0
+	// Held out by a covering holdout: variant 0, not assigned, and no exposure of its own.
+	var suppressed = false
+	// The covering holdouts and the unit's arm in each (nil while the unit is missing), as resolved.
+	var holdouts: [Experiment]?
+	var holdoutAssignments: [Assignment?]?
+	// On a holdout's own assignment: its split's length when `variant` was drawn.
+	var holdoutArmCount = 0
+
+	var holdoutMissingUnit: Bool {
+		return holdoutAssignments?.contains { $0 == nil } ?? false
+	}
+}
+
+private struct HoldoutKey: Hashable {
+	let id: Int
+	let unitType: String
 }

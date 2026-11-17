@@ -2,23 +2,37 @@ import Foundation
 
 public final class ContextData: Codable {
 	public let experiments: [Experiment]
+	/// Holdouts that experiments reference through `Experiment.holdoutIds`; nil when the payload has none.
+	public let holdouts: [Experiment]?
 
 	enum CodingKeys: String, CodingKey {
 		case experiments
+		case holdouts
 	}
 
 	public init() {
 		experiments = []
+		holdouts = nil
 	}
 
 	public init(experiments: [Experiment]) {
 		self.experiments = experiments
+		self.holdouts = nil
+	}
+
+	public init(experiments: [Experiment], holdouts: [Experiment]? = nil) {
+		self.experiments = experiments
+		self.holdouts = holdouts
 	}
 
 	public init(from decoder: Decoder) throws {
 		do {
 			let container = try decoder.container(keyedBy: CodingKeys.self)
 			self.experiments = try container.decode([Experiment].self, forKey: .experiments)
+			// Lenient: a malformed holdout entry (or a malformed `holdouts` field) is dropped on its own, so
+			// it only uncovers the experiments that reference it.
+			self.holdouts = (try? container.decodeIfPresent([LenientElement<Experiment>].self, forKey: .holdouts))?
+				.flatMap { $0.compactMap { $0.value } }
 		} catch let error as DecodingError {
 			throw error
 		} catch {
@@ -33,6 +47,15 @@ public final class ContextData: Codable {
 
 extension ContextData: Equatable {
 	public static func == (lhs: ContextData, rhs: ContextData) -> Bool {
-		lhs.experiments == rhs.experiments
+		lhs.experiments == rhs.experiments && lhs.holdouts == rhs.holdouts
+	}
+}
+
+// Decodes an array element without failing the whole array when the element is malformed.
+private struct LenientElement<Element: Decodable>: Decodable {
+	let value: Element?
+
+	init(from decoder: Decoder) throws {
+		value = try? Element(from: decoder)
 	}
 }
