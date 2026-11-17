@@ -5,7 +5,7 @@ import UIKit
 
 class ViewController: UIViewController {
 	private let button = UIButton()
-	private var sdk: ABsmartlySDK?
+	private var sdk: ABSmartlySDK?
 	private var context: Context!
 
 	override func viewDidLoad() {
@@ -48,8 +48,8 @@ class ViewController: UIViewController {
 		do {
 			let client = try DefaultClient(config: clientConfig)
 
-			let sdkConfig = ABsmartlyConfig(client: client)
-			sdk = try ABsmartlySDK(config: sdkConfig)
+			let sdkConfig = ABSmartlyConfig(client: client)
+			sdk = try ABSmartlySDK(config: sdkConfig)
 		} catch {
 			print(error.localizedDescription)
 			return

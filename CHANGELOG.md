@@ -1,55 +1,103 @@
 # Changelog
 
-## 1.5.0 (unreleased)
+## 1.5.0
 
-### BREAKING
-- Audiences and assignment-rule conditions always evaluate the configured `application` (its name) and `environment` (its name) attributes, with no opt-in. This changes assignment for running experiments: a unit whose experiment has Audience enforced (strict) and an `environment`/`application` condition currently gets variant 0 (the condition never matched because the SDK did not supply the attribute). After upgrading, that condition matches and the unit is randomised normally. Those experiments are broken today; this fixes them, but the change in assignment is intentional and called out here. System values are applied first and user-set attributes overlay them, so a `setAttribute("environment", …)` (even after the context is created) still wins and invalidates a cached assignment. Values that are `nil` or empty are left out of the evaluation map. These attributes are not sent on the publish payload (the collector already adds them server-side) and are not reported by `getAttributes()`/`getAttribute(name:)`. `app_version`/`applicationVersion` is never injected into audience evaluation; only a user-set `app_version` attribute is evaluated. `ClientConfig.applicationVersion` stays a `String`, so the public API stays backward compatible.
-- A variable key shared by several experiments resolves like the JavaScript SDK. The experiments are walked in ascending id order; `getVariableValue` exposes every experiment it visits (an unassigned one with `assigned: false`), and the value comes from the first experiment that is assigned or overridden and whose variant defines the key. v1.4.0 used the first assigned or overridden experiment even when its variant lacked the key (returning the default) and exposed only that experiment. Callers of a key whose lowest-id experiment's variant lacks it now get a later experiment's value, and more exposures can be queued. `getVariableValue` also exposes an experiment whose audience mismatch in strict mode yields the control variant, as `getTreatment` does.
-- `ContextEventHandler` renamed to `ContextPublisher`. Source-compatible: `ContextEventHandler` is a typealias and the `contextEventHandler:` init is kept. Only binary (ABI) consumers are affected.
-- Standardized error messages.
-- Audiences are re-evaluated when attributes change: a `setAttribute` after a treatment was read can change that experiment's assignment (and log a new exposure) when the audience result flips.
-- `publish()` and `close()` reject when the collector answers with a non-2xx status (v1.4.0 treated any response as success). A failed `close()` leaves the context open with its events queued, so `publish()`/`close()` can retry; v1.4.0 marked it closed.
-- A negative `publishDelay` disables automatic publishing; events are only sent by `publish()` or `close()`.
-- A failed context: `getContextData()` returns an empty `ContextData` instead of `nil`, and `refresh()` succeeds without fetching (v1.4.0 fetched again).
-- `getCustomFieldValue`/`getCustomFieldValueType` called before the context is ready or after it is closed log an `.error` event (they still return `nil`).
-- A `boolean` custom field is `true` only for the exact string `"true"`; any other value, including `"TRUE"`, returns `false` (v1.4.0 returned `nil` for anything but `"true"`/`"false"`).
-- A `json` custom field holding an array or a scalar returns it as `JSON` (v1.4.0 returned `nil`, since the `VariableParser` only accepts objects).
-- `getContextData()` rejects a non-2xx response with `ABSmartlyHTTPError` (v1.4.0 tried to decode the body and rejected with a decoding error).
-
-### Dependencies
-- Apple platforms are unchanged: the SDK still depends on SwiftyJSON (`~> 5.0`, Swift Package Manager and CocoaPods) and `ABSmartly.JSON` is still `SwiftyJSON.JSON`, so `SwiftyJSON.JSON` values can be passed to the SDK and its results stored in `SwiftyJSON.JSON` variables as before.
-- On Linux, where SwiftyJSON does not compile with Linux Foundation, `ABSmartly.JSON` is a vendored copy of SwiftyJSON 5.0.2's `JSON` with the same API (`SwiftyJSONError` is vendored too), and SwiftyJSON is not linked.
-
-### Compatibility
-- `getCustomFieldValue` returns the v1.4.0 types: `[String: JSON]` from the configured `VariableParser` for a `json` object (other JSON values as `JSON`), `Double` for `number`, `Bool` for `boolean`.
-- `ready`, `refresh`, `publish` and `close` events reach the `ContextEventLogger` on the main thread on Apple platforms, as in v1.4.0. The work itself runs off the main thread.
-- `publish()` and `refresh()` work before the context is ready, as in v1.4.0.
-- A pending automatic publish keeps the context alive until it is sent, so a `track()` followed by dropping the context still publishes.
-- `Context` methods keep their v1.4.0 non-throwing signatures. Misuse that used to hit a `precondition` (reading before ready, writing after close, an invalid or changed unit) no longer crashes: reads return a default (`0`, `nil`, the `defaultValue`, empty collections), writes are ignored, and an `.error` event is logged. Overrides and custom assignments (`setOverride(s)`, `setCustomAssignment(s)`) are still accepted after close, as in v1.4.0.
-- Swift tools-version stays 5.3. Toolchains 5.9 and later read `Package@swift-5.9.swift`, which is identical except that the SwiftyJSON dependency also names Mac Catalyst and visionOS (those platform conditions need a newer tools-version). `swift-crypto` (`1.0.0..<4.0.0`) is only linked on Linux; Apple platforms keep using CommonCrypto.
-- Linux is supported: the SDK builds and its tests pass with Swift 5.10, 6.1 and 6.4 on Linux, and CI runs them on every change. Before, SwiftyJSON did not compile with Linux Foundation.
-- On Linux, `ABSmartlyError` (and the internal HTTP error) subclass `NSError`, because Foundation in Swift 6.0 and 6.1 crashes when `localizedDescription` is read on a class-based error that is not an `NSError` ([swift-corelibs-foundation#5221](https://github.com/swiftlang/swift-corelibs-foundation/issues/5221)). `errorMessage`, `localizedDescription` and `is`/`as?` casts are unchanged. Apple platforms are not affected.
-
-### Changed
-- The `X-Application-Version` header is normalised for the collector, which binds it as an integer and rejects anything else with HTTP 400: the configured value is trimmed and sent as-is when it is 1–18 ASCII digits, otherwise as `"0"` (like the Java SDK). `ClientConfig.applicationVersion` keeps the caller's value. v1.4.0 sent the raw value on publish, so a dotted version such as `"2.4.1"` made every publish fail.
-- The context GET carries the same headers as the publish PUT (`X-API-Key`, `X-Agent`, `X-Application`, `X-Application-Version`, `X-Environment`), as the JavaScript SDK sends on every request.
-- Every exposure in the publish payload carries `ruleOverride` (`false` when no assignment rule matched), as the JavaScript SDK serialises it.
+1.5.0 is source compatible with 1.4.0: code written against 1.4.0 compiles unchanged, with the same
+PromiseKit and SwiftyJSON types, minimum platforms and Swift tools-version (5.3). It is the last 1.x
+feature release. A 2.0 SDK with a new, async-first API is planned; 1.x will be maintained (bug and
+security fixes, from the `release/1.x` branch) for 12 months after 2.0 ships.
 
 ### Added
-- Assignment rules (`Experiment.assignmentRules`), matching the JavaScript SDK. The first rule whose `environments` and `conditions` match sets the variant: `assign` gives a fixed variant, `split` hashes the unit with the experiment's seed over the rule's percentages (which must sum to 100 within 0.01). A matching rule wins over audience/`audienceStrict`, traffic eligibility, full-on and custom assignments; only an override beats it. Exposures carry a new `ruleOverride` flag. A split matched before its unit is set gives the experiment's no-unit result (the full-on variant, else 0) and is re-resolved when the unit is set, unless it was already exposed. Malformed rules are skipped; a split whose length differs from the variant count, or an out-of-bounds `assign` variant, falls back to normal assignment.
+- async/await overloads of every Promise-returning method, in the new `ABSmartlyAsync` module
+  (`import ABSmartlyAsync`, part of the `ABSmartly` Swift Package Manager product; iOS 13, macOS 10.15,
+  tvOS 13, watchOS 6): `Context.waitUntilReady()`, `refresh()`, `publish()`, `close()`, `finalize()`,
+  `ABSmartlySDK.getContextData()`, `close()`, and the `Client`, `ContextDataProvider`,
+  `ContextEventHandler` and `HTTPClient` methods. Each awaits the existing Promise, so behaviour is
+  unchanged; cancelling the calling task does not cancel the request. They are in a separate module
+  because, inside an `async` function, Swift prefers an async overload, so 1.4.0 code such as
+  `_ = context.publish()` there would no longer compile if they were in `ABSmartly`. With Swift 6
+  compilers they run in the caller's isolation (`#isolation`), so they can be awaited from
+  `@MainActor` code in Swift 6 apps without Sendable diagnostics. Not available through CocoaPods.
+- Assignment rules (`Experiment.assignmentRules`), matching the JavaScript SDK. The first rule whose
+  `environments` and `conditions` match sets the variant: `assign` gives a fixed variant, `split`
+  hashes the unit with the experiment's seed over the rule's percentages (which must sum to 100 within
+  0.01). A matching rule wins over audience/`audienceStrict`, traffic eligibility, full-on and custom
+  assignments; only an override beats it. Exposures carry a new `ruleOverride` flag. A split matched
+  before its unit is set gives the experiment's no-unit result (the full-on variant, else 0) and is
+  re-resolved when the unit is set, unless it was already exposed. Malformed rules are skipped; a split
+  whose length differs from the variant count, or an out-of-bounds `assign` variant, falls back to
+  normal assignment.
 - `semver_eq`, `semver_gt`, `semver_gte`, `semver_lt` and `semver_lte` JSON-expression operators.
+- Linux support: the SDK builds and its tests pass with Swift 5.10, 6.1 and 6.4 on Linux (CI runs 6.1).
+  On Linux `ABSmartly.JSON` is a vendored copy of SwiftyJSON 5.0.2's `JSON` with the same API (SwiftyJSON
+  itself does not compile there) and MD5 is computed in the SDK; Apple platforms are unchanged
+  (SwiftyJSON `~> 5.0`, CommonCrypto). No new package dependencies.
+- `ClientConfig.applicationVersion` and `ClientConfig.init(apiKey:application:endpoint:environment:applicationVersion:)`.
+- `ABSmartlySDK(endpoint:apiKey:application:environment:…)` convenience init. Its `contextEventLogger`
+  is used for every context whose `ContextConfig.eventLogger` is unset, and `retries` defaults to 3,
+  like `DefaultHTTPClientConfig`.
+- Cross-SDK spellings, as aliases of the 1.4.0 types (not deprecated): `ABsmartlySDK`,
+  `ABsmartlyConfig`, `ContextPublisher`, `DefaultContextPublisher`, `ABSmartlyConfig.contextPublisher`
+  and `init(contextDataProvider:contextPublisher:…)`.
+- Numeric unit UIDs: `setUnit(unitType:uid: Int/Double)`, `setUnit(unitType:value: JSON)`,
+  `getUnitValue`/`getUnitValues` keep the number type; numbers hash like the JavaScript SDK (rounded
+  to an integer, so 125.75 hashes as "126").
+- `finalize()`/`isFinalized()`/`isFinalizing()` aliases, `ContextEventLoggerEvent.finalize` (an alias
+  for `.close`), `readyError()`, `getCustomFieldKeys(experimentName:)`.
+- `Hashing` is public, with `hash(String)`, `hash(Double)`, `utf8Bytes`, `base64UrlNoPadding`;
+  `ABSmartlyError` is public.
+- Tags `v*` publish the podspec to the CocoaPods trunk (the tag, podspec and SDK version must agree).
+
+### Changed (cross-SDK contract)
+- Audiences and assignment-rule conditions see the configured `application` and `environment` names
+  as attributes, as in the other SDKs. An experiment with a strict audience on `environment` or
+  `application` used to give every unit variant 0 (the attribute was never set); it now matches. A
+  user-set attribute of the same name wins. These are evaluation-only: they are not published and not
+  returned by `getAttributes()`. `app_version` is never injected.
+- Audiences are re-evaluated when attributes change: a `setAttribute` after a treatment was read can
+  change that experiment's assignment (and log a new exposure) when the audience result flips.
+- A variable key shared by several experiments resolves like the JavaScript SDK: experiments are walked
+  in ascending id order, each one visited is exposed, and the value comes from the first experiment that
+  is assigned or overridden and whose variant defines the key. `getVariableValue` also exposes an
+  experiment whose strict audience mismatch yields the control variant, as `getTreatment` does.
 - The `X-Agent` header is `absmartly-swift-sdk/<version>` (was `absmartly-swift-sdk`).
-- Tags `v*` publish the podspec to the CocoaPods trunk (the tag, podspec and SDK version must agree). Swift Package Manager keeps resolving releases from the tag.
-- `ClientConfig.applicationVersion`.
-- `ABsmartlySDK(endpoint:apiKey:application:environment:…)` convenience init. Its `contextEventLogger` is used for every context whose `ContextConfig.eventLogger` is unset, and `retries` defaults to 3, like `DefaultHTTPClientConfig`.
-- `ContextEventLoggerEvent.finalize`, an alias for `.close`.
-- Numeric unit UIDs: `setUnit(unitType:uid: Int/Double)`, `setUnit(unitType:value: JSON)`, `getUnitValue`/`getUnitValues` keep the number type; numbers hash like the JavaScript SDK (rounded to an integer, so 125.75 hashes as "126").
-- `Hashing.utf8Bytes`, `Hashing.base64UrlNoPadding`, `Hashing.hash(Double)`.
-- `finalize`/`isFinalized`/`isFinalizing` aliases, `readyError`.
+- The context GET carries the same headers as the publish PUT (`X-API-Key`, `X-Agent`, `X-Application`,
+  `X-Application-Version`, `X-Environment`), as the JavaScript SDK does.
+- `X-Application-Version` carries `ClientConfig.applicationVersion` normalised for the collector, which
+  only accepts an integer: the trimmed value when it is 1–18 ASCII digits, otherwise `"0"` (like the
+  Java SDK). 1.4.0 always sent `"0"`.
+- Every exposure in the publish payload carries `ruleOverride` (`false` when no assignment rule matched).
 
 ### Fixed
-- The `error` event for a failed load is logged before the context reports failed, like the JavaScript SDK. The `ready` event is still logged after the context is ready, so reads from a logger's `ready` handler work.
-- No exposures after close; refresh joins in-flight promise; close awaits in-flight publishes.
+- `Context` methods no longer crash the app on misuse (reading before ready, writing after close, a
+  blank or changed unit): 1.4.0 hit a `precondition`. Reads return a default (`0`, `nil`, the
+  `defaultValue`, empty collections), writes are ignored, and an `.error` event with the 1.4.0 message
+  is logged. `setOverride(s)`/`setCustomAssignment(s)` are accepted after close, as before.
+- `publish()` and `close()` reject when the collector answers with a non-2xx status; 1.4.0 reported the
+  failed publish as success and dropped its events. Failed events are re-queued, and a failed `close()`
+  leaves the context open so `publish()`/`close()` can retry (1.4.0 marked it closed with the events
+  lost). `getContextData()` rejects a non-2xx response with an HTTP error instead of a decoding error.
+- MurmurHash3 read past the end of a key with a 3-byte tail (an out-of-bounds read). The SDK only
+  hashes 22- and 12-byte keys, so variant assignment is unchanged.
+- No exposures after close; `refresh()` joins an in-flight refresh; `close()` waits for in-flight
+  publishes; a pending automatic publish keeps the context alive until it is sent.
+- Work no longer runs on the main queue (timers, HTTP retries, publish recovery); `ready`, `refresh`,
+  `publish` and `close` events still reach the `ContextEventLogger` on the main thread on Apple
+  platforms, as in 1.4.0.
+- The `error` event for a failed load is logged before the context reports failed.
 - An audience of `null` or `{}` is treated as no audience without logging an error.
-- `match` gives up after 100ms (returning null) on patterns that backtrack exponentially, e.g. `^(a|aa)+$`, and rejects nested unbounded quantifiers such as `(a+)+`.
-- Request timeout; HTTP retry and publish recovery off the main queue; astral/multibyte hashing.
+- `match` gives up after 100ms (returning null) on patterns that backtrack exponentially.
+- The HTTP request timeout uses `connectionRequestTimeout`; data races and crashes under concurrent
+  use; astral and multibyte unit hashing.
+- No compiler warnings in the SDK with Swift 5.10–6.4 toolchains.
+
+### Compatibility notes
+- Measured: the 1.4.0 test suite and an app written against the 1.4.0 README compile unchanged
+  against 1.5.0, and `swift-api-digester` reports no source-breaking or ABI-breaking change (built with
+  library evolution) from 1.4.0's public API. Its remaining failures are the contract and bug-fix
+  changes above.
+- On Linux, `ABSmartlyError` subclasses `NSError`, because Foundation in Swift 6.0 and 6.1 crashes
+  when `localizedDescription` is read on a class-based error that is not an `NSError`
+  ([swift-corelibs-foundation#5221](https://github.com/swiftlang/swift-corelibs-foundation/issues/5221)).
+- Toolchains 5.9 and later read `Package@swift-5.9.swift`, which is identical to `Package.swift` except
+  that the SwiftyJSON dependency also names Mac Catalyst and visionOS.

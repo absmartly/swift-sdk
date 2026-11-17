@@ -9,12 +9,19 @@ The A/B Smartly Swift SDK is supported on:
 - macOS 10.10 or later
 - Linux (Swift Package Manager, Swift 5.10 or later)
 
+The async/await API (`import ABSmartlyAsync`) needs iOS 13, macOS 10.15, tvOS 13 or watchOS 6.
+
+### Support
+
+1.5.0 is the last 1.x feature release. A 2.0 SDK with a new, async-first API is coming; 1.x will be
+maintained (bug and security fixes, from the `release/1.x` branch) for 12 months after 2.0 ships.
+
 | Platform    | Support    | Notes                                          |
 |-------------|------------|------------------------------------------------|
 | iOS         | iOS 10+    | Full support including UIDevice integration    |
 | macOS       | 10.10+     | Full support                                   |
 | Linux       | Swift 5.10+ | Swift Package Manager; tested in CI with Swift 6.1. `JSON` is a vendored copy of SwiftyJSON's `JSON` (same API); on Apple platforms it is `SwiftyJSON.JSON` |
-| Swift       | 5.0+       | Swift Package Manager and CocoaPods supported  |
+| Swift       | 5.3+ tools, Swift 5 language mode | Swift Package Manager and CocoaPods supported; builds with Swift 6 toolchains and can be used from Swift 6 apps |
 
 ## Installation
 
@@ -35,7 +42,7 @@ To install the A/B Smartly SDK using Swift Package Manager, following these step
 To install the A/B Smartly SDK with CocoaPods, add the following lines to your `Podfile`:
 
 ```ruby
-pod 'ABSmartlySwiftSDK', '~> 1.0.2'
+pod 'ABSmartlySwiftSDK', '~> 1.5'
 ```
 
 Run the following command to update your Xcode project:
@@ -57,14 +64,17 @@ Import the SDK into your application:
 import ABSmartly
 ```
 
+`ABSmartlySDK`/`ABsmartlySDK`, `ABSmartlyConfig`/`ABsmartlyConfig`, `ContextEventHandler`/`ContextPublisher`
+and `DefaultContextEventHandler`/`DefaultContextPublisher` are two spellings of the same types; use either.
+
 #### Recommended: Named Parameters
 
 Initialize the SDK using named parameters:
 
 ```swift
-let sdk: ABsmartlySDK
+let sdk: ABSmartlySDK
 do {
-    sdk = try ABsmartlySDK(
+    sdk = try ABSmartlySDK(
         endpoint: "https://your-company.absmartly.io/v1",
         apiKey: "YOUR-API-KEY",
         application: "website",
@@ -79,7 +89,7 @@ do {
 #### With Optional Parameters
 
 ```swift
-let sdk = try ABsmartlySDK(
+let sdk = try ABSmartlySDK(
     endpoint: "https://your-company.absmartly.io/v1",
     apiKey: "YOUR-API-KEY",
     application: "website",
@@ -103,8 +113,8 @@ let clientConfig = ClientConfig(
 )
 
 let client = try DefaultClient(config: clientConfig)
-let sdkConfig = ABsmartlyConfig(client: client)
-let sdk = try ABsmartlySDK(config: sdkConfig)
+let sdkConfig = ABSmartlyConfig(client: client)
+let sdk = try ABSmartlySDK(config: sdkConfig)
 ```
 
 **SDK Options**
@@ -120,8 +130,7 @@ let sdk = try ABsmartlySDK(config: sdkConfig)
 | retries                 | `UInt`                            | &#10060;  | `3`         | Number of retry attempts for failed network requests.                                                                                                                         |
 | contextEventLogger      | `ContextEventLogger`              | &#10060;  | `nil`       | Callback to handle SDK events (ready, exposure, goal, etc.)                                                                                                                   |
 | contextDataProvider     | `ContextDataProvider`             | &#10060;  | auto        | Custom provider for context data (advanced usage)                                                                                                                             |
-| contextPublisher        | `ContextPublisher`                | &#10060;  | auto        | Custom publisher for context events (advanced usage)                                                                                                                          |
-| contextEventHandler     | `ContextEventHandler`             | &#10060;  | auto        | Custom handler for publishing events (advanced usage)                                                                                                                         |
+| contextEventHandler     | `ContextEventHandler`             | &#10060;  | auto        | Custom handler for publishing events (advanced usage). `ContextPublisher` is the same protocol under the name other SDKs use.                                               |
 | variableParser          | `VariableParser`                  | &#10060;  | auto        | Custom parser for variable values (advanced usage)                                                                                                                            |
 | scheduler               | `Scheduler`                       | &#10060;  | auto        | Custom scheduler for async operations (advanced usage)                                                                                                                        |
 
@@ -134,25 +143,67 @@ let contextConfig = ContextConfig()
 contextConfig.setUnit(unitType: "session_id", uid: "5ebf06d8cb5d8137290c4abb64155584fbdb64d8")
 
 let context = sdk.createContext(config: contextConfig)
-context.waitUntilReady().done { context in
+_ = context.waitUntilReady().done { context in
     print("ABSmartly Context ready!")
-}.catch { error in
-    print("Context failed to initialize: \(error.localizedDescription)")
 }
 ```
 
 ### Using async/await (iOS 13+)
 
-```swift
-let contextConfig = ContextConfig()
-contextConfig.setUnit(unitType: "session_id", uid: "5ebf06d8cb5d8137290c4abb64155584fbdb64d8")
+The async/await overloads live in the `ABSmartlyAsync` module, which is part of the `ABSmartly`
+package product (Swift Package Manager only). Import it instead of (or as well as) `ABSmartly`:
 
-let context = sdk.createContext(config: contextConfig)
-do {
-    try await context.waitUntilReady()
-    print("ABSmartly Context ready!")
-} catch {
-    print("Context failed to initialize: \(error.localizedDescription)")
+```swift
+import ABSmartlyAsync
+
+let context = sdk.createContext(config: config)
+try await context.waitUntilReady()
+try await context.publish()
+try await context.close()
+```
+
+Every Promise-returning method has an async overload with the same name: `Context.waitUntilReady()`,
+`refresh()`, `publish()`, `close()` and `finalize()`, `ABSmartlySDK.getContextData()` and `close()`,
+and the `Client`, `ContextDataProvider`, `ContextEventHandler` and `HTTPClient` methods. Each awaits
+the Promise the existing method returns, so it does the same work and returns or throws the same
+result; as with the Promise, `waitUntilReady()` does not throw when the context fails to load (check
+`context.isFailed()`). The PromiseKit methods are unchanged, and `import ABSmartly` alone keeps
+exactly the 1.4 API, so existing code that calls `_ = context.publish()` inside an `async` function
+keeps compiling.
+
+Cancelling the calling `Task` does not cancel the underlying request: the call still waits for the
+fetch, publish or close to finish and returns its result. Check `Task.isCancelled` afterwards if you
+need to.
+
+From a `@MainActor` view model or an actor, the calls run in the caller's isolation, so they compile
+without Sendable warnings in Swift 6 apps:
+
+```swift
+import ABSmartlyAsync
+
+@MainActor
+final class ExperimentsModel {
+    let sdk: ABSmartlySDK
+    var context: Context?
+    var showNewCheckout = false
+
+    init(sdk: ABSmartlySDK) {
+        self.sdk = sdk
+    }
+
+    func load(deviceID: String) async {
+        let config = ContextConfig()
+        config.setUnit(unitType: "device_id", uid: deviceID)
+
+        let context = sdk.createContext(config: config)
+        do {
+            try await context.waitUntilReady()
+        } catch {
+            print("Context failed to initialize: \(error.localizedDescription)")
+        }
+        showNewCheckout = context.getTreatment("exp_new_checkout") == 1
+        self.context = context
+    }
 }
 ```
 
@@ -164,13 +215,8 @@ When doing full-stack experimentation with A/B Smartly, we recommend creating a 
 let contextConfig = ContextConfig()
 contextConfig.setUnit(unitType: "session_id", uid: "5ebf06d8cb5d8137290c4abb64155584fbdb64d8")
 
-let context = sdk.createContext(config: contextConfig)
-try await context.waitUntilReady()
-
-let anotherContextConfig = ContextConfig()
-anotherContextConfig.setUnit(unitType: "session_id", uid: "another-user-id")
-
-let anotherContext = sdk.createContextWithData(config: anotherContextConfig, contextData: context.getContextData())
+// contextData: a ContextData received from your server
+let context = sdk.createContextWithData(config: contextConfig, contextData: contextData)
 ```
 
 ### Refreshing the Context with Fresh Experiment Data
@@ -193,6 +239,9 @@ context.refresh().done {
 }.catch { error in
     print("Refresh failed: \(error.localizedDescription)")
 }
+
+// or, with `import ABSmartlyAsync`
+try await context.refresh()
 ```
 
 ### Setting Extra Units
@@ -226,8 +275,8 @@ if treatment == 0 {
 ### Treatment Variables
 
 ```swift
-let defaultButtonColor = "red"
-let buttonColor = context.getVariableValue("button.color", defaultValue: defaultButtonColor)
+let defaultButtonColor: JSON = "red"
+let buttonColor = context.getVariableValue("button.color", defaultValue: defaultButtonColor)?.stringValue
 ```
 
 ### Peek at Treatment Variants
@@ -314,6 +363,9 @@ context.publish().done {
 }.catch { error in
     print("Publish failed: \(error.localizedDescription)")
 }
+
+// or, with `import ABSmartlyAsync`
+try await context.publish()
 ```
 
 ### Finalizing
@@ -326,6 +378,9 @@ context.close().done {
 }.catch { error in
     print("Close failed: \(error.localizedDescription)")
 }
+
+// or, with `import ABSmartlyAsync`
+try await context.close()
 ```
 
 ### Custom Event Logger
@@ -359,7 +414,7 @@ public class CustomEventLogger: ContextEventLogger {
 
 ```swift
 // For all contexts, during SDK initialization
-let sdk = try ABsmartlySDK(
+let sdk = try ABSmartlySDK(
     endpoint: "https://your-company.absmartly.io/v1",
     apiKey: "YOUR-API-KEY",
     application: "website",
@@ -388,20 +443,21 @@ The data parameter depends on the type of event. Currently, the SDK logs the fol
 
 ## Platform-Specific Examples
 
-### Using with SwiftUI (iOS 13+)
+### Using with SwiftUI (iOS 15+)
 
 ```swift
 // ABSmartlyService.swift
 import Foundation
-import ABSmartly
+import ABSmartlyAsync
 
+@available(iOS 13, *)
 class ABSmartlyService: ObservableObject {
     static let shared = ABSmartlyService()
 
-    private let sdk: ABsmartlySDK
+    private let sdk: ABSmartlySDK
 
     private init() {
-        sdk = try! ABsmartlySDK(
+        sdk = try! ABSmartlySDK(
             endpoint: "https://your-company.absmartly.io/v1",
             apiKey: ProcessInfo.processInfo.environment["ABSMARTLY_API_KEY"] ?? "",
             application: "ios-app",
@@ -422,8 +478,9 @@ class ABSmartlyService: ObservableObject {
 
 // ContentView.swift
 import SwiftUI
-import ABSmartly
+import ABSmartlyAsync
 
+@available(iOS 15, *)
 struct ContentView: View {
     @StateObject private var absmartly = ABSmartlyService.shared
     @State private var context: Context?
@@ -449,7 +506,7 @@ struct ContentView: View {
             }
         }
         .onDisappear {
-            context?.close()
+            _ = context?.close()
         }
     }
 }
@@ -464,14 +521,14 @@ import ABSmartly
 import PromiseKit
 
 class ExperimentViewController: UIViewController {
-    private var sdk: ABsmartlySDK!
+    private var sdk: ABSmartlySDK!
     private var context: Context?
 
     override func viewDidLoad() {
         super.viewDidLoad()
 
         do {
-            sdk = try ABsmartlySDK(
+            sdk = try ABSmartlySDK(
                 endpoint: "https://your-company.absmartly.io/v1",
                 apiKey: "YOUR-API-KEY",
                 application: "ios-app",
@@ -503,7 +560,7 @@ class ExperimentViewController: UIViewController {
     }
 
     deinit {
-        context?.close()
+        _ = context?.close()
     }
 }
 ```
@@ -516,14 +573,13 @@ import Cocoa
 import ABSmartly
 import PromiseKit
 
-@NSApplicationMain
 class AppDelegate: NSObject, NSApplicationDelegate {
-    private var sdk: ABsmartlySDK!
+    private var sdk: ABSmartlySDK!
     private var context: Context?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         do {
-            sdk = try ABsmartlySDK(
+            sdk = try ABSmartlySDK(
                 endpoint: "https://your-company.absmartly.io/v1",
                 apiKey: "YOUR-API-KEY",
                 application: "macos-app",
@@ -547,19 +603,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func getMachineIdentifier() -> String {
-        let platformExpert = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("IOPlatformExpertDevice"))
-        defer { IOObjectRelease(platformExpert) }
-
-        guard let serialNumber = IORegistryEntryCreateCFProperty(
-            platformExpert,
-            kIOPlatformSerialNumberKey as CFString,
-            kCFAllocatorDefault,
-            0
-        ).takeRetainedValue() as? String else {
-            return UUID().uuidString
+        // A random ID kept for this installation.
+        if let id = UserDefaults.standard.string(forKey: "absmartly_machine_id") {
+            return id
         }
-
-        return serialNumber
+        let id = UUID().uuidString
+        UserDefaults.standard.set(id, forKey: "absmartly_machine_id")
+        return id
     }
 
     private func runExperiment(context: Context) {
@@ -573,57 +623,29 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        context?.close()
+        _ = context?.close()
     }
 }
 ```
 
 ## Advanced Request Configuration
 
-### PromiseKit Cancellation (iOS 10+)
+### Cancellation
 
-The Swift SDK uses PromiseKit for async operations. You can cancel promises:
-
-```swift
-import ABSmartly
-import PromiseKit
-
-class ExperimentLoader {
-    private var sdk: ABsmartlySDK!
-    private var contextPromise: Promise<Context>?
-
-    func loadExperiment(deviceId: String) {
-        let contextConfig = ContextConfig()
-        contextConfig.setUnit(unitType: "device_id", uid: deviceId)
-
-        let context = sdk.createContext(config: contextConfig)
-        contextPromise = context.waitUntilReady()
-
-        contextPromise?.done { ctx in
-            print("Context ready!")
-        }.catch { error in
-            if error is CancellableError {
-                print("Context loading cancelled")
-            } else {
-                print("Context failed: \(error.localizedDescription)")
-            }
-        }
-    }
-
-    func cancelLoad() {
-        contextPromise?.cancel()
-        print("Cancelling context load...")
-    }
-}
-```
+The SDK's Promises cannot be cancelled: a context load, refresh, publish or close always runs to
+completion. If the result is no longer needed (for example the screen went away), ignore it.
 
 ### iOS 13+ async/await with Task Cancellation
 
-```swift
-import ABSmartly
+Cancelling the task stops your code from continuing after the await; the context still finishes
+loading in the background.
 
+```swift
+import ABSmartlyAsync
+
+@available(iOS 13, macOS 10.15, *)
 class ExperimentManager {
-    private var sdk: ABsmartlySDK!
+    private var sdk: ABSmartlySDK!
     private var contextTask: Task<Context, Error>?
 
     func loadExperiment(deviceId: String) {
@@ -666,7 +688,7 @@ class ExperimentManager {
 Override the default timeout:
 
 ```swift
-let sdk = try ABsmartlySDK(
+let sdk = try ABSmartlySDK(
     endpoint: "https://your-company.absmartly.io/v1",
     apiKey: "YOUR-API-KEY",
     application: "ios-app",
@@ -691,8 +713,8 @@ let clientConfig = ClientConfig(
 )
 
 let client = try DefaultClient(config: clientConfig, httpClient: httpClient)
-let sdkConfig = ABsmartlyConfig(client: client)
-let sdk = try ABsmartlySDK(config: sdkConfig)
+let sdkConfig = ABSmartlyConfig(client: client)
+let sdk = try ABSmartlySDK(config: sdkConfig)
 ```
 
 ## About A/B Smartly

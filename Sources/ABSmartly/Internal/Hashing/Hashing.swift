@@ -80,4 +80,9 @@ public class Hashing {
 	static func hashBytes(_ unit: String) -> [UInt8] {
 		return Array(MD5Base64Url(unit).utf8)
 	}
+
+	// The v1.4.0 name of hashBytes, kept for code using `@testable import`.
+	static func hash(_ unit: String) -> [UInt8] {
+		return hashBytes(unit)
+	}
 }

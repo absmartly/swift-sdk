@@ -12,7 +12,8 @@ let package = Package(
     products: [
         .library(
             name: "ABSmartly",
-            targets: ["ABSmartly"])
+            // ABSmartlyAsync adds async/await overloads; apps opt in with `import ABSmartlyAsync`.
+            targets: ["ABSmartly", "ABSmartlyAsync"])
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-atomics.git", .upToNextMajor(from: "1.0.2")),
@@ -31,10 +32,15 @@ let package = Package(
                 .product(name: "SwiftyJSON", package: "SwiftyJSON", condition: .when(platforms: [.macOS, .iOS, .tvOS, .watchOS]))
             ],
             path: "Sources/ABSmartly"),
+        .target(
+            name: "ABSmartlyAsync",
+            dependencies: ["ABSmartly", "PromiseKit"],
+            path: "Sources/ABSmartlyAsync"),
         .testTarget(
             name: "ABSmartlyTests",
             dependencies: [
                 "ABSmartly",
+                "ABSmartlyAsync",
                 // For SwiftyJSONCompatibilityTest.
                 .product(name: "SwiftyJSON", package: "SwiftyJSON", condition: .when(platforms: [.macOS, .iOS, .tvOS, .watchOS]))
             ],
