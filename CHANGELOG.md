@@ -15,7 +15,9 @@ security fixes, from the `release/1.x` branch) for 12 months after 2.0 ships.
   `ContextEventHandler` and `HTTPClient` methods. Each awaits the existing Promise, so behaviour is
   unchanged; cancelling the calling task does not cancel the request. They are in a separate module
   because, inside an `async` function, Swift prefers an async overload, so 1.4.0 code such as
-  `_ = context.publish()` there would no longer compile if they were in `ABSmartly`. With Swift 6
+  `_ = context.publish()` there would no longer compile if they were in `ABSmartly`. Importing
+  `ABSmartlyAsync` makes them visible in the whole target, so such code then needs `try await` or an
+  explicit `Promise` type (see the README). With Swift 6
   compilers they run in the caller's isolation (`#isolation`), so they can be awaited from
   `@MainActor` code in Swift 6 apps without Sendable diagnostics. Not available through CocoaPods.
 - Assignment rules (`Experiment.assignmentRules`), matching the JavaScript SDK. The first rule whose
@@ -54,7 +56,8 @@ security fixes, from the `release/1.x` branch) for 12 months after 2.0 ships.
   `application` used to give every unit variant 0 (the attribute was never set); it now matches. A
   user-set attribute of the same name wins. These are evaluation-only: they are not published and not
   returned by `getAttributes()`. `app_version` is never injected.
-- Audiences are re-evaluated when attributes change: a `setAttribute` after a treatment was read can
+- Audiences are re-evaluated when attributes change, as in the JavaScript SDK (`attrsSeq`); this is what
+  lets a user-set `environment`/`application` win over the system value after the context is created: a `setAttribute` after a treatment was read can
   change that experiment's assignment (and log a new exposure) when the audience result flips.
 - A variable key shared by several experiments resolves like the JavaScript SDK: experiments are walked
   in ascending id order, each one visited is exposed, and the value comes from the first experiment that
@@ -87,6 +90,9 @@ security fixes, from the `release/1.x` branch) for 12 months after 2.0 ships.
 - The `error` event for a failed load is logged before the context reports failed.
 - An audience of `null` or `{}` is treated as no audience without logging an error.
 - `match` gives up after 100ms (returning null) on patterns that backtrack exponentially.
+- A failed automatic refresh reports one `.error` event (it was reported twice on main).
+- A request keeps its `DefaultHTTPClient` alive until it settles, as in 1.4.0, so dropping the client
+  mid-request no longer leaves the Promise pending forever (main-era regression).
 - The HTTP request timeout uses `connectionRequestTimeout`; data races and crashes under concurrent
   use; astral and multibyte unit hashing.
 - No compiler warnings in the SDK with Swift 5.10–6.4 toolchains.

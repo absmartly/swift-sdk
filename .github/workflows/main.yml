@@ -45,9 +45,14 @@ jobs:
             -onlyUsePackageVersionsFromResolvedFile
 
   test-linux:
-    name: test (linux, swift-6.1)
+    name: test (linux, swift-${{ matrix.swift }})
+    strategy:
+      fail-fast: false
+      matrix:
+        # The oldest toolchain the README promises for Linux, and the one macOS CI also covers.
+        swift: ["5.10", "6.1"]
     runs-on: ubuntu-latest
-    container: swift:6.1
+    container: swift:${{ matrix.swift }}
     permissions:
       contents: read
     steps:
@@ -63,3 +68,11 @@ jobs:
 
       - name: Run tests
         run: swift test
+
+      # Toolchains 5.9+ read Package@swift-5.9.swift; also build from the tools-version 5.3
+      # Package.swift that older toolchains use, so a change to it alone cannot go unnoticed.
+      - name: Build with Package.swift only
+        if: matrix.swift == '6.1'
+        run: |
+          rm Package@swift-5.9.swift
+          swift build

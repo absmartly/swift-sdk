@@ -67,12 +67,10 @@ public class DefaultHTTPClient: HTTPClient {
 	{
 		return Self.retry(
 			times: config.retries, delay: config.retryInterval,
-			body: { [weak self] attempt in
+			// Holds the client strongly until the request settles, as in v1.4.0, so a caller that
+			// drops the client mid-request still gets its Promise settled.
+			body: { [self] attempt in
 				return Promise<Response> { seal in
-					guard let self = self else {
-						seal.reject(URLError(.cancelled))
-						return
-					}
 
 					self.sessionLock.lock()
 					let capturedSession = self.session

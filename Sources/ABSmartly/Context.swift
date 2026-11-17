@@ -1145,12 +1145,8 @@ public final class Context {
 				after: refreshInterval, repeating: refreshInterval,
 				execute: { [weak self] in
 					guard let self = self else { return }
-					self.refresh()
-						.done { }
-						.catch { error in
-							Logger.error("Auto-refresh failed: \(error.safeLocalizedDescription)")
-							self.logError(error: error)
-						}
+					// refresh() already logs the failure and reports it as one `.error` event.
+					self.refresh().catch(on: DispatchQueue.global()) { _ in }
 				})
 		}
 	}

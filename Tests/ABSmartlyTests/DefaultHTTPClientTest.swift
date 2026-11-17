@@ -74,6 +74,26 @@ final class DefaultHTTPClientTest: XCTestCase {
 		XCTAssertNotNil(response.content)
 	}
 
+	// As in v1.4.0, a request keeps its client alive until it settles: dropping the clients while a
+	// request is retrying still settles DefaultClient's Promise (here with a connection error)
+	// instead of leaving it pending forever.
+	func testRequestSettlesAfterCallerDropsTheClient() throws {
+		let config = DefaultHTTPClientConfig()
+		config.retries = 2
+		config.retryInterval = 0.2
+		config.connectionRequestTimeout = 1.0
+		let clientConfig = ClientConfig(
+			apiKey: "k", application: "a", endpoint: "http://127.0.0.1:9", environment: "e")
+		var client: DefaultClient? = try DefaultClient(
+			config: clientConfig, httpClient: DefaultHTTPClient(config: config))
+
+		let settled = XCTestExpectation(description: "request settles")
+		_ = client!.getContextData().ensure { settled.fulfill() }
+		client = nil
+
+		wait(for: [settled], timeout: 10.0)
+	}
+
 	func testBadURL() throws {
 		let config = DefaultHTTPClientConfig()
 		config.retries = 0

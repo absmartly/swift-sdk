@@ -167,9 +167,13 @@ Every Promise-returning method has an async overload with the same name: `Contex
 and the `Client`, `ContextDataProvider`, `ContextEventHandler` and `HTTPClient` methods. Each awaits
 the Promise the existing method returns, so it does the same work and returns or throws the same
 result; as with the Promise, `waitUntilReady()` does not throw when the context fails to load (check
-`context.isFailed()`). The PromiseKit methods are unchanged, and `import ABSmartly` alone keeps
-exactly the 1.4 API, so existing code that calls `_ = context.publish()` inside an `async` function
-keeps compiling.
+`context.isFailed()`). The PromiseKit methods are unchanged.
+
+Adding `import ABSmartlyAsync` anywhere in a target makes the async overloads visible in all of that
+target's files. Inside an `async` function Swift then prefers them, so 1.4 code there such as
+`_ = context.publish()` needs either `try await context.publish()` or an explicit type to keep the
+Promise: `let promise: Promise<Void> = context.publish()`. Targets that never import
+`ABSmartlyAsync` see exactly the 1.4 API.
 
 Cancelling the calling `Task` does not cancel the underlying request: the call still waits for the
 fetch, publish or close to finish and returns its result. Check `Task.isCancelled` afterwards if you

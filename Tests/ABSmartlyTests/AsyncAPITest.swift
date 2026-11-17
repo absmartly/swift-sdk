@@ -269,18 +269,22 @@ final class AsyncAPITest: XCTestCase {
 
 	func testHTTPClientOverloads() async throws {
 		let http = HTTPClientMock()
-		let response = DefaultHTTPResponse(status: 200, statusMessage: "OK", contentType: "application/json", content: Data())
-		http.getUrlQueryHeadersReturnValue = Promise.value(response)
-		http.putUrlQueryHeadersBodyReturnValue = Promise.value(response)
+		let getResponse = DefaultHTTPResponse(status: 200, statusMessage: "OK", contentType: "application/json", content: Data())
+		let putResponse = DefaultHTTPResponse(status: 204, statusMessage: "No Content", contentType: "text/plain", content: Data())
+		http.getUrlQueryHeadersReturnValue = Promise.value(getResponse)
+		http.putUrlQueryHeadersBodyReturnValue = Promise.value(putResponse)
 		http.postUrlQueryHeadersBodyReturnValue = Promise(error: ABSmartlyError("post failed"))
 		http.closeReturnValue = Promise.value(())
 
 		let got = try await http.get(url: "https://example.test", query: nil, headers: nil)
 		XCTAssertEqual(200, got.status)
 		let put = try await http.put(url: "https://example.test", query: nil, headers: nil, body: Data())
-		XCTAssertEqual(200, put.status)
+		XCTAssertEqual(204, put.status)
+		XCTAssertEqual(1, http.getUrlQueryHeadersCallsCount)
+		XCTAssertEqual(1, http.putUrlQueryHeadersBodyCallsCount)
 		await XCTAssertThrowsAsync(
 			try await http.post(url: "https://example.test", query: nil, headers: nil, body: nil), "post failed")
+		XCTAssertEqual(1, http.postUrlQueryHeadersBodyCallsCount)
 		try await http.close()
 		XCTAssertEqual(1, http.closeCallsCount)
 	}

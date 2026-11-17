@@ -1977,6 +1977,30 @@ final class ContextTest: XCTestCase {
 		wait(for: [expectation], timeout: 1.0)
 	}
 
+	func testFailedTimerRefreshLogsOneErrorEvent() throws {
+		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
+		contextConfig.refreshInterval = 5
+		let context = try createContext(config: contextConfig)
+		logger.clearInvocations()
+
+		let (failed, resolver) = Promise<ContextData>.pending()
+		provider.getContextDataReturnValue = failed
+		scheduler.scheduleWithFixedDelayAfterRepeatingExecuteReceivedArguments?.execute()
+		resolver.reject(ABSmartlyError("refresh failed"))
+
+		let settled = XCTestExpectation()
+		DispatchQueue.global().asyncAfter(deadline: .now() + 0.3) { settled.fulfill() }
+		wait(for: [settled], timeout: 1.0)
+		RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+
+		let errors = logger.handleEventContextEventReceivedInvocations.filter {
+			if case .error = $0.event { return true }
+			return false
+		}
+		XCTAssertEqual(1, errors.count)
+		_ = context
+	}
+
 	func testRefreshExceptionally() throws {
 		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
 		let contextData = try getContextData()
