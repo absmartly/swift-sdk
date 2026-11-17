@@ -423,10 +423,12 @@ final class ContextHoldoutTest: XCTestCase {
 		XCTAssertEqual(0, context.getTreatment("exp_holdout_custom_cache"))
 		XCTAssertEqual(0, context.getTreatment("exp_holdout_custom_cache"))
 		XCTAssertEqual(1, context.getPendingCount())
+		#if DEBUG
 		// The custom variant differs from the held-out 0, but that is not staleness: it is a cache hit.
 		XCTAssertEqual(
 			context.cachedAssignmentIdentity("exp_holdout_custom_cache"),
 			context.cachedAssignmentIdentity("exp_holdout_custom_cache"))
+		#endif
 	}
 
 	func testOverrideTakesPrecedenceOverHoldout() {
@@ -1397,11 +1399,13 @@ final class ContextHoldoutTest: XCTestCase {
 		XCTAssertEqual(Self.normalVariant, context.getTreatment("exp_g"))
 		XCTAssertEqual(3, context.getPendingCount())
 
+		#if DEBUG
 		let stale = contextData([], holdouts: [holdout(11, "holdout_h", seeds: Self.holdoutA)]).holdouts![0]
 		let resolved = try XCTUnwrap(context.resolveHoldoutArm(stale, unitType: Self.unitType))
 		XCTAssertEqual(1, resolved.variant)
 		XCTAssertEqual(2, resolved.iteration)
 		XCTAssertTrue(resolved.exposed)
+		#endif
 
 		try assertPublished(
 			context,
