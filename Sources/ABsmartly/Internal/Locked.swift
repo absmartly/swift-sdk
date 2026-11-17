@@ -62,15 +62,4 @@ final class Locked<Value>: @unchecked Sendable {
 		defer { release() }
 		return try body(&value)
 	}
-
-	/// The value for an in-place mutation under the lock, for `_modify` accessors. The caller's
-	/// mutation runs on the same thread between the lock and unlock and must not call out.
-	var locked: Value {
-		get { withLock { $0 } }
-		_modify {
-			acquire()
-			defer { release() }
-			yield &value
-		}
-	}
 }

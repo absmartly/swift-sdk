@@ -1,7 +1,8 @@
 # ABsmartly Swift SDK <a href="https://github.com/apple/swift-package-manager" title="Swift Package Manager compatible"><img src="https://img.shields.io/badge/Swift%20Package%20Manager-compatible-brightgreen.svg" alt="Swift Package Manager compatible" /></a>
 
 The ABsmartly SDK for iOS, macOS, tvOS, watchOS, visionOS and Linux: `async`/`await`, Swift 6 strict
-concurrency (every public type is `Sendable`) and no third-party dependencies.
+concurrency (every public type is `Sendable`) and no third-party dependencies linked on Apple
+platforms (swift-crypto is linked on Linux only).
 
 > **Using 1.x?** This is 2.x. The 1.x line (module `ABSmartly`, PromiseKit API) is maintained on the
 > [`release/1.x`](https://github.com/absmartly/swift-sdk/tree/release/1.x) branch, with bug fixes

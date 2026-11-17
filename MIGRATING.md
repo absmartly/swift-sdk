@@ -7,7 +7,7 @@ API shape:
 - `async`/`await` instead of PromiseKit.
 - Swift 6 strict concurrency: every public type is `Sendable`.
 - `JSONValue` instead of SwiftyJSON's `JSON`.
-- No third-party dependencies (PromiseKit, SwiftyJSON and swift-atomics are gone).
+- No third-party dependencies linked on Apple platforms (PromiseKit, SwiftyJSON and swift-atomics are gone; swift-crypto is linked on Linux only).
 - The module is `ABsmartly` (was `ABSmartly`) and the entry type is `ABsmartlyClient`.
 - Minimum iOS 15, macOS 12, tvOS 15, watchOS 8 (1.x: iOS 10). Swift 6.0 / Xcode 16 to build.
 

@@ -596,7 +596,9 @@ public final class Context: Sendable {
 	/// counted as assigned. Set one with `overrides["exp"] = 1`, remove it with `overrides["exp"] = nil`.
 	public var overrides: [String: Int] {
 		get { storage.withLock { $0.overrides } }
-		_modify { yield &storage.locked.overrides }
+		// A plain setter, not `_modify`: the caller's expression (which may read this context, e.g.
+		// `overrides["a", default: context.treatment(for: "b")] += 1`) runs before the lock is taken.
+		set { storage.withLock { $0.overrides = newValue } }
 	}
 
 	/// Sets several overrides at once.
@@ -607,7 +609,7 @@ public final class Context: Sendable {
 	/// The variant to assign for each experiment when the unit is eligible, instead of the hashed one.
 	public var customAssignments: [String: Int] {
 		get { storage.withLock { $0.customAssignments } }
-		_modify { yield &storage.locked.customAssignments }
+		set { storage.withLock { $0.customAssignments = newValue } }
 	}
 
 	/// Sets several custom assignments at once.

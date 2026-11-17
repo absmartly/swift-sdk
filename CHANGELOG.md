@@ -34,7 +34,7 @@ output); the `X-Agent` header is `absmartly-swift-sdk/2.0.0`. See [MIGRATING.md]
 - `EventLogger.osLog`.
 
 ### Dependencies
-- None on Apple platforms: PromiseKit, SwiftyJSON and swift-atomics are gone; MD5 comes from CryptoKit. `swift-crypto` (`3.0.0..<5.0.0`) on Linux only.
+- None linked on Apple platforms: PromiseKit, SwiftyJSON and swift-atomics are gone; MD5 comes from CryptoKit. `swift-crypto` (`3.0.0..<5.0.0`) is linked on Linux only (SwiftPM still downloads it, and swift-asn1, when resolving on Apple platforms).
 
 ### Release
 - The publish workflow creates the GitHub release; 1.x tags are created with `--latest=false`. CI runs on `main` and `release/**`.

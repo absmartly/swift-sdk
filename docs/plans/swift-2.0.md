@@ -224,9 +224,9 @@ the unit is left unchanged. `setAttribute` and `track` after close are ignored a
 event, as in 1.5.0, so they can be called from UI code without `try`. Overrides and custom
 assignments are accepted after close, as in 1.5.0.
 
-`overrides[key] = value` is a single locked read-modify-write (the property has a `_modify`
-accessor that holds the context's lock for the in-place mutation only; the right-hand side is
-evaluated before the lock is taken), so concurrent writers do not lose updates.
+`overrides[key] = value` reads the dictionary, applies the change, and writes it back under the
+lock. The right-hand side and any closure in the expression run outside the lock, so they may read
+the context. For atomic updates of several keys use `setOverrides(_:)`.
 
 ### Goals
 
