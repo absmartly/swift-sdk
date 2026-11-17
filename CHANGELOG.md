@@ -56,9 +56,10 @@ security fixes, from the `release/1.x` branch) for 12 months after 2.0 ships.
   `application` used to give every unit variant 0 (the attribute was never set); it now matches. A
   user-set attribute of the same name wins. These are evaluation-only: they are not published and not
   returned by `getAttributes()`. `app_version` is never injected.
-- Audiences are re-evaluated when attributes change, as in the JavaScript SDK (`attrsSeq`); this is what
-  lets a user-set `environment`/`application` win over the system value after the context is created: a `setAttribute` after a treatment was read can
-  change that experiment's assignment (and log a new exposure) when the audience result flips.
+- Audiences are re-evaluated when attributes change, as in the JavaScript SDK. This is part of the
+  system-attributes contract: it is what lets a user-set `environment`/`application` win over the
+  system value after the context is created. A `setAttribute` after a treatment was read can change
+  that experiment's assignment (and log a new exposure) when the audience result flips.
 - A variable key shared by several experiments resolves like the JavaScript SDK: experiments are walked
   in ascending id order, each one visited is exposed, and the value comes from the first experiment that
   is assigned or overridden and whose variant defines the key. `getVariableValue` also exposes an
