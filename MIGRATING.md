@@ -11,6 +11,12 @@ API shape:
 - The module is `ABsmartly` (was `ABSmartly`) and the entry type is `ABsmartlyClient`.
 - Minimum iOS 15, macOS 12, tvOS 15, watchOS 8 (1.x: iOS 10). Swift 6.0 / Xcode 16 to build.
 
+**Coming from 1.4.x?** 2.0's behaviour is 1.5.0's, so you also get every 1.5.0 behaviour change
+(system attributes in audiences, shared variable keys, publish/close failure handling, custom field
+typing, `X-Application-Version` normalisation and more). Read the 1.5.0 **BREAKING** and **Changed**
+sections of [CHANGELOG.md](CHANGELOG.md) first; the easiest path is to upgrade to 1.5.0, check your
+experiments, then move to 2.0.
+
 1.x stays supported on the `release/1.x` branch (see [SUPPORT.md](SUPPORT.md)). You cannot use 1.x
 and 2.x in the same app: a Swift package graph holds one major version of a package.
 
@@ -186,7 +192,8 @@ Delivery threads are unchanged: `exposure`, `goal` and `error` on the calling th
 
 ## Behaviour notes
 
-Nothing about assignment or publishing changes. These API-level differences are worth knowing:
+Nothing about assignment or publishing changes relative to 1.5.0 (see the note for 1.4.x users at
+the top). These API-level differences are worth knowing:
 
 - `setUnit` throws as well as emitting the `.error` event (1.x only emitted it). The unit is left
   unchanged, as before.

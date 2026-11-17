@@ -388,16 +388,29 @@ public final class Context: Sendable {
 	/// The variant of `experiment` for this context: `0` (control) when the experiment is unknown or
 	/// the context is not ready. With `exposing` (the default) the first read queues an exposure.
 	public func treatment(for experiment: String, exposing: Bool = true) -> Int {
-		guard ensureReady(expectNotClosed: true) else { return 0 }
-		if exposing {
-			let now = clock.millis()
-			let (assignment, exposure) = storage.withLock { $0.lookupExposing(experiment, now: now) }
+		// One critical section: the ready check, the lookup and (on first exposure) the queueing. The
+		// clock is read only when an exposure is queued.
+		let clock = clock
+		let result: Result<(Int, Exposure?), ABsmartlyError> = storage.withLock { state in
+			if let error = state.checkReady(expectNotClosed: true) {
+				return .failure(error)
+			}
+			if exposing {
+				let (assignment, exposure) = state.lookupExposing(experiment, now: clock.millis)
+				return .success((assignment.variant, exposure))
+			}
+			return .success((state.lookup(experiment).variant, nil))
+		}
+		switch result {
+		case .failure(let error):
+			reportError(error)
+			return 0
+		case .success((let variant, let exposure)):
 			if let exposure {
 				didQueue(.exposure(exposure))
 			}
-			return assignment.variant
+			return variant
 		}
-		return storage.withLock { $0.lookup(experiment) }.variant
 	}
 
 	/// The variant as a case of `variants`, or `nil` when it has no case for the variant number.
@@ -415,13 +428,23 @@ public final class Context: Sendable {
 	/// The value of a variable in the variant this context is assigned to, or `nil` when no running
 	/// experiment defines it. With `exposing` (the default) the experiments read are exposed.
 	public func variableValue(_ key: String, exposing: Bool = true) -> JSONValue? {
-		guard ensureReady(expectNotClosed: true) else { return nil }
-		let now = clock.millis()
-		let (value, exposures) = storage.withLock { $0.variableValue(key, peek: !exposing, now: now) }
-		for exposure in exposures {
-			didQueue(.exposure(exposure))
+		let clock = clock
+		let result: Result<(JSONValue?, [Exposure]), ABsmartlyError> = storage.withLock { state in
+			if let error = state.checkReady(expectNotClosed: true) {
+				return .failure(error)
+			}
+			return .success(state.variableValue(key, peek: !exposing, now: clock.millis))
 		}
-		return value
+		switch result {
+		case .failure(let error):
+			reportError(error)
+			return nil
+		case .success((let value, let exposures)):
+			for exposure in exposures {
+				didQueue(.exposure(exposure))
+			}
+			return value
+		}
 	}
 
 	/// The value of a variable decoded as `T`, or `defaultValue` when no running experiment defines it
@@ -733,5 +756,12 @@ extension JSONValue {
 			guard let data = try? JSONEncoder().encode(self) else { return nil }
 			return try? JSONDecoder().decode(T.self, from: data)
 		}
+	}
+}
+
+extension Context {
+	/// Test hook: how many times cached assignments were re-evaluated against their rules/audience.
+	var revalidationCount: Int {
+		storage.withLock { $0.revalidations }
 	}
 }

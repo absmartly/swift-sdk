@@ -449,6 +449,8 @@ import Testing
 
 		context.setAttribute("unrelated", to: true)
 		readRepeatedly()
+		// One re-evaluation after the unrelated attribute, then the advanced attrsSeq stamp holds.
+		#expect(context.revalidationCount == 1)
 
 		// A refresh with a differently written rule set that still does not match.
 		env.serveNext(
@@ -461,7 +463,44 @@ import Testing
 		try await context.refresh()
 
 		readRepeatedly()
+		// One more after the changed rule JSON, then the advanced ruleKey stamp holds.
+		#expect(context.revalidationCount == 2)
 		#expect(exposures(context).count == 1)
+	}
+
+	// A rule-won assignment ignores the audience, so an attribute that flips the audience result
+	// neither rebuilds it nor queues a second exposure.
+	@Test func ruleWonAssignmentIgnoresAudienceFlips() {
+		let audience = "{\"filter\":[{\"eq\":[{\"var\":\"tier\"},{\"value\":\"gold\"}]}]}"
+		let data = Self.contextData(
+			Self.experimentJSON(
+				rules: Self.rules("{\"type\":\"assign\",\"variant\":2,\"conditions\":\(Self.countryNL)}"),
+				audience: audience, audienceStrict: true))
+		let context = createContext(data, attributes: ["country": "NL", "tier": "gold"])
+
+		#expect(context.treatment(for: "exp") == 2)
+		context.setAttribute("tier", to: "silver")
+		#expect(context.treatment(for: "exp") == 2)
+		context.setAttribute("tier", to: "gold")
+		#expect(context.treatment(for: "exp") == 2)
+
+		let exposed = exposures(context)
+		#expect(exposed.count == 1)
+		#expect(exposed.first?.ruleOverride == true)
+		#expect(exposed.first?.audienceMismatch == false)
+	}
+
+	// Ordinary cached reads (no rules, no audience) never re-evaluate, even after attributes change.
+	@Test func cachedReadsWithoutRulesOrAudienceDoNotRevalidate() {
+		let context = env.context()
+		_ = context.treatment(for: "exp_test_ab")
+		context.setAttribute("age", to: 30)
+		for _ in 0..<100 {
+			_ = context.treatment(for: "exp_test_ab")
+			_ = context.treatment(for: "exp_test_ab", exposing: false)
+			_ = context.variableValue("banner.size")
+		}
+		#expect(context.revalidationCount == 0)
 	}
 
 	// MARK: - parsing

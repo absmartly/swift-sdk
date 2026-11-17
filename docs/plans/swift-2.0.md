@@ -367,6 +367,11 @@ which SwiftUI `body` cannot do, and would hop executors on the hottest path. So:
   primitives.
 - No user code runs under the lock: the event logger, the event streams and the transport are all
   called after the critical section. There is no recursive locking.
+- Cached assignments are reference types mutated in place under the lock, as in 1.5.0, so a cached
+  read neither copies nor writes back. Measured on Linux, release build, 200k cached reads (no rules,
+  no audience, already exposed): `treatment` 209 ns/op (1.5.0: 275), peek 155 (257),
+  `variableValue` 332 (465). A work-counter test (`revalidationCount`) pins that ordinary cached
+  reads never re-evaluate rules or audiences.
 - I/O (`ready`, `refresh`, `publish`, `close`) is `async`. Timers (auto-publish, auto-refresh) are
   `Task`s with `Task.sleep`.
 

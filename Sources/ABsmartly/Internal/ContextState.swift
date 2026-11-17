@@ -1,7 +1,9 @@
 import Foundation
 
 /// A cached assignment of one experiment, revalidated on every read (see `ContextState.lookup`).
-struct Assignment: Sendable {
+/// A class, as in 1.5.0, so a cached read neither copies it nor writes it back; it is only read and
+/// mutated under the context's lock.
+final class Assignment {
 	var id = 0
 	var iteration = 0
 	var fullOnVariant = 0
@@ -44,6 +46,9 @@ struct ContextState {
 	var attrsSeq = 0
 	var overrides: [String: Int] = [:]
 	var customAssignments: [String: Int] = [:]
+
+	// Test hook: how many times a cached assignment's rules/audience were re-evaluated.
+	var revalidations = 0
 
 	var hashedUnits: [String: [UInt8]] = [:]
 	var assigners: [String: VariantAssigner] = [:]
@@ -193,12 +198,14 @@ struct ContextState {
 	// Whether the cached assignment still holds for the current attributes and rules: the matching
 	// rule (if any) must give the same variant, and the audience result must not have flipped. On
 	// success the assignment's stamps advance, so the next read does not re-evaluate.
-	private mutating func audienceMatches(_ entry: DataIndex.Entry, _ assignment: inout Assignment) -> Bool {
+	// `revalidated` is set when the stamps moved, so the caller writes the assignment back only then.
+	private mutating func audienceMatches(_ entry: DataIndex.Entry, _ assignment: Assignment) -> Bool {
 		let ruleKey = entry.data.assignmentRules ?? ""
 		let ruleKeyChanged = ruleKey != assignment.ruleKey
 
 		let hasAudience = !(entry.data.audience ?? "").isEmpty
 		if (attrsSeq > assignment.attrsSeq && (entry.rules != nil || hasAudience)) || ruleKeyChanged {
+			revalidations += 1
 			let attrs = attributeMap()
 
 			// An exposed split resolved without its unit keeps resolving as if the unit were still
@@ -253,7 +260,7 @@ struct ContextState {
 	mutating func lookup(_ experimentName: String) -> Assignment {
 		let entry = index.experiments[experimentName]
 
-		if var assignment = assignmentCache[experimentName] {
+		if let assignment = assignmentCache[experimentName] {
 			if let override = overrides[experimentName] {
 				if assignment.overridden && assignment.variant == override {
 					// override up-to-date
@@ -265,9 +272,8 @@ struct ContextState {
 				// A matching rule wins over a custom assignment, so a custom mismatch is not staleness.
 				let custom = customAssignments[experimentName]
 				if custom == nil || custom == assignment.variant || assignment.ruleOverride {
-					if Self.experimentMatches(entry.data, assignment) && audienceMatches(entry, &assignment) {
+					if Self.experimentMatches(entry.data, assignment) && audienceMatches(entry, assignment) {
 						// assignment up-to-date
-						assignmentCache[experimentName] = assignment
 						return assignment
 					}
 				}
@@ -278,7 +284,7 @@ struct ContextState {
 			}
 		}
 
-		var assignment = Assignment()
+		let assignment = Assignment()
 		assignment.name = experimentName
 		assignment.eligible = true
 
@@ -356,18 +362,17 @@ struct ContextState {
 	/// exposed and queues its exposure, in one critical section. With `requireVariables`, only an
 	/// assignment whose variant has variables is exposed. Returns the exposure queued, if any.
 	mutating func lookupExposing(
-		_ experimentName: String, requireVariables: Bool = false, now: Int64
+		_ experimentName: String, requireVariables: Bool = false, now: () -> Int64
 	) -> (Assignment, Exposure?) {
-		var assignment = lookup(experimentName)
+		let assignment = lookup(experimentName)
 		guard !assignment.exposed, !requireVariables || assignment.variables != nil, !closed, !closing else {
 			return (assignment, nil)
 		}
 		assignment.exposed = true
-		assignmentCache[experimentName] = assignment
 
 		let exposure = Exposure(
 			id: assignment.id, name: assignment.name, unit: assignment.unitType, variant: assignment.variant,
-			exposedAt: now, assigned: assignment.assigned, eligible: assignment.eligible,
+			exposedAt: now(), assigned: assignment.assigned, eligible: assignment.eligible,
 			overridden: assignment.overridden, fullOn: assignment.fullOn, custom: assignment.custom,
 			audienceMismatch: assignment.audienceMismatch, ruleOverride: assignment.ruleOverride)
 		exposures.append(exposure)
@@ -378,7 +383,7 @@ struct ContextState {
 	// Experiments sharing a key are walked in ascending id order, like the JavaScript SDK: each one
 	// visited is exposed (unless peeking), and the first that is assigned, overridden or won by an
 	// assignment rule and whose variant defines the key provides the value.
-	mutating func variableValue(_ key: String, peek: Bool, now: Int64) -> (JSONValue?, [Exposure]) {
+	mutating func variableValue(_ key: String, peek: Bool, now: () -> Int64) -> (JSONValue?, [Exposure]) {
 		var queued: [Exposure] = []
 		for entry in index.variableExperiments[key] ?? [] {
 			let assignment: Assignment

@@ -3,7 +3,8 @@ import Foundation
 /// The experiment data a context reads, indexed once per `ContextData`: variables parsed, rules and
 /// audiences parsed, custom fields typed. Immutable and shared by every read.
 struct DataIndex: Sendable {
-	struct Entry: Sendable {
+	// A class, so reads share one entry instead of copying its fields.
+	final class Entry: Sendable {
 		let data: Experiment
 		/// One variable map per variant (empty when the variant has no object config).
 		let variables: [[String: JSONValue]]
@@ -11,6 +12,17 @@ struct DataIndex: Sendable {
 		let rules: [JSONValue]?
 		let audience: AudienceMatcher.Audience
 		let customFields: [String: CustomField]
+
+		init(
+			data: Experiment, variables: [[String: JSONValue]], rules: [JSONValue]?,
+			audience: AudienceMatcher.Audience, customFields: [String: CustomField]
+		) {
+			self.data = data
+			self.variables = variables
+			self.rules = rules
+			self.audience = audience
+			self.customFields = customFields
+		}
 	}
 
 	struct CustomField: Sendable {
