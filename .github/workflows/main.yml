@@ -60,6 +60,14 @@ jobs:
             done
           done
 
+      # The Example app references this checkout as a local package and has its own lockfile.
+      # Resolve strictly from it, so a lockfile that no longer satisfies Package.swift fails CI.
+      - name: Build the Example app from its lockfile
+        run: |
+          xcodebuild build -project Example/Example.xcodeproj -scheme Example \
+            -destination "generic/platform=iOS Simulator" -onlyUsePackageVersionsFromResolvedFile -quiet \
+            CODE_SIGNING_ALLOWED=NO SWIFT_TREAT_WARNINGS_AS_ERRORS=YES
+
   test-linux:
     name: test (linux, ${{ matrix.image }})
     strategy:
