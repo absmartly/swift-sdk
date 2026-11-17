@@ -20,6 +20,10 @@ jobs:
           - name: latest
             runs-on: macos-latest
             xcode: ""
+          # Swift 5.10: compiles the pre-6.0 branch of ABSmartlyAsync on Apple platforms.
+          - name: swift-5.10
+            runs-on: macos-14
+            xcode: /Applications/Xcode_15.4.app
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v4
@@ -36,6 +40,15 @@ jobs:
 
       - name: Run tests
         run: swift test
+
+      # Build for every Apple platform the package supports, against its iOS 10 / tvOS 10 /
+      # watchOS 3 minimums, so an availability regression fails CI.
+      - name: Build for iOS, tvOS and watchOS
+        if: matrix.name == 'latest'
+        run: |
+          for destination in "generic/platform=iOS" "generic/platform=tvOS" "generic/platform=watchOS"; do
+            xcodebuild build -scheme ABSmartly-Package -destination "$destination" -quiet
+          done
 
       # The Example app references this checkout as a local package and has its own lockfile.
       # Resolve strictly from it, so a lockfile that no longer satisfies Package.swift fails CI.

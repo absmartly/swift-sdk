@@ -30,7 +30,7 @@ security fixes, from the `release/1.x` branch) for 12 months after 2.0 ships.
   whose length differs from the variant count, or an out-of-bounds `assign` variant, falls back to
   normal assignment.
 - `semver_eq`, `semver_gt`, `semver_gte`, `semver_lt` and `semver_lte` JSON-expression operators.
-- Linux support: the SDK builds and its tests pass with Swift 5.10, 6.1 and 6.4 on Linux (CI runs 6.1).
+- Linux support: the SDK builds and its tests pass with Swift 5.10, 6.1 and 6.4 on Linux (CI runs 5.10 and 6.1).
   On Linux `ABSmartly.JSON` is a vendored copy of SwiftyJSON 5.0.2's `JSON` with the same API (SwiftyJSON
   itself does not compile there) and MD5 is computed in the SDK; Apple platforms are unchanged
   (SwiftyJSON `~> 5.0`, CommonCrypto). No new package dependencies.
@@ -86,9 +86,8 @@ security fixes, from the `release/1.x` branch) for 12 months after 2.0 ships.
 - No exposures after close; `refresh()` joins an in-flight refresh; `close()` waits for in-flight
   publishes; a pending automatic publish keeps the context alive until it is sent.
 - Work no longer runs on the main queue (timers, HTTP retries, publish recovery); `ready`, `refresh`,
-  `publish` and `close` events still reach the `ContextEventLogger` on the main thread on Apple
-  platforms, as in 1.4.0.
-- The `error` event for a failed load is logged before the context reports failed.
+  `publish`, `close` and `error` events from completed work still reach the `ContextEventLogger` on
+  the main thread on Apple platforms, as in 1.4.0.
 - An audience of `null` or `{}` is treated as no audience without logging an error.
 - `match` gives up after 100ms (returning null) on patterns that backtrack exponentially.
 - A failed automatic refresh reports one `.error` event (it was reported twice on main).

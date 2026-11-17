@@ -163,13 +163,14 @@ public final class Context {
 						}
 						seal.fulfill(())
 					}.catch(on: DispatchQueue.global()) { [self] error in
+						// As in v1.4.0: the context is failed (and ready) when the `.error` event is delivered.
 						self.applyDataFailed(error)
 						Logger.error("Context initialization failed: \(error.safeLocalizedDescription)")
-						self.logError(error: error)
 						self.failed.store(true, ordering: .releasing)
 						self.promiseLock.lock()
 						self.readyPromise = nil
 						self.promiseLock.unlock()
+						self.deliverOnMain { self.logError(error: error) }
 						seal.reject(error)
 					}
 				}
@@ -628,7 +629,7 @@ public final class Context {
 				self.refreshing.store(false, ordering: .releasing)
 
 				Logger.error("Context refresh failed: \(error.safeLocalizedDescription)")
-				self.logError(error: error)
+				self.deliverOnMain { self.logError(error: error) }
 
 				seal.reject(error)
 			}
@@ -653,6 +654,19 @@ public final class Context {
 		promiseLock.unlock()
 
 		clearRefreshTimer()
+
+		// Nothing queued or in flight: close now, as v1.4.0 did, so isClosed() is true and `.close`
+		// has been logged when close() returns.
+		eventLock.lock()
+		let idle = inFlightPublishes.isEmpty && pendingCount.load(ordering: .acquiring) == 0
+		eventLock.unlock()
+		if idle {
+			closed.store(true, ordering: .releasing)
+			closing.store(false, ordering: .releasing)
+			logEvent(event: .close)
+			seal.fulfill(())
+			return newClosePromise
+		}
 
 		// Wait for publishes already in flight (a failed one re-queues its events)
 		// before deciding whether a final flush is needed.
@@ -769,7 +783,7 @@ public final class Context {
 						self.eventLock.unlock()
 
 						Logger.error("Publish failed: \(error.safeLocalizedDescription)")
-						self.logError(error: error)
+						self.deliverOnMain { self.logError(error: error) }
 						throw error
 					}
 					_ = publishPromise.ensure(on: DispatchQueue.global()) { [weak self] in
@@ -1248,9 +1262,10 @@ public final class Context {
 		failedError = error
 	}
 
-	// ready/refresh/publish/close events reach the logger on the main thread, as in v1.4.0, so
-	// loggers may touch UIKit; the work itself stays off the main thread and never waits for the
-	// delivery. `.error` stays synchronous so it is seen before the context reports failed.
+	// ready/refresh/publish/close and `.error` events from completed work reach the logger on the
+	// main thread, as in v1.4.0, so loggers may touch UIKit; the work itself stays off the main
+	// thread and never waits for the delivery. Errors from misuse are logged synchronously on the
+	// calling thread, as v1.4.0's preconditions fired there.
 	// On Linux, where nothing may service the main queue, events use the completing thread.
 	#if canImport(Darwin)
 	private static var deliversEventsOnMainThreadValue = true

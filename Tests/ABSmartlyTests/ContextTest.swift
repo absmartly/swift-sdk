@@ -2981,25 +2981,73 @@ final class ContextTest: XCTestCase {
 		XCTAssertTrue(context.isReady())
 	}
 
-	func testErrorEventIsLoggedBeforeContextReportsFailed() throws {
+	// As in v1.4.0, the context is already ready and failed when a load failure's `.error` event is
+	// delivered, and on Apple platforms it arrives on the main thread.
+	func testLoadFailureErrorEventSeesFailedContextOnMainThread() throws {
+		let platformDefault = Context.deliversEventsOnMainThread
+		Context.deliversEventsOnMainThread = true
+		defer { Context.deliversEventsOnMainThread = platformDefault }
+
 		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
 		let (promise, resolver) = Promise<ContextData>.pending()
 		let context = try createContext(config: contextConfig, data: promise)
 
-		var stateWhenLogged: (ready: Bool, failed: Bool)?
+		var stateWhenLogged: (ready: Bool, failed: Bool, onMain: Bool)?
+		let logged = XCTestExpectation()
 		logger.handleEventContextEventClosure = { ctx, event in
-			if case .error = event { stateWhenLogged = (ctx.isReady(), ctx.isFailed()) }
+			if case .error = event {
+				stateWhenLogged = (ctx.isReady(), ctx.isFailed(), Thread.isMainThread)
+				logged.fulfill()
+			}
 		}
 
-		let expectation = XCTestExpectation()
-		_ = context.waitUntilReady().done { _ in expectation.fulfill() }
-		resolver.reject(ABSmartlyError("load failed"))
-		wait(for: [expectation], timeout: 1.0)
+		DispatchQueue.global().async { resolver.reject(ABSmartlyError("load failed")) }
+		wait(for: [logged], timeout: 1.0)
 
-		XCTAssertEqual(false, stateWhenLogged?.ready)
-		XCTAssertEqual(false, stateWhenLogged?.failed)
-		XCTAssertTrue(context.isReady())
-		XCTAssertTrue(context.isFailed())
+		XCTAssertEqual(true, stateWhenLogged?.ready)
+		XCTAssertEqual(true, stateWhenLogged?.failed)
+		XCTAssertEqual(true, stateWhenLogged?.onMain)
+	}
+
+	func testPublishAndRefreshErrorEventsAreDeliveredOnTheMainThread() throws {
+		let platformDefault = Context.deliversEventsOnMainThread
+		Context.deliversEventsOnMainThread = true
+		defer { Context.deliversEventsOnMainThread = platformDefault }
+
+		let context = try createContext(config: getContextConfig(withUnits: true))
+		var onMain: [Bool] = []
+		let logged = XCTestExpectation()
+		logged.expectedFulfillmentCount = 2
+		logger.handleEventContextEventClosure = { _, event in
+			if case .error = event {
+				onMain.append(Thread.isMainThread)
+				logged.fulfill()
+			}
+		}
+
+		context.track("goal1", properties: nil)
+		handler.publishEventClosure = { _ in
+			Promise { seal in DispatchQueue.global().async { seal.reject(ABSmartlyError("publish failed")) } }
+		}
+		provider.getContextDataClosure = {
+			Promise { seal in DispatchQueue.global().async { seal.reject(ABSmartlyError("refresh failed")) } }
+		}
+		_ = context.publish()
+		_ = context.refresh()
+		wait(for: [logged], timeout: 1.0)
+
+		XCTAssertEqual([true, true], onMain)
+	}
+
+	func testCloseWithNothingPendingIsClosedWhenItReturns() throws {
+		let context = try createContext(config: getContextConfig(withUnits: true))
+		logger.clearInvocations()
+
+		_ = context.close()
+
+		XCTAssertTrue(context.isClosed())
+		XCTAssertFalse(context.isClosing())
+		XCTAssertEqual(.close, logger.handleEventContextEventReceivedArguments?.event)
 	}
 
 	func testNumericUnitsKeepTheirTypeAndHashLikeJavaScript() throws {
