@@ -47,16 +47,15 @@ final class MatchOperatorTest: OperatorTest {
 		let matchOperator = self.matchOperator
 		let evaluator = self.evaluator
 		let finished = XCTestExpectation(description: "evaluate returns")
-		var result: JSON?
-		var elapsed: TimeInterval = 0
+		let box = ResultBox()
 		DispatchQueue.global().async {
 			let start = Date()
 			let value = matchOperator.evaluate(evaluator, [input, "^(a|aa)+$"])
-			elapsed = Date().timeIntervalSince(start)
-			result = value
+			box.set(value, Date().timeIntervalSince(start))
 			finished.fulfill()
 		}
 		XCTAssertEqual(.completed, XCTWaiter().wait(for: [finished], timeout: 5.0))
+		let (result, elapsed) = box.get()
 		XCTAssertEqual(JSON.null, result)
 		XCTAssertLessThan(elapsed, 2.0)
 
@@ -81,5 +80,24 @@ final class MatchOperatorTest: OperatorTest {
 	func testInvalidRegexReturnsNull() {
 		let result = matchOperator.evaluate(evaluator, ["test", "[invalid"])
 		XCTAssertEqual(JSON.null, result)
+	}
+}
+
+private final class ResultBox {
+	private let lock = NSLock()
+	private var result: JSON?
+	private var elapsed: TimeInterval = 0
+
+	func set(_ result: JSON, _ elapsed: TimeInterval) {
+		lock.lock()
+		self.result = result
+		self.elapsed = elapsed
+		lock.unlock()
+	}
+
+	func get() -> (JSON?, TimeInterval) {
+		lock.lock()
+		defer { lock.unlock() }
+		return (result, elapsed)
 	}
 }

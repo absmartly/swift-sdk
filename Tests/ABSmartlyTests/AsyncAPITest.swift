@@ -289,6 +289,18 @@ final class AsyncAPITest: XCTestCase {
 		XCTAssertEqual(1, http.closeCallsCount)
 	}
 
+	func testDefaultHTTPClientRequestOverloadAwaitsTheRequest() async throws {
+		let config = DefaultHTTPClientConfig()
+		config.retries = 0
+		let http = DefaultHTTPClient(config: config)
+		do {
+			_ = try await http.request(method: "GET", url: "not-a-valid-url", query: nil, headers: nil, body: nil)
+			XCTFail("expected the request to fail")
+		} catch {
+			XCTAssertNotNil(error as? URLError)
+		}
+	}
+
 	private func contextData(source: String) throws -> ContextData {
 		let path = TestResources.path(forResource: source, ofType: "json")
 		return try JSONDecoder().decode(ContextData.self, from: Data(contentsOf: URL(fileURLWithPath: path)))

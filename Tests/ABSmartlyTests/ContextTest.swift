@@ -1565,7 +1565,7 @@ final class ContextTest: XCTestCase {
 			XCTAssertEqual(1, logger.handleEventContextEventCallsCount)
 			XCTAssertTrue(context === logger.handleEventContextEventReceivedArguments!.context)
 			XCTAssertEqual(
-				try ContextEventLoggerEvent.publish(event: expected), logger.handleEventContextEventReceivedArguments!.event
+				ContextEventLoggerEvent.publish(event: expected), logger.handleEventContextEventReceivedArguments!.event
 			)
 
 			expectation.fulfill()
@@ -1945,7 +1945,7 @@ final class ContextTest: XCTestCase {
 			XCTAssertEqual(1, logger.handleEventContextEventCallsCount)
 			XCTAssertTrue(context === logger.handleEventContextEventReceivedArguments!.context)
 			XCTAssertEqual(
-				try ContextEventLoggerEvent.refresh(data: refreshedContextData),
+				ContextEventLoggerEvent.refresh(data: refreshedContextData),
 				logger.handleEventContextEventReceivedArguments!.event)
 
 			expectation.fulfill()
@@ -2345,21 +2345,21 @@ final class ContextTest: XCTestCase {
 		XCTAssertNil(context.getCustomFieldValue(experimentName: "not_found", key: "not_found"))
 		XCTAssertNil(context.getCustomFieldValue(experimentName: "exp_test_ab", key: "not_found"))
 		XCTAssertEqual("US,PT,ES,DE,FR", context.getCustomFieldValue(experimentName: "exp_test_ab", key: "country") as! String)
-		XCTAssertEqual("string", context.getCustomFieldValueType(experimentName: "exp_test_ab", key: "country") as! String)
+		XCTAssertEqual("string", context.getCustomFieldValueType(experimentName: "exp_test_ab", key: "country"))
 
 		let data: [String: JSON] = ["123": 1, "456": 0]
 		XCTAssertEqual(data, context.getCustomFieldValue(experimentName: "exp_test_ab", key: "overrides") as! [String: JSON])
-		XCTAssertEqual("json", context.getCustomFieldValueType(experimentName: "exp_test_ab", key: "overrides") as! String);
+		XCTAssertEqual("json", context.getCustomFieldValueType(experimentName: "exp_test_ab", key: "overrides"));
 
 		XCTAssertNil(context.getCustomFieldValue(experimentName: "exp_test_ab", key: "languages"));
 		XCTAssertNil(context.getCustomFieldValueType(experimentName: "exp_test_ab", key: "languages"));
 
-		XCTAssertEqual("US,PT,ES", context.getCustomFieldValue(experimentName: "exp_test_abc", key: "country") as! String);
-		XCTAssertEqual("string", context.getCustomFieldValueType(experimentName: "exp_test_abc", key: "country") as! String);
+		XCTAssertEqual("US,PT,ES", context.getCustomFieldValue(experimentName: "exp_test_abc", key: "country") as? String);
+		XCTAssertEqual("string", context.getCustomFieldValueType(experimentName: "exp_test_abc", key: "country"));
 		XCTAssertNil(context.getCustomFieldValue(experimentName: "exp_test_abc", key: "overrides"));
 		XCTAssertNil(context.getCustomFieldValueType(experimentName: "exp_test_abc", key: "overrides"));
-		XCTAssertEqual("en-US,en-GB,pt-PT,pt-BR,es-ES,es-MX", context.getCustomFieldValue(experimentName: "exp_test_abc", key: "languages") as! String);
-		XCTAssertEqual("string", context.getCustomFieldValueType(experimentName: "exp_test_abc", key: "languages") as! String);
+		XCTAssertEqual("en-US,en-GB,pt-PT,pt-BR,es-ES,es-MX", context.getCustomFieldValue(experimentName: "exp_test_abc", key: "languages") as? String);
+		XCTAssertEqual("string", context.getCustomFieldValueType(experimentName: "exp_test_abc", key: "languages"));
 
 		XCTAssertNil(context.getCustomFieldValue(experimentName: "exp_test_no_custom_fields", key: "country"));
 		XCTAssertNil(context.getCustomFieldValueType(experimentName: "exp_test_no_custom_fields", key: "country"));
@@ -3007,6 +3007,20 @@ final class ContextTest: XCTestCase {
 		XCTAssertEqual(true, stateWhenLogged?.ready)
 		XCTAssertEqual(true, stateWhenLogged?.failed)
 		XCTAssertEqual(true, stateWhenLogged?.onMain)
+		XCTAssertTrue(context.isFailed())
+	}
+
+	func testAlreadyFailedLoadErrorEventSeesFailedContext() throws {
+		var stateWhenLogged: (ready: Bool, failed: Bool)?
+		logger.handleEventContextEventClosure = { ctx, event in
+			if case .error = event { stateWhenLogged = (ctx.isReady(), ctx.isFailed()) }
+		}
+
+		_ = try createContext(
+			config: getContextConfig(withUnits: true), data: Promise<ContextData>(error: ABSmartlyError("load failed")))
+
+		XCTAssertEqual(true, stateWhenLogged?.ready)
+		XCTAssertEqual(true, stateWhenLogged?.failed)
 	}
 
 	func testPublishAndRefreshErrorEventsAreDeliveredOnTheMainThread() throws {
@@ -3119,7 +3133,7 @@ final class ContextTest: XCTestCase {
 		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
 		contextConfig.publishDelay = 0.1
 		logger.handleEventContextEventClosure = { ctx, event in
-			if case .ready = event { try? ctx.track("goal_in_ready", properties: nil) }
+			if case .ready = event { ctx.track("goal_in_ready", properties: nil) }
 		}
 		let context = try createContext(config: contextConfig)
 

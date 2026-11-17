@@ -11,8 +11,8 @@ security fixes, from the `release/1.x` branch) for 12 months after 2.0 ships.
 - async/await overloads of every Promise-returning method, in the new `ABSmartlyAsync` module
   (`import ABSmartlyAsync`, part of the `ABSmartly` Swift Package Manager product; iOS 13, macOS 10.15,
   tvOS 13, watchOS 6): `Context.waitUntilReady()`, `refresh()`, `publish()`, `close()`, `finalize()`,
-  `ABSmartlySDK.getContextData()`, `close()`, and the `Client`, `ContextDataProvider`,
-  `ContextEventHandler` and `HTTPClient` methods. Each awaits the existing Promise, so behaviour is
+  `ABSmartlySDK.getContextData()`, `close()`, the `Client`, `ContextDataProvider`,
+  `ContextEventHandler` and `HTTPClient` methods, and `DefaultHTTPClient.request`. Each awaits the existing Promise, so behaviour is
   unchanged; cancelling the calling task does not cancel the request. They are in a separate module
   because, inside an `async` function, Swift prefers an async overload, so 1.4.0 code such as
   `_ = context.publish()` there would no longer compile if they were in `ABSmartly`. Importing

@@ -164,7 +164,8 @@ try await context.close()
 
 Every Promise-returning method has an async overload with the same name: `Context.waitUntilReady()`,
 `refresh()`, `publish()`, `close()` and `finalize()`, `ABSmartlySDK.getContextData()` and `close()`,
-and the `Client`, `ContextDataProvider`, `ContextEventHandler` and `HTTPClient` methods. Each awaits
+the `Client`, `ContextDataProvider`, `ContextEventHandler` and `HTTPClient` methods, and
+`DefaultHTTPClient.request`. Each awaits
 the Promise the existing method returns, so it does the same work and returns or throws the same
 result; as with the Promise, `waitUntilReady()` does not throw when the context fails to load (check
 `context.isFailed()`). The PromiseKit methods are unchanged.
@@ -406,11 +407,11 @@ public class CustomEventLogger: ContextEventLogger {
             print("Goal tracked: \(goal.name)")
         case let .error(error):
             print("Error: \(error.localizedDescription)")
-        case let .publish(event):
+        case .publish:
             print("Events published")
-        case let .ready(data):
+        case .ready:
             print("Context ready")
-        case let .refresh(data):
+        case .refresh:
             print("Context refreshed")
         case .close:
             print("Context closed")

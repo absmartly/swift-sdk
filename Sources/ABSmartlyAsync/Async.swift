@@ -18,6 +18,9 @@ import PromiseKit
 // warns "no 'async' operations occur within 'await' expression". Call it from an async function
 // or a `Task {}`.
 //
+// A type that conforms to both `Client` and `ContextEventHandler` gets two async
+// `publish(event:)` overloads; call it through one of the protocols (`(x as Client).publish`).
+//
 // With Swift 6 compilers the methods run in the caller's isolation (`#isolation`), so a
 // `Context` can be awaited from a `@MainActor` or actor method without a Sendable diagnostic.
 
@@ -143,6 +146,17 @@ extension ContextEventHandler {
 }
 
 @available(iOS 13, macOS 10.15, tvOS 13, watchOS 6, *)
+extension DefaultHTTPClient {
+	public func request(
+		method: String, url: String, query: [String: String]?, headers: [String: String]?, body: Data?,
+		isolation: isolated (any Actor)? = #isolation
+	) async throws -> Response {
+		let promise: Promise<Response> = request(method: method, url: url, query: query, headers: headers, body: body)
+		return try await promise.asyncValue()
+	}
+}
+
+@available(iOS 13, macOS 10.15, tvOS 13, watchOS 6, *)
 extension HTTPClient {
 	public func get(
 		url: String, query: [String: String]?, headers: [String: String]?,
@@ -251,6 +265,16 @@ extension ContextEventHandler {
 	public func publish(event: PublishEvent) async throws {
 		let promise: Promise<Void> = publish(event: event)
 		try await promise.asyncValue()
+	}
+}
+
+@available(iOS 13, macOS 10.15, tvOS 13, watchOS 6, *)
+extension DefaultHTTPClient {
+	public func request(method: String, url: String, query: [String: String]?, headers: [String: String]?, body: Data?)
+		async throws -> Response
+	{
+		let promise: Promise<Response> = request(method: method, url: url, query: query, headers: headers, body: body)
+		return try await promise.asyncValue()
 	}
 }
 

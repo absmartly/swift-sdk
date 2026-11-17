@@ -30,6 +30,7 @@ func readmeSnippet1(sdk: ABSmartlySDK, context: Context, config: ContextConfig, 
 	    print("Failed to initialize ABSmartly SDK: \(error.localizedDescription)")
 	    return
 	}
+	_ = sdk
 }
 
 // README block 2
@@ -44,6 +45,7 @@ func readmeSnippet2(sdk: ABSmartlySDK, context: Context, config: ContextConfig, 
 	    timeout: 5.0,           // Default: 3.0 seconds
 	    retries: 5              // Default: 3
 	)
+	_ = sdk
 }
 
 // README block 3
@@ -59,6 +61,10 @@ func readmeSnippet3(sdk: ABSmartlySDK, context: Context, config: ContextConfig, 
 	let client = try DefaultClient(config: clientConfig)
 	let sdkConfig = ABSmartlyConfig(client: client)
 	let sdk = try ABSmartlySDK(config: sdkConfig)
+	_ = clientConfig
+	_ = client
+	_ = sdkConfig
+	_ = sdk
 }
 
 // README block 4
@@ -71,6 +77,8 @@ func readmeSnippet4(sdk: ABSmartlySDK, context: Context, config: ContextConfig, 
 	_ = context.waitUntilReady().done { context in
 	    print("ABSmartly Context ready!")
 	}
+	_ = contextConfig
+	_ = context
 }
 
 // README block 5
@@ -81,6 +89,7 @@ func readmeSnippet5(sdk: ABSmartlySDK, context: Context, config: ContextConfig, 
 	try await context.waitUntilReady()
 	try await context.publish()
 	try await context.close()
+	_ = context
 }
 
 // README block 6
@@ -119,6 +128,8 @@ func readmeSnippet7(sdk: ABSmartlySDK, context: Context, config: ContextConfig, 
 
 	// contextData: a ContextData received from your server
 	let context = sdk.createContextWithData(config: contextConfig, contextData: contextData)
+	_ = contextConfig
+	_ = context
 }
 
 // README block 8
@@ -127,6 +138,7 @@ func readmeSnippet8(sdk: ABSmartlySDK, context: Context, config: ContextConfig, 
 	let contextConfig = ContextConfig()
 	contextConfig.setUnit(unitType: "session_id", uid: "5ebf06d8cb5d8137290c4abb64155584fbdb64d8")
 	contextConfig.refreshInterval = 4 * 3600 // every 4 hours (in seconds)
+	_ = contextConfig
 }
 
 // README block 9
@@ -160,6 +172,7 @@ func readmeSnippet11(sdk: ABSmartlySDK, context: Context, config: ContextConfig,
 	} else {
 	    // user is in treatment group
 	}
+	_ = treatment
 }
 
 // README block 12
@@ -167,6 +180,8 @@ func readmeSnippet11(sdk: ABSmartlySDK, context: Context, config: ContextConfig,
 func readmeSnippet12(sdk: ABSmartlySDK, context: Context, config: ContextConfig, contextData: ContextData) async throws {
 	let defaultButtonColor: JSON = "red"
 	let buttonColor = context.getVariableValue("button.color", defaultValue: defaultButtonColor)?.stringValue
+	_ = defaultButtonColor
+	_ = buttonColor
 }
 
 // README block 13
@@ -178,12 +193,14 @@ func readmeSnippet13(sdk: ABSmartlySDK, context: Context, config: ContextConfig,
 	} else {
 	    // user is in treatment group
 	}
+	_ = treatment
 }
 
 // README block 14
 @available(iOS 13, macOS 10.15, tvOS 13, watchOS 6, *)
 func readmeSnippet14(sdk: ABSmartlySDK, context: Context, config: ContextConfig, contextData: ContextData) async throws {
 	let color = context.peekVariableValue("colorGComponent", defaultValue: 255)
+	_ = color
 }
 
 // README block 15
@@ -250,11 +267,11 @@ public class CustomEventLogger: ContextEventLogger {
             print("Goal tracked: \(goal.name)")
         case let .error(error):
             print("Error: \(error.localizedDescription)")
-        case let .publish(event):
+        case .publish:
             print("Events published")
-        case let .ready(data):
+        case .ready:
             print("Context ready")
-        case let .refresh(data):
+        case .refresh:
             print("Context refreshed")
         case .close:
             print("Context closed")
@@ -277,6 +294,8 @@ func readmeSnippet21(sdk: ABSmartlySDK, context: Context, config: ContextConfig,
 	// OR, alternatively, during a particular context initialization
 	let contextConfig = ContextConfig()
 	contextConfig.eventLogger = CustomEventLogger()
+	_ = sdk
+	_ = contextConfig
 }
 
 // README block 22
@@ -497,6 +516,7 @@ func readmeSnippet26(sdk: ABSmartlySDK, context: Context, config: ContextConfig,
 	    environment: "production",
 	    timeout: 10.0  // 10 seconds instead of default 3 seconds
 	)
+	_ = sdk
 }
 
 // README block 27
@@ -517,4 +537,10 @@ func readmeSnippet27(sdk: ABSmartlySDK, context: Context, config: ContextConfig,
 	let client = try DefaultClient(config: clientConfig, httpClient: httpClient)
 	let sdkConfig = ABSmartlyConfig(client: client)
 	let sdk = try ABSmartlySDK(config: sdkConfig)
+	_ = httpClientConfig
+	_ = httpClient
+	_ = clientConfig
+	_ = client
+	_ = sdkConfig
+	_ = sdk
 }

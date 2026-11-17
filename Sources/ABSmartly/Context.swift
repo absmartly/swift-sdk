@@ -136,9 +136,10 @@ public final class Context {
 					setTimeout()
 				}
 			} else if let error = promise.error {
+				// As in v1.4.0: the context is failed (and ready) when the `.error` event is delivered.
 				applyDataFailed(error)
-				logError(error: error)
 				failed.store(true, ordering: .releasing)
+				logError(error: error)
 			}
 		} else {
 			readyPromise = Promise<Void> { [weak self] seal in
