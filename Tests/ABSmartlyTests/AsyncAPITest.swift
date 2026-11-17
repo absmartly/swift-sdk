@@ -276,29 +276,54 @@ final class AsyncAPITest: XCTestCase {
 		http.postUrlQueryHeadersBodyReturnValue = Promise(error: ABSmartlyError("post failed"))
 		http.closeReturnValue = Promise.value(())
 
-		let got = try await http.get(url: "https://example.test", query: nil, headers: nil)
+		let got = try await http.get(url: "https://example.test/get", query: ["q": "1"], headers: ["h": "2"])
 		XCTAssertEqual(200, got.status)
-		let put = try await http.put(url: "https://example.test", query: nil, headers: nil, body: Data())
+		XCTAssertEqual("https://example.test/get", http.getUrlQueryHeadersReceivedArguments?.url)
+		XCTAssertEqual(["q": "1"], http.getUrlQueryHeadersReceivedArguments?.query)
+		XCTAssertEqual(["h": "2"], http.getUrlQueryHeadersReceivedArguments?.headers)
+		let put = try await http.put(url: "https://example.test/put", query: ["p": "3"], headers: ["k": "4"], body: Data([5]))
+		XCTAssertEqual("https://example.test/put", http.putUrlQueryHeadersBodyReceivedArguments?.url)
+		XCTAssertEqual(["p": "3"], http.putUrlQueryHeadersBodyReceivedArguments?.query)
+		XCTAssertEqual(["k": "4"], http.putUrlQueryHeadersBodyReceivedArguments?.headers)
+		XCTAssertEqual(Data([5]), http.putUrlQueryHeadersBodyReceivedArguments?.body)
 		XCTAssertEqual(204, put.status)
 		XCTAssertEqual(1, http.getUrlQueryHeadersCallsCount)
 		XCTAssertEqual(1, http.putUrlQueryHeadersBodyCallsCount)
 		await XCTAssertThrowsAsync(
-			try await http.post(url: "https://example.test", query: nil, headers: nil, body: nil), "post failed")
+			try await http.post(url: "https://example.test/post", query: ["a": "b"], headers: ["c": "d"], body: Data([6])),
+			"post failed")
+		XCTAssertEqual("https://example.test/post", http.postUrlQueryHeadersBodyReceivedArguments?.url)
+		XCTAssertEqual(["a": "b"], http.postUrlQueryHeadersBodyReceivedArguments?.query)
+		XCTAssertEqual(["c": "d"], http.postUrlQueryHeadersBodyReceivedArguments?.headers)
+		XCTAssertEqual(Data([6]), http.postUrlQueryHeadersBodyReceivedArguments?.body)
 		XCTAssertEqual(1, http.postUrlQueryHeadersBodyCallsCount)
 		try await http.close()
 		XCTAssertEqual(1, http.closeCallsCount)
 	}
 
-	func testDefaultHTTPClientRequestOverloadAwaitsTheRequest() async throws {
-		let config = DefaultHTTPClientConfig()
-		config.retries = 0
-		let http = DefaultHTTPClient(config: config)
+	func testDefaultHTTPClientRequestOverloadPassesItsArguments() async throws {
+		final class RecordingHTTPClient: DefaultHTTPClient {
+			var received: (method: String, url: String, query: [String: String]?, headers: [String: String]?, body: Data?)?
+			override func request(
+				method: String, url: String, query: [String: String]?, headers: [String: String]?, body: Data?
+			) -> Promise<Response> {
+				received = (method, url, query, headers, body)
+				return Promise(error: URLError(.badURL))
+			}
+		}
+		let http = RecordingHTTPClient(config: DefaultHTTPClientConfig())
 		do {
-			_ = try await http.request(method: "GET", url: "not-a-valid-url", query: nil, headers: nil, body: nil)
+			_ = try await http.request(
+				method: "PATCH", url: "https://example.test/r", query: ["q": "1"], headers: ["h": "2"], body: Data([7]))
 			XCTFail("expected the request to fail")
 		} catch {
-			XCTAssertNotNil(error as? URLError)
+			XCTAssertEqual(URLError(.badURL), error as? URLError)
 		}
+		XCTAssertEqual("PATCH", http.received?.method)
+		XCTAssertEqual("https://example.test/r", http.received?.url)
+		XCTAssertEqual(["q": "1"], http.received?.query)
+		XCTAssertEqual(["h": "2"], http.received?.headers)
+		XCTAssertEqual(Data([7]), http.received?.body)
 	}
 
 	private func contextData(source: String) throws -> ContextData {

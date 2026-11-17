@@ -170,6 +170,10 @@ the Promise the existing method returns, so it does the same work and returns or
 result; as with the Promise, `waitUntilReady()` does not throw when the context fails to load (check
 `context.isFailed()`). The PromiseKit methods are unchanged.
 
+A type of your own that adopts two of `Client`, `ContextDataProvider`, `ContextEventHandler` and
+`HTTPClient` gets two async versions of the methods they share, so call them through one protocol:
+`try await (myClient as Client).close()`.
+
 Adding `import ABSmartlyAsync` anywhere in a target makes the async overloads visible in all of that
 target's files. Inside an `async` function Swift then prefers them, so 1.4 code there such as
 `_ = context.publish()` needs either `try await context.publish()` or an explicit type to keep the

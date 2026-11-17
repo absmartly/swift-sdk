@@ -18,8 +18,9 @@ import PromiseKit
 // warns "no 'async' operations occur within 'await' expression". Call it from an async function
 // or a `Task {}`.
 //
-// A type that conforms to both `Client` and `ContextEventHandler` gets two async
-// `publish(event:)` overloads; call it through one of the protocols (`(x as Client).publish`).
+// A type that adopts two of `Client`, `ContextDataProvider`, `ContextEventHandler` and
+// `HTTPClient` gets two async overloads of the methods they share (`getContextData`,
+// `publish(event:)`, `close`); call through one protocol: `try await (x as Client).close()`.
 //
 // With Swift 6 compilers the methods run in the caller's isolation (`#isolation`), so a
 // `Context` can be awaited from a `@MainActor` or actor method without a Sendable diagnostic.
