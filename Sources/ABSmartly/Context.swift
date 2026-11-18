@@ -1330,7 +1330,6 @@ public final class Context {
 		for experiment in data.experiments {
 			let experimentVariables = ExperimentVariables(experiment)
 			if let holdoutIds = experiment.holdoutIds, !holdoutsById.isEmpty {
-				// Sorted by id and deduplicated; an id with no holdout entry is ignored.
 				var holdouts: [Experiment] = []
 				for holdoutId in holdoutIds {
 					if let holdout = holdoutsById[holdoutId] {
@@ -1553,7 +1552,6 @@ private final class Assignment: Equatable {
 	var variables: [String: JSON]?
 	var exposed = ManagedAtomic<Bool>(false)
 	var attrsSeq: Int = 0
-	// Held out by a covering holdout: variant 0, not assigned, and no exposure of its own.
 	var suppressed = false
 	var holdouts: [PinnedHoldout]?
 	// On a holdout's own assignment: its split's length when `variant` was drawn.

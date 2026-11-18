@@ -71,7 +71,6 @@ final class ContextHoldoutTest: XCTestCase {
 		return experiment
 	}
 
-	// `configs` gives each variant a `key` variable with the values "control" and "treatment".
 	func withVariables(_ key: String) -> [String?] {
 		return ["{\"\(key)\":\"control\"}", "{\"\(key)\":\"treatment\"}"]
 	}
@@ -1463,18 +1462,13 @@ final class ContextHoldoutTest: XCTestCase {
 			// Give the refresh the chance to land inside this lookup; it must wait for the lookup.
 			_ = installed.wait(timeout: .now() + 0.2)
 		}
-		#else
-		let installed = DispatchSemaphore(value: 0)
-		#endif
 
 		XCTAssertEqual(Self.normalVariant, context.getTreatment("exp_race"))
-		#if !DEBUG
-		context.setData(refreshed)
-		installed.signal()
-		#endif
 		XCTAssertEqual(.success, installed.wait(timeout: .now() + 5))
-		#if DEBUG
 		context.afterExperimentLookup = nil
+		#else
+		XCTAssertEqual(Self.normalVariant, context.getTreatment("exp_race"))
+		context.setData(refreshed)
 		#endif
 		XCTAssertEqual(Self.normalVariant, context.getTreatment("exp_race"))
 		XCTAssertEqual(Self.normalVariant, context.getTreatment("exp_race"))
@@ -1784,7 +1778,6 @@ final class ContextHoldoutTest: XCTestCase {
 		XCTAssertFalse(loggedEvents().contains { if case .error = $0 { return true } else { return false } })
 	}
 
-	// A malformed `holdouts` field or entry only uncovers what referenced it; the context still loads.
 	func testMalformedHoldoutsDegradeOnlyThemselves() throws {
 		for holdouts in ["\"oops\"", "{\"id\":11}", "[1, \"x\", {\"id\":11}]", "null"] {
 			let json = """
@@ -1796,7 +1789,6 @@ final class ContextHoldoutTest: XCTestCase {
 			XCTAssertEqual(
 				Self.normalVariant, createContext(data).peekTreatment("exp"), "holdouts: \(holdouts)")
 		}
-		// A holdout entry without a name is skipped on its own; the valid sibling still applies.
 		let data = contextData(
 			[experiment(1, "exp", holdoutIds: [10, 11])],
 			holdouts: [["id": 10, "split": [1.0, 0.0]], holdout(11, "holdout_a", seeds: Self.holdoutA)])
@@ -1834,7 +1826,6 @@ final class ContextHoldoutTest: XCTestCase {
 			+ "\"hashed\":true,\"publishedAt\":1620000000000,\"units\":[{\"type\":\"session_id\",\"uid\":\"\(Hashing.hash(Self.uid))\"}]}"
 		XCTAssertEqual(expected, String(data: baseline, encoding: .utf8))
 
-		// Empty holdouts, a dangling id, and holdouts nothing references: the same bytes.
 		XCTAssertEqual(baseline, try publishedBytes(contextData(experiments, holdouts: [])))
 		var dangling = experiments
 		dangling[0]["holdoutIds"] = [999]
@@ -1857,7 +1848,6 @@ final class ContextHoldoutTest: XCTestCase {
 		XCTAssertEqual([holdoutExposure(11, "holdout_a", 0)], loggedExposures())
 	}
 
-	// The plain constructors are unchanged and the holdouts overload defaults to none.
 	func testContextDataConstructorsAndEquality() {
 		let experiments = contextData([experiment(1, "exp", holdoutIds: [11])]).experiments
 		let holdouts = contextData([], holdouts: [holdout(11, "holdout_a", seeds: Self.holdoutA)]).holdouts
@@ -1907,7 +1897,6 @@ final class ContextHoldoutTest: XCTestCase {
 		XCTAssertEqual(2, context.getPendingCount())
 	}
 
-	// Exposures follow holdout id order, whatever the order of `holdoutIds` and `holdouts`.
 	func testHoldoutExposuresAreInIdOrder() throws {
 		let context = createContext(
 			contextData(
@@ -2009,7 +1998,6 @@ final class ContextHoldoutTest: XCTestCase {
 		XCTAssertFalse(Context.isHeldOutBy(1, armCount: 3, fullOnVariant: 2))
 	}
 
-	// Removing coverage on refresh re-resolves the experiment (scenario 225).
 	func testRefreshRemovingCoverageReResolvesExperiment() {
 		let context = createContext(
 			contextData(
@@ -2025,7 +2013,6 @@ final class ContextHoldoutTest: XCTestCase {
 			[holdoutExposure(11, "holdout_a", 0), exposure(1, "exp_cov", Self.normalVariant)], loggedExposures())
 	}
 
-	// Exposure state survives a publish (scenario 223).
 	func testPublishKeepsHoldoutExposureState() throws {
 		let context = createContext(
 			contextData(
@@ -2103,7 +2090,6 @@ final class ContextHoldoutTest: XCTestCase {
 			], loggedExposures())
 	}
 
-	// A failed context drops the holdout index with the rest of the data.
 	func testFailedContextHasNoHoldouts() {
 		let config = ContextConfig()
 		config.setUnit(unitType: Self.unitType, uid: Self.uid)

@@ -59,7 +59,6 @@ public struct Experiment: Codable {
 			Logger.error("Ignoring assignmentRules for experiment '\(name)': expected a JSON string.")
 		}
 
-		// A malformed id is dropped on its own; the valid ones still cover the experiment.
 		holdoutIds = (try? container.decodeIfPresent([LenientElement<Int>].self, forKey: .holdoutIds))?
 			.flatMap { $0.compactMap { $0.value } }
 		holdoutType = try? container.decodeIfPresent(String.self, forKey: .holdoutType)
