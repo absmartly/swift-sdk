@@ -531,6 +531,7 @@ public final class Context {
 			eventLock.lock()
 			defer { eventLock.unlock() }
 
+			guard !closed.load(ordering: .acquiring), !closing.load(ordering: .acquiring) else { return }
 			exposures.append(exposure)
 			pendingCount.wrappingIncrement(by: 1, ordering: .releasing)
 		}
@@ -577,6 +578,7 @@ public final class Context {
 			eventLock.lock()
 			defer { eventLock.unlock() }
 
+			guard !closed.load(ordering: .acquiring), !closing.load(ordering: .acquiring) else { return }
 			achievements.append(achievement)
 			pendingCount.wrappingIncrement(by: 1, ordering: .releasing)
 		}
@@ -629,8 +631,12 @@ public final class Context {
 				self.dataLock.lock()
 				self.failedError = nil
 				self.dataLock.unlock()
+				self.applyData(data)
+				self.eventLock.lock()
+				self.ready.store(true, ordering: .releasing)
 				self.failed.store(false, ordering: .releasing)
-				self.setData(data)
+				self.eventLock.unlock()
+				self.setRefreshTimer()
 				self.refreshing.store(false, ordering: .releasing)
 				self.deliverOnMain { self.logEvent(event: .refresh(data: data)) }
 				seal.fulfill(())
@@ -809,6 +815,12 @@ public final class Context {
 			}
 		} else {
 			eventLock.lock()
+			// Recovery and this decision are serialized: a flush that observed the old failed
+			// state must not discard events queued after recovery.
+			if !isFailed() {
+				eventLock.unlock()
+				return flush()
+			}
 			defer { eventLock.unlock() }
 
 			exposures = []
