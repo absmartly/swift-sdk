@@ -152,9 +152,14 @@ public final class Context {
 					// waitUntilReady()'s promise still gets it settled.
 					promise.done(on: DispatchQueue.global()) { [self] data in
 						// Mark ready before delivery so a logger's ready handler can read the context.
-						self.applyData(data)
-						self.markReady()
-						self.deliverOnMain { self.logEvent(event: .ready(data: data)) }
+						self.contextLock.lock()
+						let superseded = self.ready.load(ordering: .acquiring)
+						if !superseded {
+							self.applyData(data)
+							self.markReady()
+						}
+						self.contextLock.unlock()
+						if !superseded { self.deliverOnMain { self.logEvent(event: .ready(data: data)) } }
 						self.promiseLock.lock()
 						self.readyPromise = nil
 						self.promiseLock.unlock()

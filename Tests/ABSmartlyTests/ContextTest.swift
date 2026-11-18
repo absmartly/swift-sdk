@@ -3779,6 +3779,21 @@ final class ContextV140BehaviourTest: XCTestCase {
         XCTAssertNotNil(context.getContextData())
     }
 
+	func testRefreshWinsLateInitialSuccess() throws {
+        let (initial, initialSeal) = Promise<ContextData>.pending()
+        let context = makeContext(config(), initial)
+        provider.getContextDataReturnValue = Promise.value(try contextData())
+        let refreshed = expectation(description: "refreshed")
+        _ = context.refresh().done { refreshed.fulfill() }
+        wait(for: [refreshed], timeout: 2)
+        initialSeal.fulfill(ContextData())
+        let settled = expectation(description: "initial settled")
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.2) { settled.fulfill() }
+        wait(for: [settled], timeout: 2)
+        XCTAssertFalse(context.isFailed())
+        XCTAssertFalse(context.getExperiments().isEmpty)
+    }
+
 	func testFailedCloseRestartsRefreshTimer() throws {
         let cfg = config()
         cfg.refreshInterval = 10
