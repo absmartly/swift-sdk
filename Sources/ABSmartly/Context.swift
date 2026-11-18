@@ -195,7 +195,9 @@ public final class Context {
 						#if DEBUG
 						Context.runTestHook(.initialLoadSettled)
 						#endif
-					}.catch(on: DispatchQueue.global()) { error in
+					}.catch(on: DispatchQueue.global(), policy: .allErrors) { error in
+						// `.allErrors`: PromiseKit's default policy skips cancellation, which would leave
+						// `owner` holding the context and readiness waiters pending forever.
 						guard let self = owner.take() else {
 							// Superseded by a refresh, which already made the context ready.
 							#if DEBUG
@@ -217,7 +219,9 @@ public final class Context {
 						Logger.error("Context initialization failed: \(error.safeLocalizedDescription)")
 						if wins {
 							self.deliverOnMain { self.logError(error: error) }
-							self.settleReadiness()
+							// Goals queued while loading stay queued, as in v1.4.0: publishing a failed
+							// context would discard them, and a later successful refresh publishes them.
+							self.settleReadiness(scheduleQueuedEvents: false)
 						}
 						#if DEBUG
 						Context.runTestHook(.initialLoadSettled)
@@ -228,9 +232,9 @@ public final class Context {
 		}
 
 	// Called once, by whichever completion made the context ready (or failed): schedules goals that
-	// were queued while loading, then settles waitUntilReady() callers.
-	private func settleReadiness() {
-		if pendingCount.load(ordering: .acquiring) > 0 {
+	// were queued while loading (unless the load failed), then settles waitUntilReady() callers.
+	private func settleReadiness(scheduleQueuedEvents: Bool = true) {
+		if scheduleQueuedEvents && pendingCount.load(ordering: .acquiring) > 0 {
 			setTimeout()
 		}
 		promiseLock.lock()
@@ -483,6 +487,21 @@ public final class Context {
 		}
 	}
 
+	// Undoes an exposure claim whose exposure was not queued. Under contextLock, so setUnit sees the
+	// claim and its release together: a missing-unit split kept across setUnit only because it
+	// looked exposed is dropped once its unit is known, so the next read re-resolves it with the
+	// unit. Takes contextLock without holding eventLock (refresh takes them in that order).
+	private func releaseUnqueuedExposure(_ assignment: Assignment) {
+		contextLock.lock()
+		defer { contextLock.unlock() }
+		assignment.exposed.store(false, ordering: .releasing)
+		if assignment.ruleMissingUnit, let unitType = assignment.unitType, units[unitType] != nil,
+			assignmentCache[assignment.name] === assignment
+		{
+			assignmentCache[assignment.name] = nil
+		}
+	}
+
 	private static func sameUID(_ a: JSON, _ b: JSON) -> Bool {
 		switch (a.type, b.type) {
 		case (.string, .string): return a.stringValue == b.stringValue
@@ -593,18 +612,16 @@ public final class Context {
 			assignment.overridden, assignment.fullOn, assignment.custom, assignment.audienceMismatch,
 			ruleOverride: assignment.ruleOverride)
 
-		do {
-			eventLock.lock()
-			defer { eventLock.unlock() }
-
-			guard !closed.load(ordering: .acquiring), !closing.load(ordering: .acquiring) else {
-				// Not queued, so not exposed: a read after a failed close can still expose it.
-				assignment.exposed.store(false, ordering: .releasing)
-				return
-			}
-			exposures.append(exposure)
-			pendingCount.wrappingIncrement(by: 1, ordering: .releasing)
+		eventLock.lock()
+		guard !closed.load(ordering: .acquiring), !closing.load(ordering: .acquiring) else {
+			eventLock.unlock()
+			// Not queued, so not exposed: a read after a failed close can still expose it.
+			releaseUnqueuedExposure(assignment)
+			return
 		}
+		exposures.append(exposure)
+		pendingCount.wrappingIncrement(by: 1, ordering: .releasing)
+		eventLock.unlock()
 
 		logEvent(event: .exposure(exposure: exposure))
 
@@ -702,7 +719,13 @@ public final class Context {
 				// so no evaluation or flush sees the new data while the context still reports failed.
 				self.contextLock.lock()
 				self.eventLock.lock()
-				let winsInitialLoad = self.state.load(ordering: .acquiring) == Context.loading
+				let previousState = self.state.load(ordering: .acquiring)
+				let winsInitialLoad = previousState == Context.loading
+				// Assignments read while there was no experiment data (e.g. an override) lack the
+				// experiment's id and variables; rebuild them from the new data.
+				if previousState != Context.readyState {
+					self.assignmentCache = [:]
+				}
 				self.commitData(prepared)
 				self.state.store(Context.readyState, ordering: .releasing)
 				self.eventLock.unlock()
@@ -724,7 +747,8 @@ public final class Context {
 				self.refreshing.store(false, ordering: .releasing)
 				self.deliverOnMain { self.logEvent(event: .refresh(data: data)) }
 				seal.fulfill(())
-			}.catch(on: DispatchQueue.global()) { [self] error in
+			}.catch(on: DispatchQueue.global(), policy: .allErrors) { [self] error in
+				// `.allErrors`: a cancelled fetch must still clear `refreshing` and settle the promise.
 				self.refreshing.store(false, ordering: .releasing)
 
 				Logger.error("Context refresh failed: \(error.safeLocalizedDescription)")

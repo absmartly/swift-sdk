@@ -128,8 +128,10 @@ security fixes, from the `release/1.x` branch) for 12 months after 2.0 ships.
   watchOS at 5.0 and iOS/tvOS at the package minimums.
 - CocoaPods: `pod lib lint` / `pod trunk push` currently fail on Xcode 16.3 and 26 while building
   the dependency pods, before the SDK is compiled: SwiftyJSON 5 declares macOS 10.9 (availability
-  errors) and, on Xcode 26, PromiseKit 6's iOS 8 target needs the removed `libarclite`. The SDK itself builds for every Apple platform with Swift Package Manager. Publishing
-  1.5.0 to the CocoaPods trunk needs a maintainer decision (for example raising the podspec's
-  deployment targets, or publishing from an Xcode that still builds macOS 10.9).
+  errors) and, on Xcode 26, PromiseKit 6's iOS 8 target needs the removed `libarclite`. The SDK
+  itself builds for every Apple platform with Swift Package Manager. So the `v1.5.0` tag does not
+  publish 1.5.0 to the CocoaPods trunk: the publish job's trunk push is off (`COCOAPODS_PUBLISH`),
+  and that switch only affects tags pushed after it is set. A 1.5.x pod needs the dependency pods to
+  validate on the publishing Xcode; raising this podspec's own targets does not change theirs.
 - Toolchains 5.9 and later read `Package@swift-5.9.swift`, which is identical to `Package.swift` except
   that the SwiftyJSON dependency also names Mac Catalyst and visionOS.

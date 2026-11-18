@@ -3861,14 +3861,17 @@ final class ContextV140BehaviourTest: XCTestCase {
 		let (initial, initialSeal) = Promise<ContextData>.pending()
 		let context = makeContext(config(), initial)
 		provider.getContextDataReturnValue = Promise.value(try contextData())
+		var refreshWon = XCTWaiter.Result.timedOut
 		Context.setTestHook(.initialLoadTookContext) {
 			Context.setTestHook(.initialLoadTookContext, nil)
 			let refreshed = XCTestExpectation()
 			_ = context.refresh().done { refreshed.fulfill() }
-			_ = XCTWaiter().wait(for: [refreshed], timeout: 2)
+			refreshWon = XCTWaiter().wait(for: [refreshed], timeout: 2)
 		}
 		defer { Context.setTestHook(.initialLoadTookContext, nil) }
 		settleInitialLoad { settle(initialSeal) }
+		// Otherwise the scenario ran in the opposite order and the assertions below prove nothing.
+		XCTAssertEqual(.completed, refreshWon, "the refresh did not complete inside the initial load's completion")
 		return context
 	}
 
@@ -3932,9 +3935,98 @@ final class ContextV140BehaviourTest: XCTestCase {
 		_ = context!.close().done { closed.fulfill() }
 		wait(for: [closed], timeout: 2)
 
-		let released = WeakContext(context)
-		context = nil
-		XCTAssertNil(released.value)
+		// Keep the unsettled provider promise (and its completions) alive through the check, so this
+		// tests that the refresh revoked their hold on the context.
+		withExtendedLifetime(initial) {
+			let released = WeakContext(context)
+			context = nil
+			XCTAssertNil(released.value)
+		}
+	}
+
+	// A goal tracked while the first load is pending is not discarded when that load fails: no
+	// publish is scheduled for the failed context, and a later successful refresh publishes it.
+	func testGoalQueuedBeforeAFailedLoadIsPublishedAfterRecovery() throws {
+		let (initial, initialSeal) = Promise<ContextData>.pending()
+		let context = makeContext(config(), initial)
+		context.track("before-failure", properties: nil)
+		let waiting = expectation(description: "ready")
+		_ = context.waitUntilReady().done { _ in waiting.fulfill() }
+		initialSeal.reject(ABSmartlyError("load failed"))
+		wait(for: [waiting], timeout: 2)
+		XCTAssertTrue(context.isFailed())
+		XCTAssertEqual(0, scheduler.scheduleAfterExecuteCallsCount)
+		XCTAssertEqual(1, context.getPendingCount())
+
+		provider.getContextDataReturnValue = Promise.value(try contextData())
+		let refreshed = expectation(description: "refreshed")
+		_ = context.refresh().done { refreshed.fulfill() }
+		wait(for: [refreshed], timeout: 2)
+		XCTAssertEqual(1, scheduler.scheduleAfterExecuteCallsCount)
+
+		handler.publishEventReturnValue = Promise.value(())
+		let published = expectation(description: "published")
+		_ = context.publish().done { published.fulfill() }
+		wait(for: [published], timeout: 2)
+		XCTAssertEqual(["before-failure"], handler.publishEventReceivedEvent?.goals.map { $0.name })
+	}
+
+	// A provider that cancels the initial fetch fails the context (settling waiters) and does not keep
+	// it alive after close.
+	func testCancelledInitialLoadFailsTheContextAndReleasesIt() throws {
+		let (initial, initialSeal) = Promise<ContextData>.pending()
+		var context: Context? = Context(
+			config: config(), clock: clock, scheduler: scheduler, handler: handler, provider: provider, logger: nil,
+			parser: DefaultVariableParser(), matcher: AudienceMatcher(), promise: initial)
+		let waiting = expectation(description: "ready")
+		_ = context!.waitUntilReady().done { _ in waiting.fulfill() }
+		initialSeal.reject(PMKError.cancelled)
+		wait(for: [waiting], timeout: 2)
+		XCTAssertTrue(context!.isFailed())
+
+		let closed = expectation(description: "closed")
+		_ = context!.close().done { closed.fulfill() }
+		wait(for: [closed], timeout: 2)
+		withExtendedLifetime(initial) {
+			let released = WeakContext(context)
+			context = nil
+			XCTAssertNil(released.value)
+		}
+	}
+
+	func testCancelledRefreshSettlesAndAllowsAnotherRefresh() throws {
+		let context = makeContext(config(), Promise.value(try contextData()))
+		provider.getContextDataReturnValue = Promise(error: PMKError.cancelled)
+		let cancelled = expectation(description: "cancelled refresh settles")
+		context.refresh().catch(policy: .allErrors) { _ in cancelled.fulfill() }
+		wait(for: [cancelled], timeout: 2)
+
+		provider.getContextDataReturnValue = Promise.value(try contextData())
+		let refreshed = expectation(description: "second refresh")
+		_ = context.refresh().done { refreshed.fulfill() }
+		wait(for: [refreshed], timeout: 2)
+		XCTAssertEqual(2, provider.getContextDataCallsCount)
+	}
+
+	// An override set while a failed context recovers is rebuilt from the refreshed experiment
+	// (id and variables), not kept from the failed state where the experiment was unknown.
+	func testAssignmentsReadWhileFailedAreRebuiltWhenRefreshRecovers() throws {
+		let context = makeContext(config(), Promise(error: ABSmartlyError("load failed")))
+		context.setOverride(experimentName: "exp_test_ab", variant: 1)
+		XCTAssertEqual(1, context.peekTreatment("exp_test_ab"))
+
+		provider.getContextDataReturnValue = Promise.value(try contextData())
+		let refreshed = expectation(description: "refreshed")
+		_ = context.refresh().done { refreshed.fulfill() }
+		wait(for: [refreshed], timeout: 2)
+
+		XCTAssertEqual(JSON("large"), context.getVariableValue("banner.size"))
+		XCTAssertEqual(1, context.getTreatment("exp_test_ab"))
+		handler.publishEventReturnValue = Promise.value(())
+		let published = expectation(description: "published")
+		_ = context.publish().done { published.fulfill() }
+		wait(for: [published], timeout: 2)
+		XCTAssertEqual([1], handler.publishEventReceivedEvent?.exposures.map { $0.id })
 	}
 
 	func testFailedCloseRestartsRefreshTimer() throws {
@@ -3970,7 +4062,10 @@ final class ContextV140BehaviourTest: XCTestCase {
 	func testExposureDroppedByAClosingContextIsExposedAfterAFailedClose() throws {
 		let context = makeContext(config(), Promise.value(try contextData()))
 		context.track("goal1", properties: nil)
-		handler.publishEventReturnValue = Promise(error: ABSmartlyError("publish failed"))
+		// The final publish stays pending until the first read has returned, so the context is still
+		// closing when that read reaches the queue.
+		let (finalPublish, finalPublishSeal) = Promise<Void>.pending()
+		handler.publishEventReturnValue = finalPublish
 
 		let closeFailed = XCTestExpectation(description: "close failed")
 		Context.setTestHook(.exposureClaimed) {
@@ -3980,6 +4075,8 @@ final class ContextV140BehaviourTest: XCTestCase {
 		defer { Context.setTestHook(.exposureClaimed, nil) }
 
 		XCTAssertEqual(1, context.getTreatment("exp_test_ab"))
+		XCTAssertTrue(context.isClosing())
+		finalPublishSeal.reject(ABSmartlyError("publish failed"))
 		wait(for: [closeFailed], timeout: 2)
 		XCTAssertFalse(context.isClosed())
 		XCTAssertEqual(1, context.getPendingCount())  // the re-queued goal only

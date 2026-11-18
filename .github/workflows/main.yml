@@ -44,11 +44,12 @@ jobs:
       # Build for every Apple platform the package supports, so an availability regression fails CI.
       # Current Xcode cannot target the package's watchOS 3 minimum (its dependencies are clamped
       # to watchOS 5), so watchOS is built at 5.0; iOS and tvOS build at the package minimums.
-      - name: Build for iOS, tvOS and watchOS
+      - name: Build for iOS, tvOS, visionOS and watchOS
         if: matrix.name == 'latest'
         run: |
           xcodebuild build -scheme ABSmartly -destination "generic/platform=iOS" -quiet
           xcodebuild build -scheme ABSmartly -destination "generic/platform=tvOS" -quiet
+          xcodebuild build -scheme ABSmartly -destination "generic/platform=visionOS" -quiet
           xcodebuild build -scheme ABSmartly -destination "generic/platform=watchOS" -quiet \
             WATCHOS_DEPLOYMENT_TARGET=5.0
 

@@ -186,7 +186,8 @@ Once any module in your build imports `ABSmartlyAsync` (your own target or a dep
 the async overloads visible to every file that uses `ABSmartly`, even files that only `import
 ABSmartly`. Inside an `async` function Swift then prefers them, so 1.4 code there such as
 `_ = context.publish()` stops compiling. Fix it with `try await context.publish()`, or keep the
-Promise with an explicit type: `let promise: Promise<Void> = context.publish()`. With Swift 6.1 or
+Promise with an explicit type, which needs `import PromiseKit` in that file (`ABSmartly` does not
+re-export it): `let promise: Promise<Void> = context.publish()`. With Swift 6.1 or
 later you can instead enable the `MemberImportVisibility` upcoming feature
 (`swiftSettings: [.enableUpcomingFeature("MemberImportVisibility")]`), which limits the overloads to
 files that import `ABSmartlyAsync` themselves.
@@ -510,14 +511,14 @@ import ABSmartlyAsync
 struct ContentView: View {
     @StateObject private var absmartly = ABSmartlyService.shared
     @State private var context: Context?
-    @State private var buttonColor: String = "blue"
+    @State private var buttonColor: Color = .blue
 
     var body: some View {
         VStack {
             Button("Click Me") {
                 context?.track("button_clicked")
             }
-            .foregroundColor(Color(buttonColor))
+            .foregroundColor(buttonColor)
             .padding()
         }
         .task {
@@ -531,7 +532,12 @@ struct ContentView: View {
                     return
                 }
                 context = loaded
-                buttonColor = loaded.getVariableValue("button.color", defaultValue: "blue")?.stringValue ?? "blue"
+                // Map the experiment's value to a system colour; anything else keeps the default.
+                switch loaded.getVariableValue("button.color", defaultValue: "blue")?.stringValue {
+                case "red": buttonColor = .red
+                case "green": buttonColor = .green
+                default: buttonColor = .blue
+                }
             } catch {
                 print("Failed to initialize ABSmartly: \(error)")
             }
@@ -685,6 +691,7 @@ class ExperimentManager {
     }
 
     func loadExperiment(deviceId: String) {
+        loadTask?.cancel()  // a newer load replaces an unfinished one
         loadTask = Task {
             let contextConfig = ContextConfig()
             contextConfig.setUnit(unitType: "device_id", uid: deviceId)

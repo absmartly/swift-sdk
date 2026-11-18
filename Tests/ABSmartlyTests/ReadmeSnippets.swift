@@ -334,14 +334,14 @@ class ABSmartlyService: ObservableObject {
 struct ContentView: View {
     @StateObject private var absmartly = ABSmartlyService.shared
     @State private var context: Context?
-    @State private var buttonColor: String = "blue"
+    @State private var buttonColor: Color = .blue
 
     var body: some View {
         VStack {
             Button("Click Me") {
                 context?.track("button_clicked")
             }
-            .foregroundColor(Color(buttonColor))
+            .foregroundColor(buttonColor)
             .padding()
         }
         .task {
@@ -355,7 +355,12 @@ struct ContentView: View {
                     return
                 }
                 context = loaded
-                buttonColor = loaded.getVariableValue("button.color", defaultValue: "blue")?.stringValue ?? "blue"
+                // Map the experiment's value to a system colour; anything else keeps the default.
+                switch loaded.getVariableValue("button.color", defaultValue: "blue")?.stringValue {
+                case "red": buttonColor = .red
+                case "green": buttonColor = .green
+                default: buttonColor = .blue
+                }
             } catch {
                 print("Failed to initialize ABSmartly: \(error)")
             }
@@ -487,6 +492,7 @@ class ExperimentManager {
     }
 
     func loadExperiment(deviceId: String) {
+        loadTask?.cancel()  // a newer load replaces an unfinished one
         loadTask = Task {
             let contextConfig = ContextConfig()
             contextConfig.setUnit(unitType: "device_id", uid: deviceId)

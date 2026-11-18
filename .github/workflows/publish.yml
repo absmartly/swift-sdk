@@ -43,8 +43,9 @@ jobs:
         run: swift test
 
       # Off until a maintainer resolves the CocoaPods validation failure noted in the 1.5.0
-      # CHANGELOG: set the repository variable COCOAPODS_PUBLISH=true to publish on v* tags. The
-      # version check and tests above still run on every tag.
+      # CHANGELOG: set the repository variable COCOAPODS_PUBLISH=true to publish v* tags pushed after
+      # that (it does not re-run for existing tags). The version check and tests above still run on
+      # every tag.
       - name: Publish to CocoaPods trunk
         if: vars.COCOAPODS_PUBLISH == 'true'
         env:
