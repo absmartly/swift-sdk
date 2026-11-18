@@ -9,6 +9,9 @@
 // ContextConfig no longer exists: its tests are ported to the creation parameters that replace it.
 
 import Foundation
+#if canImport(FoundationNetworking)
+	import FoundationNetworking
+#endif
 import Testing
 
 @testable import ABsmartly
@@ -157,10 +160,10 @@ import Testing
 		harness.transport.enqueue(status: 500)
 		let context = harness.client.makeContext(units: Self.units)
 		let error = try await withTimeout { await sdkError { try await context.ready() } }
-		#expect(error == .httpStatus(code: 500, message: Connection.statusMessage(500)))
-		#expect(context.state == .failed(.httpStatus(code: 500, message: Connection.statusMessage(500))))
+		#expect(error == .httpStatus(code: 500, message: HTTPURLResponse.localizedString(forStatusCode: 500)))
+		#expect(context.state == .failed(.httpStatus(code: 500, message: HTTPURLResponse.localizedString(forStatusCode: 500))))
 		#expect(context.state.isSettled)
-		#expect(harness.recorder.errors == [.httpStatus(code: 500, message: Connection.statusMessage(500))])
+		#expect(harness.recorder.errors == [.httpStatus(code: 500, message: HTTPURLResponse.localizedString(forStatusCode: 500))])
 	}
 
 	@Test func awaitedContextIsReady() async throws {

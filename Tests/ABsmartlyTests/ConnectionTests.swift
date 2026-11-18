@@ -10,6 +10,9 @@
 //   `retriesTransportErrorsUntilSuccess`.
 
 import Foundation
+#if canImport(FoundationNetworking)
+	import FoundationNetworking
+#endif
 import Testing
 
 @testable import ABsmartly
@@ -181,14 +184,14 @@ import Testing
 		let (connection, transport) = Self.connection()
 		transport.enqueue(status: 500)
 		let error = try await withTimeout { await sdkError { _ = try await connection.fetchContextData() } }
-		#expect(error == .httpStatus(code: 500, message: Connection.statusMessage(500)))
+		#expect(error == .httpStatus(code: 500, message: HTTPURLResponse.localizedString(forStatusCode: 500)))
 	}
 
 	@Test func getContextDataRejectsOn404() async throws {
 		let (connection, transport) = Self.connection()
 		transport.enqueue(status: 404)
 		let error = try await withTimeout { await sdkError { _ = try await connection.fetchContextData() } }
-		#expect(error == .httpStatus(code: 404, message: Connection.statusMessage(404)))
+		#expect(error == .httpStatus(code: 404, message: HTTPURLResponse.localizedString(forStatusCode: 404)))
 	}
 
 	@Test func getContextDataRejectsOnNetworkError() async throws {
@@ -230,7 +233,7 @@ import Testing
 		_ = try await withTimeout { try await connection.fetchContextData() }
 		transport.enqueue(status: 300)
 		let error = try await withTimeout { await sdkError { _ = try await connection.fetchContextData() } }
-		#expect(error == .httpStatus(code: 300, message: Connection.statusMessage(300)))
+		#expect(error == .httpStatus(code: 300, message: HTTPURLResponse.localizedString(forStatusCode: 300)))
 	}
 
 	@Test func multipleGetContextDataCalls() async throws {
@@ -294,7 +297,7 @@ import Testing
 		let (connection, transport) = Self.connection()
 		transport.enqueue(status: 500)
 		let error = try await withTimeout { await sdkError { try await connection.publish(Self.event) } }
-		#expect(error == .httpStatus(code: 500, message: Connection.statusMessage(500)))
+		#expect(error == .httpStatus(code: 500, message: HTTPURLResponse.localizedString(forStatusCode: 500)))
 	}
 
 	@Test func publishRejectsOnNetworkError() async throws {
@@ -311,14 +314,14 @@ import Testing
 		let (connection, transport) = Self.connection()
 		transport.enqueue(status: 400)
 		let error = try await withTimeout { await sdkError { try await connection.publish(Self.event) } }
-		#expect(error == .httpStatus(code: 400, message: Connection.statusMessage(400)))
+		#expect(error == .httpStatus(code: 400, message: HTTPURLResponse.localizedString(forStatusCode: 400)))
 	}
 
 	@Test func publishRejectsOn401() async throws {
 		let (connection, transport) = Self.connection()
 		transport.enqueue(status: 401)
 		let error = try await withTimeout { await sdkError { try await connection.publish(Self.event) } }
-		#expect(error == .httpStatus(code: 401, message: Connection.statusMessage(401)))
+		#expect(error == .httpStatus(code: 401, message: HTTPURLResponse.localizedString(forStatusCode: 401)))
 	}
 
 	@Test func publishSetsApplicationVersionHeader() async throws {
@@ -450,7 +453,7 @@ import Testing
 						if method == "GET" { _ = try await connection.fetchContextData() } else { try await connection.publish(Self.event) }
 					}
 				}
-				#expect(error == .httpStatus(code: status, message: Connection.statusMessage(status)), "\(method)")
+				#expect(error == .httpStatus(code: status, message: HTTPURLResponse.localizedString(forStatusCode: status)), "\(method)")
 				#expect(transport.requests.count == attempts, "\(method) \(status) retries=\(retries)")
 			}
 		}
@@ -495,7 +498,7 @@ import Testing
 		let (connection, transport) = Self.connection(retries: 3)
 		transport.enqueue(status: status)
 		let error = try await withTimeout { await sdkError { try await connection.publish(Self.event) } }
-		#expect(error == .httpStatus(code: status, message: Connection.statusMessage(status)))
+		#expect(error == .httpStatus(code: status, message: HTTPURLResponse.localizedString(forStatusCode: status)))
 		#expect(transport.requests.count == 1)
 	}
 

@@ -230,9 +230,19 @@ import Testing
 		("123456789012345678", "123456789012345678", false, false, true, false),
 		("9007199254740993", "9007199254740993", false, false, true, false),
 		("9223372036854775807", "9223372036854775807", false, false, true, false),
-		("-9223372036854775808", "-9223372036854776000", true, false, false, nil),
-		("-9223372036854775809", "-9223372036854776000", true, false, false, nil),
-	]
+	] + linuxOnlyRows
+
+	// Int64.min and below: whether Foundation's JSONSerialization returns an integer or a decimal for
+	// these differs between Apple and Linux Foundation. 2.0 uses the same parser as 1.5.0, so each
+	// platform matches 1.5.0 on that platform; these rows were measured on Linux.
+	#if canImport(FoundationNetworking)
+		static let linuxOnlyRows: [(literal: String, string: String, negativeMatch: Bool, inString: Bool, gtZero: Bool, semverZero: Bool?)] = [
+			("-9223372036854775808", "-9223372036854776000", true, false, false, nil),
+			("-9223372036854775809", "-9223372036854776000", true, false, false, nil),
+		]
+	#else
+		static let linuxOnlyRows: [(literal: String, string: String, negativeMatch: Bool, inString: Bool, gtZero: Bool, semverZero: Bool?)] = []
+	#endif
 
 	@Test(arguments: table)
 	func literal(
