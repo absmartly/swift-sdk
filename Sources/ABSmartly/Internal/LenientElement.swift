@@ -1,6 +1,5 @@
 import Foundation
 
-// Decodes an array element without failing the whole array when the element is malformed.
 struct LenientElement<Element: Decodable>: Decodable {
 	let value: Element?
 

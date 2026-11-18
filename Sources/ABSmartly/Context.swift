@@ -36,7 +36,6 @@ public final class Context {
 
 	private let dataLock = NSLock()
 	#if DEBUG
-	// Test hook: runs right after an assignment lookup reads the experiment.
 	var afterExperimentLookup: (() -> Void)?
 	#endif
 	private var index: [String: ExperimentVariables] = [:]
@@ -1489,8 +1488,6 @@ public final class Context {
 
 #if DEBUG
 extension Context {
-	// Test hooks: the identity of the cached assignment, and a holdout arm resolved as the trigger
-	// path would resolve it.
 	func cachedAssignmentIdentity(_ experimentName: String) -> ObjectIdentifier {
 		return ObjectIdentifier(getAssignment(experimentName))
 	}
@@ -1512,7 +1509,6 @@ private class ExperimentVariables {
 	var variables: [[String: JSON]] = []
 	// Parsed `data.assignmentRules`; nil when there are none or they are not valid JSON.
 	var rules: [JSON]?
-	// The holdouts covering this experiment, sorted by id; nil when none.
 	var holdouts: [Experiment]?
 
 	init(_ experiment: Experiment) {
@@ -1559,7 +1555,6 @@ private final class Assignment: Equatable {
 	var attrsSeq: Int = 0
 	// Held out by a covering holdout: variant 0, not assigned, and no exposure of its own.
 	var suppressed = false
-	// The covering holdouts as resolved.
 	var holdouts: [PinnedHoldout]?
 	// On a holdout's own assignment: its split's length when `variant` was drawn.
 	var holdoutArmCount = 0

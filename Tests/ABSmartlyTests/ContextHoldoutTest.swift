@@ -4,8 +4,6 @@ import XCTest
 
 @testable import ABSmartly
 
-// Ported from java-sdk ContextHoldoutTest (79 cases) and the javascript-sdk holdout tests.
-//
 // A holdout arrives in `ContextData.holdouts`; an experiment declares the holdouts covering it in
 // `holdoutIds`. Arm 0 holds the unit out of every covered experiment; in a 3-arm holdout arm 1
 // holds out only experiments that are not full-on. A held-out unit gets control (variant 0) and no
@@ -144,7 +142,6 @@ final class ContextHoldoutTest: XCTestCase {
 			ruleOverride: ruleOverride)
 	}
 
-	// Exposures in the order they were queued, as delivered to the event logger.
 	func loggedExposures() -> [Exposure] {
 		return logger.handleEventContextEventReceivedInvocations.compactMap {
 			if case let .exposure(exposure) = $0.event { return exposure }
@@ -159,7 +156,6 @@ final class ContextHoldoutTest: XCTestCase {
 		return try XCTUnwrap(handler.publishEventReceivedEvent)
 	}
 
-	// Publishes and compares the whole payload for a context with a single unit.
 	func assertPublished(
 		_ context: Context, _ exposures: [Exposure], unitType: String = unitType, uid: String = uid,
 		attributes: [Attribute] = [], file: StaticString = #filePath, line: UInt = #line
@@ -1443,11 +1439,10 @@ final class ContextHoldoutTest: XCTestCase {
 	}
 
 	// A refresh that lands after an assignment lookup read the experiment, but before its holdout arms
-	// are drawn, waits for the lookup to finish. So the assignment never pairs one data install's
-	// holdout definitions with another's arms: the refresh behaves as if it came after the first
-	// read, as in JavaScript. Without that, the first read pinned iteration 1 beside the iteration-2
-	// arm, and the next read re-exposed the experiment with no holdout exposure for its epoch.
-	func testRefreshDuringAssignmentResolutionDoesNotReExposeTheExperiment() throws {
+	// are drawn, waits for the lookup to finish, so the assignment never pairs one data install's
+	// holdout definitions with another's arms. Only DEBUG builds can inject the refresh inside the
+	// lookup; release builds refresh after the first read, which checks the epoch accounting only.
+	func testRefreshDuringAssignmentResolutionDoesNotPairEpochs() throws {
 		let context = createContext(
 			contextData(
 				[experiment(1, "exp_race", holdoutIds: [11])], holdouts: [holdout(11, "holdout_race", seeds: Self.holdoutB)]))
