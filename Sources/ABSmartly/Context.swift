@@ -51,6 +51,9 @@ public final class Context {
 	private var hashedUnits: [String: [UInt8]] = [:]
 	private var assigners: [String: VariantAssigner] = [:]
 	private var assignmentCache: [String: Assignment] = [:]
+	// Experiments exposed while the context had no data (failed); their rebuilt assignments start
+	// exposed, so recovery does not expose them again. Under contextLock.
+	private var exposedWithoutData: Set<String> = []
 
 	private let contextLock = NSRecursiveLock()
 	// The string each unit is hashed from, and the UID as it was given (string or number).
@@ -373,16 +376,12 @@ public final class Context {
 		return dict.updateValue(value, forKey: key)
 	}
 
-	private func getLocked<K, V>(lock: NSRecursiveLock, dict: [K: V], key: K) -> V? {
+	// The dictionary is read through a closure, inside the lock: passing it by value would copy the
+	// stored property before the lock is taken, racing with writers.
+	private func getLocked<V>(lock: NSLocking, _ read: () -> V?) -> V? {
 		lock.lock()
 		defer { lock.unlock() }
-		return dict[key]
-	}
-
-	private func getLocked<K, V>(lock: NSLock, dict: [K: V], key: K) -> V? {
-		lock.lock()
-		defer { lock.unlock() }
-		return dict[key]
+		return read()
 	}
 
 	public func setOverride(experimentName: String, variant: Int) {
@@ -390,7 +389,7 @@ public final class Context {
 	}
 
 	public func getOverride(experimentName: String) -> Int? {
-		return getLocked(lock: contextLock, dict: overrides, key: experimentName)
+		return getLocked(lock: contextLock) { overrides[experimentName] }
 	}
 
 	public func setOverrides(_ overrides: [String: Int]) {
@@ -404,7 +403,7 @@ public final class Context {
 	}
 
 	public func getCustomAssignment(experimentName: String) -> Int? {
-		return getLocked(lock: contextLock, dict: cassignments, key: experimentName)
+		return getLocked(lock: contextLock) { cassignments[experimentName] }
 	}
 
 	public func setCustomAssignments(_ assignments: [String: Int]) {
@@ -414,12 +413,12 @@ public final class Context {
 	}
 
 	public func getUnit(unitType: String) -> String? {
-		return getLocked(lock: contextLock, dict: unitValues, key: unitType).map { $0.string ?? $0.stringValue }
+		return getLocked(lock: contextLock) { unitValues[unitType] }.map { $0.string ?? $0.stringValue }
 	}
 
 	/// The UID as it was set: a JSON string or a JSON number.
 	public func getUnitValue(unitType: String) -> JSON? {
-		return getLocked(lock: contextLock, dict: unitValues, key: unitType)
+		return getLocked(lock: contextLock) { unitValues[unitType] }
 	}
 
 	public func getUnitValues() -> [String: JSON] {
@@ -573,11 +572,11 @@ public final class Context {
 		guard ensureReady(true) else { return 0 }
 
 		let (assignment, claimed) = getAssignmentClaimingExposure(experimentName)
-		if claimed {
+		if let exposure = claimed {
 			#if DEBUG
 			Context.runTestHook(.exposureClaimed)
 			#endif
-			queueExposure(assignment)
+			queueExposure(exposure, for: assignment)
 		}
 
 		return assignment.variant
@@ -590,7 +589,7 @@ public final class Context {
 	// soon as it is found.
 	private func getAssignmentClaimingExposure(
 		_ experimentName: String, requireVariables: Bool = false
-	) -> (Assignment, claimed: Bool) {
+	) -> (Assignment, claimed: Exposure?) {
 		contextLock.lock()
 		defer { contextLock.unlock() }
 
@@ -599,21 +598,25 @@ public final class Context {
 			!requireVariables || assignment.variables != nil,
 			!closed.load(ordering: .acquiring), !closing.load(ordering: .acquiring)
 		else {
-			return (assignment, false)
+			return (assignment, nil)
 		}
 		let claimed = assignment.exposed.compareExchange(
 			expected: false, desired: true, ordering: .acquiringAndReleasing
 		).0
-		return (assignment, claimed)
+		// Built while contextLock is held, so it reads the assignment's fields consistently with any
+		// refresh (which updates them under contextLock).
+		return (assignment, claimed ? makeExposure(assignment) : nil)
 	}
 
-	private func queueExposure(_ assignment: Assignment) {
-		let exposure = Exposure(
+	private func makeExposure(_ assignment: Assignment) -> Exposure {
+		return Exposure(
 			assignment.id, assignment.name, assignment.unitType, assignment.variant,
 			clock.millis(), assignment.assigned, assignment.eligible,
 			assignment.overridden, assignment.fullOn, assignment.custom, assignment.audienceMismatch,
 			ruleOverride: assignment.ruleOverride)
+	}
 
+	private func queueExposure(_ exposure: Exposure, for assignment: Assignment) {
 		eventLock.lock()
 		guard !closed.load(ordering: .acquiring), !closing.load(ordering: .acquiring) else {
 			eventLock.unlock()
@@ -724,19 +727,19 @@ public final class Context {
 				let previousState = self.state.load(ordering: .acquiring)
 				let winsInitialLoad = previousState == Context.loading
 				// Assignments read while there was no experiment data (e.g. an override) lack the
-				// experiment's id and variables. Unexposed ones are rebuilt from the new data; exposed
-				// ones are kept (so the user is not exposed again) and given the experiment's identity.
+				// experiment's id and variables, so all are rebuilt from the new data. A rebuilt one
+				// that was already exposed stays exposed (the user is not exposed again), and its
+				// queued exposure gets the experiment's id and unit type.
 				if previousState != Context.readyState {
-					self.assignmentCache = self.assignmentCache.filter { _, assignment in
-						guard assignment.exposed.load(ordering: .acquiring) else { return false }
-						if let experiment = prepared.index[assignment.name] {
-							assignment.id = experiment.data.id
-							assignment.unitType = experiment.data.unitType
-							if assignment.variant >= 0, assignment.variant < experiment.variables.count {
-								assignment.variables = experiment.variables[assignment.variant]
-							}
-						}
-						return true
+					var exposedNames: Set<String> = []
+					for (name, assignment) in self.assignmentCache where assignment.exposed.load(ordering: .acquiring) {
+						exposedNames.insert(name)
+					}
+					self.assignmentCache = [:]
+					self.exposedWithoutData = exposedNames
+					self.exposures = self.exposures.map { exposure in
+						guard exposure.id == 0, let experiment = prepared.index[exposure.name] else { return exposure }
+						return exposure.withExperiment(id: experiment.data.id, unit: experiment.data.unitType)
 					}
 				}
 				self.commitData(prepared)
@@ -1112,7 +1115,7 @@ public final class Context {
 	}
 
 	private func getExperiment(_ experimentName: String) -> ExperimentVariables? {
-		return getLocked(lock: dataLock, dict: index, key: experimentName)
+		return getLocked(lock: dataLock) { index[experimentName] }
 	}
 
 	private func getAssignment(_ experimentName: String) -> Assignment {
@@ -1239,6 +1242,9 @@ public final class Context {
 			assignment.variables = experiment.variables[assignment.variant]
 		}
 
+		if exposedWithoutData.remove(experimentName) != nil {
+			assignment.exposed.store(true, ordering: .releasing)
+		}
 		assignmentCache[experimentName] = assignment
 		return assignment
 	}
@@ -1254,11 +1260,11 @@ public final class Context {
 		for experimentVariables in keyExperimentVariables {
 			let (assignment, claimed) =
 				peek
-				? (getAssignment(experimentVariables.data.name), false)
+				? (getAssignment(experimentVariables.data.name), nil)
 				: getAssignmentClaimingExposure(experimentVariables.data.name, requireVariables: true)
 			if let variables = assignment.variables {
-				if claimed {
-					queueExposure(assignment)
+				if let exposure = claimed {
+					queueExposure(exposure, for: assignment)
 				}
 
 				if let value = variables[key], assignment.assigned || assignment.overridden || assignment.ruleOverride {
@@ -1271,7 +1277,7 @@ public final class Context {
 	}
 
 	private func getVariableExperiments(_ experimentName: String) -> [ExperimentVariables]? {
-		return getLocked(lock: dataLock, dict: indexVariables, key: experimentName)
+		return getLocked(lock: dataLock) { indexVariables[experimentName] }
 	}
 
 	private func getUnitHash(_ unitType: String, _ unitUID: String) -> [UInt8] {

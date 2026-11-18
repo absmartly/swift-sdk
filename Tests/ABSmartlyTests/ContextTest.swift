@@ -4069,8 +4069,50 @@ final class ContextV140BehaviourTest: XCTestCase {
 
 		XCTAssertEqual(1, context.getTreatment("exp_test_ab"))
 		XCTAssertEqual(1, context.getPendingCount())
-		// The kept override now carries the experiment's variables.
+		// The rebuilt override carries the experiment's variables, and the exposure queued while
+		// failed is published with the experiment's id and unit.
 		XCTAssertEqual(JSON("large"), context.peekVariableValue("banner.size"))
+		handler.publishEventReturnValue = Promise.value(())
+		let published = expectation(description: "published")
+		_ = context.publish().done { published.fulfill() }
+		wait(for: [published], timeout: 2)
+		let exposure = try XCTUnwrap(handler.publishEventReceivedEvent?.exposures.first)
+		XCTAssertEqual(1, handler.publishEventReceivedEvent?.exposures.count)
+		XCTAssertEqual(1, exposure.id)
+		XCTAssertEqual("session_id", exposure.unit)
+		XCTAssertEqual(1, exposure.variant)
+	}
+
+	// Reads and exposures from other threads while a refresh recovers a failed context: under
+	// ThreadSanitizer (CI) this checks the recovery's data publication and the exposure claim.
+	func testReadsDuringRecoveryAreRaceFree() throws {
+		let context = makeContext(config(), Promise(error: ABSmartlyError("load failed")))
+		context.setOverride(experimentName: "exp_test_ab", variant: 1)
+		provider.getContextDataReturnValue = Promise.value(try contextData())
+		handler.publishEventReturnValue = Promise.value(())
+
+		let done = expectation(description: "readers done")
+		done.expectedFulfillmentCount = 4
+		for _ in 0..<4 {
+			DispatchQueue.global().async {
+				for _ in 0..<200 {
+					_ = context.getTreatment("exp_test_ab")
+					_ = context.getVariableValue("banner.size")
+					_ = context.peekVariableValue("button.color")
+				}
+				done.fulfill()
+			}
+		}
+		let refreshed = expectation(description: "refreshed")
+		_ = context.refresh().done { refreshed.fulfill() }
+		wait(for: [done, refreshed], timeout: 10)
+
+		XCTAssertEqual(JSON("large"), context.getVariableValue("banner.size"))
+		let published = expectation(description: "published")
+		_ = context.publish().done { published.fulfill() }
+		wait(for: [published], timeout: 2)
+		let ids = Set(handler.publishEventReceivedInvocations.flatMap { $0.exposures.filter { $0.name == "exp_test_ab" }.map { $0.id } })
+		XCTAssertEqual([1], ids)
 	}
 
 	func testFailedCloseRestartsRefreshTimer() throws {

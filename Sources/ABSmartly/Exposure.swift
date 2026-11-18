@@ -34,6 +34,13 @@ public struct Exposure: Encodable, Equatable {
 		self.ruleOverride = ruleOverride
 	}
 
+	// The same exposure for an experiment whose id and unit type were unknown when it was made.
+	func withExperiment(id: Int, unit: String?) -> Exposure {
+		return Exposure(
+			id, name, unit, variant, exposedAt, assigned, eligible, overridden, fullOn, custom, audienceMismatch,
+			ruleOverride: ruleOverride)
+	}
+
 	public static func == (lhs: Exposure, rhs: Exposure) -> Bool {
 		return lhs.id == rhs.id && lhs.name == rhs.name && lhs.unit == rhs.unit && lhs.variant == rhs.variant
 			&& lhs.exposedAt == rhs.exposedAt && lhs.assigned == rhs.assigned && lhs.eligible == rhs.eligible
