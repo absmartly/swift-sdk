@@ -2900,6 +2900,33 @@ final class ContextTest: XCTestCase {
 		XCTAssertTrue(context.isClosed())
 	}
 
+	// The public entry point rejects a closing context (ensureReady); the closed/closing check in
+	// getAssignmentClaimingExposure only covers a close() that starts between that check and the
+	// claim, which a single-threaded test cannot interleave.
+	func testGetTreatmentWhileClosingDoesNotEnqueueExposure() throws {
+		let context = try createContext(config: getContextConfig(withUnits: true))
+		context.track("goal1", properties: nil)
+		let (publish, resolver) = Promise<Void>.pending()
+		handler.publishEventReturnValue = publish
+
+		let closed = XCTestExpectation()
+		_ = context.close().done { closed.fulfill() }
+		let closing = XCTestExpectation()
+		DispatchQueue.global().async {
+			while !context.isClosing() && !context.isClosed() { usleep(1000) }
+			closing.fulfill()
+		}
+		wait(for: [closing], timeout: 2.0)
+		XCTAssertTrue(context.isClosing())
+
+		XCTAssertEqual(0, context.getTreatment("exp_test_ab"))
+		XCTAssertEqual(0, context.getPendingCount())
+
+		resolver.fulfill(())
+		wait(for: [closed], timeout: 2.0)
+		XCTAssertEqual(0, handler.publishEventReceivedEvent?.exposures.count)
+	}
+
 	func testGetTreatmentAfterCloseDoesNotEnqueueExposure() throws {
 		let context = try createContext(config: getContextConfig(withUnits: true))
 		handler.publishEventReturnValue = Promise<Void>.value(())

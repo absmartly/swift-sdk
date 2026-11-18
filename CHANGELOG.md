@@ -35,15 +35,15 @@ security fixes, from the `release/1.x` branch) for 12 months after 2.0 ships.
   itself does not compile there) and MD5 is computed in the SDK; Apple platforms are unchanged
   (SwiftyJSON `~> 5.0`, CommonCrypto). No new package dependencies.
 - `ClientConfig.applicationVersion` and `ClientConfig.init(apiKey:application:endpoint:environment:applicationVersion:)`.
-- `ABSmartlySDK(endpoint:apiKey:application:environment:…)` convenience init. Its `contextEventLogger`
-  is used for every context whose `ContextConfig.eventLogger` is unset, and `retries` defaults to 3,
-  like `DefaultHTTPClientConfig`.
+- `ABSmartlySDK(endpoint:apiKey:application:environment:…)` convenience init, with `retries`
+  defaulting to 3 like `DefaultHTTPClientConfig`.
 - Cross-SDK spellings, as aliases of the 1.4.0 types (not deprecated): `ABsmartlySDK`,
   `ABsmartlyConfig`, `ContextPublisher`, `DefaultContextPublisher`, `ABSmartlyConfig.contextPublisher`
   and `init(contextDataProvider:contextPublisher:…)`.
 - Numeric unit UIDs: `setUnit(unitType:uid: Int/Double)`, `setUnit(unitType:value: JSON)`,
   `getUnitValue`/`getUnitValues` keep the number type; numbers hash like the JavaScript SDK (rounded
-  to an integer, so 125.75 hashes as "126").
+  to an integer, so 125.75 hashes as "126"). Like JavaScript numbers, integers above 2^53 lose
+  precision; pass larger IDs as strings.
 - `finalize()`/`isFinalized()`/`isFinalizing()` aliases, `ContextEventLoggerEvent.finalize` (an alias
   for `.close`), `readyError()`, `getCustomFieldKeys(experimentName:)`.
 - `Hashing` is public, with `hash(String)`, `hash(Double)`, `utf8Bytes`, `base64UrlNoPadding`;
@@ -57,8 +57,9 @@ security fixes, from the `release/1.x` branch) for 12 months after 2.0 ships.
   user-set attribute of the same name wins. These are evaluation-only: they are not published and not
   returned by `getAttributes()`. `app_version` is never injected.
 - Audiences are re-evaluated when attributes change, as in the Java SDK (released in 1.9.0) and the
-  JavaScript SDK. With system attributes this is what lets a user-set `environment`/`application`
-  win over the configured value after the context is created. A `setAttribute` after a treatment was read can change
+  JavaScript SDK. The system-attributes contract requires it: a user-set `environment`/`application`
+  wins over the configured value even when set after the context is created, so it has to
+  invalidate an assignment cached before it was set. A `setAttribute` after a treatment was read can change
   that experiment's assignment (and log a new exposure) when the audience result flips.
 - A variable key shared by several experiments resolves like the JavaScript SDK: experiments are walked
   in ascending id order, each one visited is exposed, and the value comes from the first experiment that
@@ -83,6 +84,10 @@ security fixes, from the `release/1.x` branch) for 12 months after 2.0 ships.
   lost). `getContextData()` rejects a non-2xx response with an HTTP error instead of a decoding error.
 - MurmurHash3 read past the end of a key with a 3-byte tail (an out-of-bounds read). The SDK only
   hashes 22- and 12-byte keys, so variant assignment is unchanged.
+- `ABSmartlyConfig.contextEventLogger` is used for every context whose `ContextConfig.eventLogger` is
+  unset, as documented in 1.4.0's README; 1.4.0 stored it but never used it.
+- `DefaultScheduler` runs its callbacks on a private utility queue instead of the main queue, so
+  timers no longer block or wait for the main thread (the SDK's logger events still arrive on main).
 - No exposures after close; `refresh()` joins an in-flight refresh; `close()` waits for in-flight
   publishes; a pending automatic publish keeps the context alive until it is sent.
 - Work no longer runs on the main queue (timers, HTTP retries, publish recovery); `ready`, `refresh`,
