@@ -1135,3 +1135,52 @@ extension ContextSwitchbackLifecycleTest {
 		XCTAssertEqual([SB.unitType], publishExposures(context).map { $0.unit })
 	}
 }
+
+extension ContextSwitchbackLifecycleTest {
+	// M4: an override set after the period slot was resolved keeps that slot's serving unit, as in
+	// java-sdk (Context.java:1858-1865 passes cachedServing on the override path): a cluster attribute set
+	// after the first resolution must not move the exposure to another unit within the period.
+	func testOverrideSetMidPeriodKeepsTheSlotsServingUnit() {
+		let experiment = SB.switchback(
+			arms: 2, periodMs: SB.hour, clusters: [("first_id", "first_key"), (SB.unitType, SB.clusterPath)])
+		let context = createContext(SB.data([experiment]), units: [SB.unitType: SB.uid, "first_id": "f1"])
+		clock.now = SB.anchor
+		XCTAssertNotNil(context.peekTreatment("exp_sb"))
+		context.setAttribute(name: "first_key", value: JSON("first-7"))
+		context.setOverride(experimentName: "exp_sb", variant: 1)
+		XCTAssertEqual(1, context.getTreatment("exp_sb"))
+		XCTAssertEqual([SB.unitType], publishExposures(context).map { $0.unit })
+	}
+}
+
+extension ContextSwitchbackLifecycleTest {
+	// M12: an exposed override resolved with no linked unit has published its exposure, so setUnit keeps it
+	// (java-sdk Context.java:463-466) and a later read queues no second exposure.
+	func testExposedAbsentOverrideIsKeptAcrossSetUnit() {
+		let experiment = SB.switchback(
+			arms: 2, periodMs: SB.hour, clusters: [("first_id", "first_key"), (SB.unitType, SB.clusterPath)])
+		let context = createContext(SB.data([experiment]), units: [:])
+		context.setOverride(experimentName: "exp_sb", variant: 1)
+		clock.now = SB.anchor
+		XCTAssertEqual(1, context.getTreatment("exp_sb"))
+		context.setUnit(unitType: SB.unitType, uid: SB.uid)
+		XCTAssertEqual(1, context.getTreatment("exp_sb"))
+		XCTAssertEqual(1, context.getPendingCount())
+		XCTAssertEqual(["first_id"], publishExposures(context).map { $0.unit })
+	}
+
+	// M11: an absent serving is never reused: the kept exposed absent override, replaced after setUnit by
+	// a new override, re-reads the serving and is published under the unit now linked.
+	func testAbsentServingIsReresolvedWhenAKeptSlotIsReplaced() {
+		let experiment = SB.switchback(
+			arms: 2, periodMs: SB.hour, clusters: [("first_id", "first_key"), (SB.unitType, SB.clusterPath)])
+		let context = createContext(SB.data([experiment]), units: [:])
+		context.setOverride(experimentName: "exp_sb", variant: 1)
+		clock.now = SB.anchor
+		XCTAssertEqual(1, context.getTreatment("exp_sb"))
+		context.setUnit(unitType: SB.unitType, uid: SB.uid)
+		context.setOverride(experimentName: "exp_sb", variant: 0)
+		XCTAssertEqual(0, context.getTreatment("exp_sb"))
+		XCTAssertEqual(["first_id", SB.unitType], publishExposures(context).map { $0.unit })
+	}
+}
