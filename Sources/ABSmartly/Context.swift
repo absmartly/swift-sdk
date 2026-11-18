@@ -26,6 +26,7 @@ public final class Context {
 	private var refreshing = ManagedAtomic<Bool>(false)
 
 	private var readyPromise: Promise<Void>?
+	private var readyResolver: Resolver<Void>?
 	private var refreshPromise: Promise<Void>?
 	private var closePromise: Promise<Void>?
 
@@ -143,6 +144,7 @@ public final class Context {
 			}
 		} else {
 			readyPromise = Promise<Void> { [weak self] seal in
+				self?.readyResolver = seal
 				guard let self = self else {
 					seal.fulfill(())
 					return
@@ -649,6 +651,12 @@ public final class Context {
 				self.eventLock.unlock()
 				self.contextLock.unlock()
 				self.setRefreshTimer()
+				self.promiseLock.lock()
+				let readyResolver = self.readyResolver
+				self.readyResolver = nil
+				self.promiseLock.unlock()
+				readyResolver?.fulfill(())
+				if self.pendingCount.load(ordering: .acquiring) > 0 { self.setTimeout() }
 				self.refreshing.store(false, ordering: .releasing)
 				self.deliverOnMain { self.logEvent(event: .refresh(data: data)) }
 				seal.fulfill(())

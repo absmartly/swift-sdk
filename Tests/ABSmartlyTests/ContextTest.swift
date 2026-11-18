@@ -3764,6 +3764,20 @@ final class ContextV140BehaviourTest: XCTestCase {
 		return config
 	}
 
+	func testRefreshSettlesExistingWaiterAndSchedulesPreReadyGoals() throws {
+		let (initial, _) = Promise<ContextData>.pending()
+		let context = makeContext(config(), initial)
+		let waiting = context.waitUntilReady()
+		context.track("before-ready", properties: nil)
+		provider.getContextDataReturnValue = Promise.value(try contextData())
+		let completed = expectation(description: "waiter")
+		_ = waiting.done { _ in completed.fulfill() }
+		_ = context.refresh()
+		wait(for: [completed], timeout: 2)
+		XCTAssertTrue(context.isReady())
+		XCTAssertEqual(1, scheduler.scheduleAfterExecuteCallsCount)
+	}
+
 	func testRefreshWinsLateInitialFailure() throws {
         let (initial, initialSeal) = Promise<ContextData>.pending()
         let context = makeContext(config(), initial)
