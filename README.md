@@ -514,7 +514,7 @@ struct ContentView: View {
                 context = try await absmartly.createContext(deviceId: deviceId)
 
                 let treatment = context?.getTreatment("button_test")
-                buttonColor = context?.getVariableValue("button.color", defaultValue: "blue") ?? "blue"
+                buttonColor = context?.getVariableValue("button.color", defaultValue: "blue")?.stringValue ?? "blue"
             } catch {
                 print("Failed to initialize ABSmartly: \(error)")
             }

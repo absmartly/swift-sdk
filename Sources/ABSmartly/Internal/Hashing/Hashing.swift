@@ -10,9 +10,8 @@ import CommonCrypto
 public class Hashing {
 
 	private static func MD5Base64Url(_ string: String) -> String {
-		let data = Data(string.utf8)
-
 		#if canImport(CommonCrypto)
+		let data = Data(string.utf8)
 		// Apple platforms
 		let md5 = data.withUnsafeBytes { (bytes: UnsafeRawBufferPointer) -> [UInt8] in
 			var hash = [UInt8](repeating: 0, count: Int(CC_MD5_DIGEST_LENGTH))
@@ -21,7 +20,7 @@ public class Hashing {
 		}
 		#else
 		// Linux: the SDK's own MD5 (MD5.swift)
-		let md5 = MD5.digest(Array(data))
+		let md5 = MD5.digest(Array(string.utf8))
 		#endif
 
 		let base64Str = Data(md5).base64EncodedString()
