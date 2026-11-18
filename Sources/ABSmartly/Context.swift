@@ -217,7 +217,11 @@ public final class Context {
 						let wins = self.state.load(ordering: .acquiring) == Context.loading
 						if wins {
 							self.applyDataFailed(error)
+							// Under eventLock too, so a flush deciding under eventLock whether to drain
+							// or discard sees the context either before or after it failed, not between.
+							self.eventLock.lock()
 							self.state.store(Context.failedState, ordering: .releasing)
+							self.eventLock.unlock()
 						}
 						self.contextLock.unlock()
 						Logger.error("Context initialization failed: \(error.safeLocalizedDescription)")
@@ -859,6 +863,9 @@ public final class Context {
 		clearTimeout()
 
 		if !isFailed() {
+			#if DEBUG
+			Context.runTestHook(.flushObservedNotFailed)
+			#endif
 			var eventCount = pendingCount.load(ordering: .acquiring)
 			if eventCount > 0 {
 				var localExposures: [Exposure] = []
@@ -871,6 +878,15 @@ public final class Context {
 				do {
 					eventLock.lock()
 					defer { eventLock.unlock() }
+
+					// The context failed after the check above: discard instead of draining, so
+					// exposures made without experiment data are never sent (see the failed branch).
+					if isFailed() {
+						exposures = []
+						achievements = []
+						pendingCount.store(0, ordering: .releasing)
+						return Promise<Void>.value(())
+					}
 
 					eventCount = pendingCount.load(ordering: .acquiring)
 					if eventCount > 0 {
@@ -972,12 +988,15 @@ public final class Context {
 	// before it takes `eventLock`; `initialLoadSettled` runs after the initial load's completion has
 	// been handled (whether it was applied or superseded by a refresh); `exposureClaimed` runs after
 	// a read claimed an exposure and before it is queued; `initialLoadTookContext` runs after the
-	// initial load's completion took its context reference and before it checks the state.
+	// initial load's completion took its context reference and before it checks the state;
+	// `flushObservedNotFailed` runs after a flush has seen the context not failed and before it
+	// takes `eventLock`.
 	enum TestHook: Hashable {
 		case flushObservedFailed
 		case initialLoadSettled
 		case exposureClaimed
 		case initialLoadTookContext
+		case flushObservedNotFailed
 	}
 
 	private static var testHooks: [TestHook: () -> Void] = [:]

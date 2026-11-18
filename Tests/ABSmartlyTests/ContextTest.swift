@@ -4126,6 +4126,35 @@ final class ContextV140BehaviourTest: XCTestCase {
 	}
 
 	#if DEBUG
+	// A publish that started while the first load was pending, then paused before draining while the
+	// load failed and an exposure was made without experiment data: it discards that exposure instead
+	// of sending it.
+	func testFlushThatStartedBeforeTheLoadFailedDoesNotSendFailedStateExposures() throws {
+		let (initial, initialSeal) = Promise<ContextData>.pending()
+		let context = makeContext(config(), initial)
+		context.setOverride(experimentName: "exp_test_ab", variant: 1)
+		context.track("goal", properties: nil)
+		handler.publishEventReturnValue = Promise.value(())
+
+		Context.setTestHook(.flushObservedNotFailed) {
+			Context.setTestHook(.flushObservedNotFailed, nil)
+			let failed = XCTestExpectation()
+			_ = context.waitUntilReady().done { _ in failed.fulfill() }
+			initialSeal.reject(ABSmartlyError("load failed"))
+			XCTAssertEqual(.completed, XCTWaiter().wait(for: [failed], timeout: 2))
+			XCTAssertEqual(1, context.getTreatment("exp_test_ab"))
+		}
+		defer { Context.setTestHook(.flushObservedNotFailed, nil) }
+
+		let settled = expectation(description: "publish settles")
+		_ = context.publish().ensure { settled.fulfill() }
+		wait(for: [settled], timeout: 2)
+
+		XCTAssertTrue(context.isFailed())
+		XCTAssertEqual(0, handler.publishEventCallsCount)
+		XCTAssertEqual(0, context.getPendingCount())
+	}
+
 	// A recovery that completes between a read's claim and its enqueue: the stale exposure is
 	// dropped and the next read exposes the rebuilt assignment, attributed.
 	func testExposureClaimedBeforeARecoveryIsDroppedAndReExposed() throws {
@@ -4181,7 +4210,8 @@ final class ContextV140BehaviourTest: XCTestCase {
 		let published = expectation(description: "published")
 		_ = context.publish().done { published.fulfill() }
 		wait(for: [published], timeout: 2)
-		let ids = Set(handler.publishEventReceivedInvocations.flatMap { $0.exposures.filter { $0.name == "exp_test_ab" }.map { $0.id } })
+		// An array, not a set: exactly one exposure, attributed to the experiment.
+		let ids = handler.publishEventReceivedInvocations.flatMap { $0.exposures.filter { $0.name == "exp_test_ab" }.map { $0.id } }
 		XCTAssertEqual([1], ids)
 	}
 
