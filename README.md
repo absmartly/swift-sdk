@@ -48,6 +48,8 @@ pod 'ABSmartlySwiftSDK', '~> 1.3'
 
 To use 1.5.0 through CocoaPods before it is on the trunk, point the pod at the git tag:
 `pod 'ABSmartlySwiftSDK', :git => 'https://github.com/absmartly/swift-sdk.git', :tag => 'v1.5.0'`.
+On current Xcode the SwiftyJSON 5 pod does not build for macOS at its own deployment target
+(10.9); raise it in your Podfile's `post_install` hook, or use Swift Package Manager on macOS.
 
 Run the following command to update your Xcode project:
 ```
