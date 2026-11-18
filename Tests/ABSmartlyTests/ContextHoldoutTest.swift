@@ -882,9 +882,9 @@ final class ContextHoldoutTest: XCTestCase {
 		XCTAssertEqual(1, context.getPendingCount())
 	}
 
-	// Java's settlement-retry bound has no Swift counterpart; the public guarantee it protects is one
-	// exposure per experiment however often its assignment is read.
-	func testTreatmentExposureSettlesAfterTwoConsecutiveRetirements() {
+	// Java's settlement-retry tests have no Swift counterpart (resolution and claim share one lock);
+	// these pin the public guarantees they protect.
+	func testRepeatedTreatmentReadsExposeOnce() {
 		let context = createContext(
 			contextData([
 				experiment(1, "exp_first", fullOnVariant: 2), experiment(2, "exp_second", fullOnVariant: 1),
@@ -897,7 +897,7 @@ final class ContextHoldoutTest: XCTestCase {
 		XCTAssertEqual(1, context.getPendingCount())
 	}
 
-	func testExposureSettlementStopsAfterTheBoundedNumberOfRetirements() {
+	func testPeekOnFullOnExperimentExposesNothing() {
 		let context = createContext(contextData([experiment(1, "exp_bounded_retry", fullOnVariant: 1)]))
 
 		XCTAssertEqual(1, context.peekTreatment("exp_bounded_retry"))
@@ -1440,6 +1440,91 @@ final class ContextHoldoutTest: XCTestCase {
 
 		XCTAssertEqual(0, context.getTreatment("exp_b"))
 		try assertPublished(context, [holdoutExposure(21, "holdout_arity_stale", 1)])
+	}
+
+	// A refresh that lands after an assignment lookup read the experiment, but before its holdout arms
+	// are drawn, waits for the lookup to finish. So the assignment never pairs one data install's
+	// holdout definitions with another's arms: the refresh behaves as if it came after the first
+	// read, as in JavaScript. Without that, the first read pinned iteration 1 beside the iteration-2
+	// arm, and the next read re-exposed the experiment with no holdout exposure for its epoch.
+	func testRefreshDuringAssignmentResolutionDoesNotReExposeTheExperiment() throws {
+		let context = createContext(
+			contextData(
+				[experiment(1, "exp_race", holdoutIds: [11])], holdouts: [holdout(11, "holdout_race", seeds: Self.holdoutB)]))
+		let refreshed = contextData(
+			[experiment(1, "exp_race", holdoutIds: [11])],
+			holdouts: [holdout(11, "holdout_race", seeds: Self.holdoutB, iteration: 2)])
+
+		#if DEBUG
+		let installed = DispatchSemaphore(value: 0)
+		var fired = false
+		context.afterExperimentLookup = {
+			guard !fired else { return }
+			fired = true
+			DispatchQueue.global().async {
+				context.setData(refreshed)
+				installed.signal()
+			}
+			// Give the refresh the chance to land inside this lookup; it must wait for the lookup.
+			_ = installed.wait(timeout: .now() + 0.2)
+		}
+		#else
+		context.setData(refreshed)
+		let installed = DispatchSemaphore(value: 1)
+		#endif
+
+		XCTAssertEqual(Self.normalVariant, context.getTreatment("exp_race"))
+		XCTAssertEqual(.success, installed.wait(timeout: .now() + 5))
+		#if DEBUG
+		context.afterExperimentLookup = nil
+		#endif
+		XCTAssertEqual(Self.normalVariant, context.getTreatment("exp_race"))
+		XCTAssertEqual(Self.normalVariant, context.getTreatment("exp_race"))
+
+		// Each epoch publishes the experiment's exposure with its own holdout exposure, and repeated
+		// reads in the new epoch add nothing.
+		XCTAssertEqual([1, 11, 1, 11], loggedExposures().map { $0.id })
+	}
+
+	// A logger that closes the context on the experiment's exposure still sees every holdout exposure
+	// of that call published: they are all queued before the logger runs.
+	func testLoggerClosingOnFirstExposurePublishesEveryHoldoutExposure() throws {
+		let context = createContext(
+			contextData(
+				[experiment(1, "exp_close", holdoutIds: [11, 12])],
+				holdouts: [holdout(11, "holdout_a", seeds: Self.holdoutB), holdout(12, "holdout_b", seeds: Self.holdoutB)]))
+		var closing: Promise<Void>?
+		logger.handleEventContextEventClosure = { context, event in
+			if case let .exposure(exposure) = event, exposure.id == 1, closing == nil {
+				closing = context.close()
+			}
+		}
+
+		XCTAssertEqual(Self.normalVariant, context.getTreatment("exp_close"))
+		try XCTUnwrap(closing).wait()
+
+		XCTAssertEqual(1, handler.publishEventCallsCount)
+		XCTAssertEqual(
+			[exposure(1, "exp_close", Self.normalVariant), holdoutExposure(11, "holdout_a", 1), holdoutExposure(12, "holdout_b", 1)],
+			handler.publishEventReceivedEvent?.exposures)
+		XCTAssertEqual(0, context.getPendingCount())
+	}
+
+	// An override cached with holdout coverage is rebuilt once a refresh removes the experiment, so
+	// the retired holdout's exposure is not published.
+	func testOverrideCachedWithCoverageDropsItWhenTheExperimentIsRemoved() {
+		let context = createContext(
+			contextData(
+				[experiment(1, "exp_gone", holdoutIds: [11])], holdouts: [holdout(11, "holdout_gone", seeds: Self.holdoutA)])
+		) { $0.setOverride(experimentName: "exp_gone", variant: 1) }
+
+		XCTAssertEqual(1, context.peekTreatment("exp_gone"))
+
+		context.setData(contextData([]))
+
+		XCTAssertEqual(1, context.getTreatment("exp_gone"))
+		XCTAssertEqual(
+			[Exposure(0, "exp_gone", nil, 1, now, false, true, true, false, false, false)], loggedExposures())
 	}
 
 	// The override fast path revalidates coverage too: a holdout added by a refresh rebuilds the
