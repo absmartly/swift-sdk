@@ -638,11 +638,11 @@ public final class Context {
 				// queued from the refreshed data are published instead of discarded. (v1.4.0 kept
 				// it failed and dropped them.) Cleared before the data is visible, so no flush can see
 				// the new data with the context still failed.
+				self.contextLock.lock()
+				self.eventLock.lock()
 				self.dataLock.lock()
 				self.failedError = nil
 				self.dataLock.unlock()
-				self.contextLock.lock()
-				self.eventLock.lock()
 				self.applyData(data)
 				self.ready.store(true, ordering: .releasing)
 				self.failed.store(false, ordering: .releasing)
