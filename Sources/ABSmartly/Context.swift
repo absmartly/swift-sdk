@@ -679,18 +679,24 @@ public final class Context {
 		let achievement: GoalAchievement = GoalAchievement(
 			goalName, achievedAt: clock.millis(), properties: properties)
 
-		do {
-			eventLock.lock()
-			defer { eventLock.unlock() }
-
-			guard !closed.load(ordering: .acquiring), !closing.load(ordering: .acquiring) else { return }
-			achievements.append(achievement)
-			pendingCount.wrappingIncrement(by: 1, ordering: .releasing)
+		eventLock.lock()
+		guard !closed.load(ordering: .acquiring), !closing.load(ordering: .acquiring) else {
+			eventLock.unlock()
+			return
 		}
+		achievements.append(achievement)
+		pendingCount.wrappingIncrement(by: 1, ordering: .releasing)
+		// Queued while loading: whichever completion makes the context ready schedules it, and a
+		// failed load leaves it queued for a recovering refresh. Not scheduling here also covers a
+		// load that fails during the logger callback below (a failed flush would discard it).
+		let queuedWhileLoading = state.load(ordering: .acquiring) == Context.loading
+		eventLock.unlock()
 
 		logEvent(event: .goal(goal: achievement))
 
-		setTimeout()
+		if !queuedWhileLoading {
+			setTimeout()
+		}
 	}
 
 	public func getPendingCount() -> UInt {
@@ -803,47 +809,57 @@ public final class Context {
 		promiseLock.unlock()
 
 		clearRefreshTimer()
+		// The final flush below replaces a pending automatic one.
+		clearTimeout()
 
 		// Nothing queued or in flight: close now, as v1.4.0 did, so isClosed() is true and `.close`
 		// has been logged when close() returns. As in v1.4.0, that `.close` reaches the logger on
 		// the thread that called close().
-		eventLock.lock()
-		let idle = inFlightPublishes.isEmpty && pendingCount.load(ordering: .acquiring) == 0
-		eventLock.unlock()
-		if idle {
-			closed.store(true, ordering: .releasing)
-			closing.store(false, ordering: .releasing)
+		if closeIfIdle() {
 			logEvent(event: .close)
 			seal.fulfill(())
 			return newClosePromise
 		}
 
-		// Wait for publishes already in flight (a failed one re-queues its events)
-		// before deciding whether a final flush is needed.
 		// The closures hold the context strongly: once close() starts, the final flush must
 		// complete even if the caller drops its last reference (e.g. close() from deinit).
+		finishClose(seal)
+		return newClosePromise
+	}
+
+	// Marks the context closed if nothing is queued or in flight, deciding and marking in one
+	// eventLock section: a flush drains and registers its in-flight barrier under the same lock, so
+	// close can never report success while a publish that may re-queue its events is running.
+	private func closeIfIdle() -> Bool {
+		eventLock.lock()
+		defer { eventLock.unlock() }
+		guard inFlightPublishes.isEmpty && pendingCount.load(ordering: .acquiring) == 0 else { return false }
+		closed.store(true, ordering: .releasing)
+		closing.store(false, ordering: .releasing)
+		return true
+	}
+
+	// Waits for publishes in flight (a failed one re-queues its events), flushes what is queued and
+	// repeats until the context is idle, then closes it. A failed final flush reopens the context so
+	// the re-queued events can be retried via publish()/close().
+	private func finishClose(_ seal: Resolver<Void>) {
 		_ = awaitInFlightPublishes().done(on: DispatchQueue.global()) { [self] in
-			if self.pendingCount.load(ordering: .acquiring) > 0 {
-				self.flush().done(on: DispatchQueue.global()) { [self] in
-					self.closed.store(true, ordering: .releasing)
-					self.closing.store(false, ordering: .releasing)
-					self.deliverOnMain { self.logEvent(event: .close) }
-					seal.fulfill(())
-				}.catch(on: DispatchQueue.global(), policy: .allErrors) { [self] error in
-					// Stay open so the requeued events can be retried via publish()/close().
-					self.closing.store(false, ordering: .releasing)
-					self.setRefreshTimer()
-					seal.reject(error)
-				}
-			} else {
-				self.closed.store(true, ordering: .releasing)
-				self.closing.store(false, ordering: .releasing)
+			#if DEBUG
+			Context.runTestHook(.closeAwaitedInFlight)
+			#endif
+			if self.closeIfIdle() {
 				self.deliverOnMain { self.logEvent(event: .close) }
 				seal.fulfill(())
+				return
+			}
+			self.flush().done(on: DispatchQueue.global()) { [self] in
+				self.finishClose(seal)
+			}.catch(on: DispatchQueue.global(), policy: .allErrors) { [self] error in
+				self.closing.store(false, ordering: .releasing)
+				self.setRefreshTimer()
+				seal.reject(error)
 			}
 		}
-
-		return newClosePromise
 	}
 
 	private func awaitInFlightPublishes() -> Promise<Void> {
@@ -991,13 +1007,15 @@ public final class Context {
 	// a read claimed an exposure and before it is queued; `initialLoadTookContext` runs after the
 	// initial load's completion took its context reference and before it checks the state;
 	// `flushObservedNotFailed` runs after a flush has seen the context not failed and before it
-	// takes `eventLock`.
+	// takes `eventLock`; `closeAwaitedInFlight` runs after close() waited for in-flight publishes
+	// and before it decides whether the context is idle.
 	enum TestHook: Hashable {
 		case flushObservedFailed
 		case initialLoadSettled
 		case exposureClaimed
 		case initialLoadTookContext
 		case flushObservedNotFailed
+		case closeAwaitedInFlight
 	}
 
 	private static var testHooks: [TestHook: () -> Void] = [:]

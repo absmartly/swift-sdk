@@ -4155,6 +4155,63 @@ final class ContextV140BehaviourTest: XCTestCase {
 		XCTAssertEqual(0, context.getPendingCount())
 	}
 
+	// A goal tracked while loading, where the load fails during the goal's logger callback: no
+	// publish is scheduled (it would take the failed branch and discard the goal), so a later
+	// successful refresh publishes it.
+	func testGoalWhoseLoggerCallbackSeesTheLoadFailIsKeptForRecovery() throws {
+		let (initial, initialSeal) = Promise<ContextData>.pending()
+		let context = makeContext(config(), initial)
+		logger.handleEventContextEventClosure = { ctx, event in
+			guard case .goal = event else { return }
+			let failed = XCTestExpectation()
+			_ = ctx.waitUntilReady().done { _ in failed.fulfill() }
+			initialSeal.reject(ABSmartlyError("load failed"))
+			_ = XCTWaiter().wait(for: [failed], timeout: 2)
+		}
+		context.track("goal", properties: nil)
+		XCTAssertTrue(context.isFailed())
+		XCTAssertEqual(0, scheduler.scheduleAfterExecuteCallsCount)
+		XCTAssertEqual(1, context.getPendingCount())
+
+		logger.handleEventContextEventClosure = nil
+		provider.getContextDataReturnValue = Promise.value(try contextData())
+		let refreshed = expectation(description: "refreshed")
+		_ = context.refresh().done { refreshed.fulfill() }
+		wait(for: [refreshed], timeout: 2)
+		handler.publishEventReturnValue = Promise.value(())
+		let published = expectation(description: "published")
+		_ = context.publish().done { published.fulfill() }
+		wait(for: [published], timeout: 2)
+		XCTAssertEqual(["goal"], handler.publishEventReceivedEvent?.goals.map { $0.name })
+	}
+
+	// An automatic publish that drains the queue while close() is deciding whether the context is
+	// idle: close waits for it, and when it is cancelled (its batch re-queued) close reports failure
+	// and leaves the context open for a retry, instead of reporting success.
+	func testCloseDoesNotSucceedWhileAnAutomaticPublishMayRequeue() throws {
+		let context = makeContext(config(), Promise.value(try contextData()))
+		let (inFlight, inFlightSeal) = Promise<Void>.pending()
+		handler.publishEventReturnValue = inFlight
+		context.track("goal", properties: nil)
+		let autoPublish = try XCTUnwrap(scheduler.scheduleAfterExecuteReceivedArguments?.execute)
+		// close() has to see the queue non-empty so it waits; the timer then wins the drain.
+		Context.setTestHook(.closeAwaitedInFlight) {
+			Context.setTestHook(.closeAwaitedInFlight, nil)
+			autoPublish()
+		}
+		defer { Context.setTestHook(.closeAwaitedInFlight, nil) }
+
+		let closeSettled = expectation(description: "close settles")
+		var closeSucceeded = false
+		context.close().done { closeSucceeded = true }.ensure { closeSettled.fulfill() }.catch(policy: .allErrors) { _ in }
+		DispatchQueue.global().asyncAfter(deadline: .now() + 0.1) { inFlightSeal.reject(PMKError.cancelled) }
+		wait(for: [closeSettled], timeout: 3)
+
+		XCTAssertFalse(closeSucceeded)
+		XCTAssertFalse(context.isClosed())
+		XCTAssertEqual(1, context.getPendingCount())
+	}
+
 	// A recovery that completes between a read's claim and its enqueue: the stale exposure is
 	// dropped and the next read exposes the rebuilt assignment, attributed.
 	func testExposureClaimedBeforeARecoveryIsDroppedAndReExposed() throws {
