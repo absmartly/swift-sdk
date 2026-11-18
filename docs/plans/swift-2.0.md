@@ -225,9 +225,10 @@ the unit is left unchanged. `setAttribute` and `track` after close are ignored a
 event, as in 1.5.0, so they can be called from UI code without `try`. Overrides and custom
 assignments are accepted after close, as in 1.5.0.
 
-`overrides[key] = value` reads the dictionary, applies the change, and writes it back under the
-lock. The right-hand side and any closure in the expression run outside the lock, so they may read
-the context. For atomic updates of several keys use `setOverrides(_:)`.
+Assigning the `overrides`/`customAssignments` properties (including `overrides[key] = value`) reads
+a snapshot and writes the whole dictionary back in a second critical section: last writer wins, and
+the caller's expression (which may read the context) runs outside the lock. For atomic updates use
+`setOverride(_:for:)`/`setOverrides(_:)` and `setCustomAssignment(_:for:)`/`setCustomAssignments(_:)`.
 
 ### Goals
 

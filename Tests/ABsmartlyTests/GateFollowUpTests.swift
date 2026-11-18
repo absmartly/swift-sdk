@@ -66,9 +66,7 @@ import Testing
 			"""#
 		let data = try JSONDecoder().decode(ContextData.self, from: Data(json.utf8))
 		let context = Harness().context(data: data)
-		// `== nil` would compare against `JSONValue.null` (nil literal), so check the Optional itself.
-		let empty: JSONValue?? = .some(context.customFieldValue("empty", in: "exp"))
-		#expect(empty == .some(.none))
+		#expect(context.customFieldValue("empty", in: "exp") == nil)
 		#expect(context.customFieldType("empty", in: "exp") == "json")
 		#expect(context.customFieldKeys(in: "exp").sorted() == ["empty", "list"])
 		#expect(context.customFieldValue("list", in: "exp") == [1])
