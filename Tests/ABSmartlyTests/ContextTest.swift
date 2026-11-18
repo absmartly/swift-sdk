@@ -3764,6 +3764,35 @@ final class ContextV140BehaviourTest: XCTestCase {
 		return config
 	}
 
+	func testRefreshWinsLateInitialFailure() throws {
+        let (initial, initialSeal) = Promise<ContextData>.pending()
+        let context = makeContext(config(), initial)
+        provider.getContextDataReturnValue = Promise.value(try contextData())
+        let refreshed = expectation(description: "refreshed")
+        _ = context.refresh().done { refreshed.fulfill() }
+        wait(for: [refreshed], timeout: 2)
+        initialSeal.reject(ABSmartlyError("late initial failure"))
+        let settled = expectation(description: "initial settled")
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.2) { settled.fulfill() }
+        wait(for: [settled], timeout: 2)
+        XCTAssertFalse(context.isFailed())
+        XCTAssertNotNil(context.getContextData())
+    }
+
+	func testFailedCloseRestartsRefreshTimer() throws {
+        let cfg = config()
+        cfg.refreshInterval = 10
+        let context = makeContext(cfg, Promise.value(try contextData()))
+        XCTAssertEqual(1, scheduler.scheduleWithFixedDelayAfterRepeatingExecuteCallsCount)
+        handler.publishEventReturnValue = Promise(error: ABSmartlyError("publish failed"))
+        context.track("goal", properties: nil)
+        let failed = expectation(description: "close failed")
+        _ = context.close().catch { _ in failed.fulfill() }
+        wait(for: [failed], timeout: 2)
+        XCTAssertFalse(context.isClosed())
+        XCTAssertEqual(2, scheduler.scheduleWithFixedDelayAfterRepeatingExecuteCallsCount)
+    }
+
 	func testRefreshOnFailedContextFetchesAgain() throws {
 		let context = makeContext(config(), Promise(error: ABSmartlyError("load failed")))
 		XCTAssertTrue(context.isFailed())

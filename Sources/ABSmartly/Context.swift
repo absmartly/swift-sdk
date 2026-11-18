@@ -165,13 +165,18 @@ public final class Context {
 						seal.fulfill(())
 					}.catch(on: DispatchQueue.global()) { [self] error in
 						// As in v1.4.0: the context is failed (and ready) when the `.error` event is delivered.
-						self.applyDataFailed(error)
+						self.contextLock.lock()
+						let superseded = self.ready.load(ordering: .acquiring)
+						if !superseded {
+							self.applyDataFailed(error)
+							self.failed.store(true, ordering: .releasing)
+						}
+						self.contextLock.unlock()
 						Logger.error("Context initialization failed: \(error.safeLocalizedDescription)")
-						self.failed.store(true, ordering: .releasing)
 						self.promiseLock.lock()
 						self.readyPromise = nil
 						self.promiseLock.unlock()
-						self.deliverOnMain { self.logError(error: error) }
+						if !superseded { self.deliverOnMain { self.logError(error: error) } }
 						seal.reject(error)
 					}
 				}
@@ -631,11 +636,13 @@ public final class Context {
 				self.dataLock.lock()
 				self.failedError = nil
 				self.dataLock.unlock()
-				self.applyData(data)
+				self.contextLock.lock()
 				self.eventLock.lock()
+				self.applyData(data)
 				self.ready.store(true, ordering: .releasing)
 				self.failed.store(false, ordering: .releasing)
 				self.eventLock.unlock()
+				self.contextLock.unlock()
 				self.setRefreshTimer()
 				self.refreshing.store(false, ordering: .releasing)
 				self.deliverOnMain { self.logEvent(event: .refresh(data: data)) }
@@ -698,6 +705,7 @@ public final class Context {
 				}.catch(on: DispatchQueue.global()) { [self] error in
 					// Stay open so the requeued events can be retried via publish()/close().
 					self.closing.store(false, ordering: .releasing)
+					self.setRefreshTimer()
 					seal.reject(error)
 				}
 			} else {
