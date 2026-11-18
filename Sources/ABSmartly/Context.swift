@@ -149,6 +149,10 @@ public final class Context {
 				logError(error: error)
 			}
 		} else {
+			// Published under promiseLock: the completions below may already run (on another queue)
+			// and clear it before this assignment would otherwise happen.
+			promiseLock.lock()
+			defer { promiseLock.unlock() }
 			readyPromise = Promise<Void> { [weak self] seal in
 				// Whichever of the initial load and a refresh makes the context ready first takes this
 				// resolver and settles it, after scheduling queued goals. Set before any completion runs.

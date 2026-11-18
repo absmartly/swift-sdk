@@ -120,5 +120,8 @@ security fixes, from the `release/1.x` branch) for 12 months after 2.0 ships.
 - On Linux, `ABSmartlyError` subclasses `NSError`, because Foundation in Swift 6.0 and 6.1 crashes
   when `localizedDescription` is read on a class-based error that is not an `NSError`
   ([swift-corelibs-foundation#5221](https://github.com/swiftlang/swift-corelibs-foundation/issues/5221)).
+- The declared minimum platforms are unchanged (iOS 10, macOS 10.14 for Swift Package Manager / 10.10
+  for CocoaPods, tvOS 10, watchOS 3). Current Xcode cannot build for watchOS below 5, so CI builds
+  watchOS at 5.0 and iOS/tvOS at the package minimums.
 - Toolchains 5.9 and later read `Package@swift-5.9.swift`, which is identical to `Package.swift` except
   that the SwiftyJSON dependency also names Mac Catalyst and visionOS.
