@@ -53,6 +53,10 @@ public final class Context {
 	// A holdout's arm per (holdout id, covered experiment's unit type), kept across refreshes while the
 	// holdout's iteration is unchanged. Guarded by `contextLock`.
 	private var holdoutAssignments: [HoldoutKey: Assignment] = [:]
+	// The cache slots of each switchback experiment, by experiment name. Guarded by `contextLock`.
+	private var switchbackEpochs: [String: SwitchbackEpoch] = [:]
+	// Source of `ExperimentVariables.switchbackGeneration`. Guarded by `contextLock`.
+	private var switchbackGenerationCounter = 0
 
 	private let contextLock = NSRecursiveLock()
 	// The string each unit is hashed from, and the UID as it was given (string or number).
@@ -423,9 +427,14 @@ public final class Context {
 		units[unitType] = hashSource
 
 		// A split rule or a holdout resolved without its unit is rebuilt now that the unit is known. An
-		// exposed one is kept, so the user never switches variant or gets a second exposure.
+		// exposed one is kept, so the user never switches variant or gets a second exposure. A switchback
+		// resolved before any linked unit was set is re-resolved now that one may be; unless overridden it
+		// published nothing, so it is dropped even if exposed.
 		assignmentCache = assignmentCache.filter { _, assignment in
-			assignment.unitType != unitType || assignment.exposed.load(ordering: .acquiring)
+			if assignment.switchbackServing?.status == .absent {
+				return assignment.overridden && assignment.exposed.load(ordering: .acquiring)
+			}
+			return assignment.unitType != unitType || assignment.exposed.load(ordering: .acquiring)
 				|| !(assignment.ruleMissingUnit || assignment.holdoutMissingUnit)
 		}
 	}
@@ -498,9 +507,10 @@ public final class Context {
 	public func getTreatment(_ experimentName: String) -> Int {
 		guard ensureReady(true) else { return 0 }
 
-		let (assignment, claimed) = getAssignmentClaimingExposure(experimentName)
+		var now: Int64?
+		let (assignment, claimed) = getAssignmentClaimingExposure(experimentName, now: &now)
 		if claimed {
-			triggerExposures(assignment)
+			triggerExposures(assignment, resolvedAt: now)
 		}
 
 		return assignment.variant
@@ -510,17 +520,21 @@ public final class Context {
 	// does); every holdout covering it publishes its own, once per epoch, from the arms pinned when
 	// the assignment was resolved. All of them are queued before the logger hears of any, so a logger
 	// that closes the context cannot flush between them.
-	private func triggerExposures(_ assignment: Assignment) {
-		var queued: [(Assignment, name: String)] = []
-		if !assignment.suppressed || assignment.overridden || assignment.ruleOverride {
-			queued.append((assignment, assignment.name))
+	//
+	// A switchback exposure is stamped with `resolvedAt`, the clock reading that selected its period:
+	// analysis derives the period from `exposedAt`. A switchback the Collector records nothing for
+	// (`switchbackSilent`) publishes nothing. Other exposures read the clock when they are queued.
+	private func triggerExposures(_ assignment: Assignment, resolvedAt: Int64?) {
+		var queued: [(Assignment, name: String, exposedAt: Int64?)] = []
+		if (!assignment.suppressed || assignment.overridden || assignment.ruleOverride) && !assignment.switchbackSilent {
+			queued.append((assignment, assignment.name, assignment.switchback ? resolvedAt : nil))
 		}
 		for holdout in assignment.holdouts ?? [] {
 			if let arm = holdout.arm,
 				arm.exposed.compareExchange(expected: false, desired: true, ordering: .acquiringAndReleasing).0
 			{
 				// Named by the definition the assignment was resolved with, as in JavaScript.
-				queued.append((arm, holdout.definition.name))
+				queued.append((arm, holdout.definition.name, nil))
 			}
 		}
 		queueExposures(queued)
@@ -530,14 +544,14 @@ public final class Context {
 	// evict it in between and let a later call expose a second, different variant. `claimed` is true
 	// when this call marked it exposed and must queue the exposure; with `requireVariables`, only an
 	// assignment whose variant has variables is claimed. An already-exposed assignment returns as
-	// soon as it is found.
+	// soon as it is found. `now` is the call's clock reading, see `lookupAssignment`.
 	private func getAssignmentClaimingExposure(
-		_ experimentName: String, requireVariables: Bool = false
+		_ experimentName: String, requireVariables: Bool = false, now: inout Int64?
 	) -> (Assignment, claimed: Bool) {
 		contextLock.lock()
 		defer { contextLock.unlock() }
 
-		let assignment = lookupAssignment(experimentName)
+		let assignment = lookupAssignment(experimentName, now: &now)
 		guard !assignment.exposed.load(ordering: .acquiring),
 			!requireVariables || assignment.variables != nil,
 			!closed.load(ordering: .acquiring), !closing.load(ordering: .acquiring)
@@ -550,12 +564,12 @@ public final class Context {
 		return (assignment, claimed)
 	}
 
-	private func queueExposures(_ assignments: [(Assignment, name: String)]) {
+	private func queueExposures(_ assignments: [(Assignment, name: String, exposedAt: Int64?)]) {
 		guard !assignments.isEmpty else { return }
-		let exposures = assignments.map { assignment, name in
+		let exposures = assignments.map { assignment, name, exposedAt in
 			Exposure(
 				assignment.id, name, assignment.unitType, assignment.variant,
-				clock.millis(), assignment.assigned, assignment.eligible,
+				exposedAt ?? clock.millis(), assignment.assigned, assignment.eligible,
 				assignment.overridden, assignment.fullOn, assignment.custom, assignment.audienceMismatch,
 				ruleOverride: assignment.ruleOverride)
 		}
@@ -897,11 +911,15 @@ public final class Context {
 	}
 
 	// Reads the fields through `ExperimentVariables` so a cached read does not copy the whole `Experiment`.
+	// A switchback serves under the unit its clusters select, so its unit identity is the cluster map
+	// that `switchbackConfigMatches` compares.
 	private func experimentMatches(_ experimentVariables: ExperimentVariables, _ assignment: Assignment) -> Bool {
 		let experiment = experimentVariables.data
-		return experiment.id == assignment.id && experiment.unitType == assignment.unitType
+		return experiment.id == assignment.id
+			&& (experimentVariables.isSwitchback || experiment.unitType == assignment.unitType)
 			&& experiment.iteration == assignment.iteration && experiment.fullOnVariant == assignment.fullOnVariant
 			&& experiment.trafficSplit == assignment.trafficSplit
+			&& switchbackConfigMatches(experimentVariables, assignment)
 	}
 
 	// The covering holdouts are the same (id, iteration) pairs the assignment was resolved with. A
@@ -931,14 +949,19 @@ public final class Context {
 		if (attrsSeq > assignment.attrsSeq && (experiment.rules != nil || hasAudience)) || ruleKeyChanged {
 			let attrs = buildAttributeMap()
 
-			// An exposed split resolved without its unit keeps resolving as if the unit were still
-			// missing, so a unit set afterwards cannot switch the variant the user already saw.
-			let unitPinnedMissing = assignment.ruleMissingUnit && assignment.exposed.load(ordering: .acquiring)
-			let rule = resolveRule(experiment, attrs, unitPinnedMissing: unitPinnedMissing)
-			if rule?.variant != assignment.ruleVariant {
-				return false
+			// A switchback without an eligible cluster never consulted its rules, so a rule change cannot
+			// make it stale.
+			if !assignment.switchback || assignment.switchbackServing?.status == .eligible {
+				// An exposed split resolved without its unit keeps resolving as if the unit were still
+				// missing, so a unit set afterwards cannot switch the variant the user already saw.
+				let unitPinnedMissing = assignment.ruleMissingUnit && assignment.exposed.load(ordering: .acquiring)
+				let rule = resolveRule(
+					experiment, attrs, unitType: ruleUnitType(experiment, assignment), unitPinnedMissing: unitPinnedMissing)
+				if rule?.variant != assignment.ruleVariant {
+					return false
+				}
+				assignment.ruleMissingUnit = rule?.missingUnit ?? false
 			}
-			assignment.ruleMissingUnit = rule?.missingUnit ?? false
 
 			if !assignment.ruleOverride && hasAudience, let audience = experiment.data.audience {
 				let result = matcher.evaluate(audience, attrs)
@@ -959,8 +982,14 @@ public final class Context {
 	// assign variant or a split whose length differs from the variant count stops rule evaluation
 	// and falls back to normal assignment. A split matched while the unit is missing gives the
 	// experiment's own no-unit result (the full-on variant, else 0) and is flagged `missingUnit`.
+	// The unit a split rule randomizes over: the experiment's unitType, or for a switchback the serving
+	// unit the assignment resolved (the Collector resets its assigner to the serving unit).
+	private func ruleUnitType(_ experiment: ExperimentVariables, _ assignment: Assignment) -> String? {
+		return experiment.isSwitchback ? assignment.unitType : experiment.data.unitType
+	}
+
 	private func resolveRule(
-		_ experiment: ExperimentVariables, _ attrs: [String: JSON], unitPinnedMissing: Bool
+		_ experiment: ExperimentVariables, _ attrs: [String: JSON], unitType: String?, unitPinnedMissing: Bool
 	) -> (variant: Int, missingUnit: Bool)? {
 		guard let rules = experiment.rules else { return nil }
 
@@ -973,7 +1002,7 @@ public final class Context {
 			return variant >= 0 && variant < variantCount ? (variant, false) : nil
 		case .split(let split)?:
 			guard split.count == variantCount else { return nil }
-			guard !unitPinnedMissing, let unitType = data.unitType, let uid = units[unitType] else {
+			guard !unitPinnedMissing, let unitType = unitType, let uid = units[unitType] else {
 				return (data.fullOnVariant, true)
 			}
 			let assigner = getVariantAssigner(unitType, getUnitHash(unitType, uid))
@@ -986,24 +1015,45 @@ public final class Context {
 	}
 
 	private func getAssignment(_ experimentName: String) -> Assignment {
+		var now: Int64?
+		return getAssignment(experimentName, now: &now)
+	}
+
+	private func getAssignment(_ experimentName: String, now: inout Int64?) -> Assignment {
 		contextLock.lock()
 		defer { contextLock.unlock() }
 
-		return lookupAssignment(experimentName)
+		return lookupAssignment(experimentName, now: &now)
 	}
 
 	// The cached assignment if still up to date, else a newly computed and cached one. The caller
-	// holds `contextLock`.
-	private func lookupAssignment(_ experimentName: String) -> Assignment {
+	// holds `contextLock`. `now` is the calling API method's single clock reading, taken here on first
+	// use: only a switchback reads it, so the period, its cache slot and its exposure's `exposedAt`
+	// agree, and a payload without switchbacks never reads the clock here.
+	private func lookupAssignment(_ experimentName: String, now: inout Int64?) -> Assignment {
 		let experiment: ExperimentVariables? = getExperiment(experimentName)
 		#if DEBUG
 		afterExperimentLookup?()
 		#endif
 
-		if let assignment = assignmentCache[experimentName] {
+		var periodIndex: Int64?
+		if let experiment = experiment, experiment.isSwitchback {
+			if now == nil {
+				now = clock.millis()
+			}
+			periodIndex = Context.currentSwitchbackPeriod(experiment, now: now!)
+		}
+		let cacheKey = periodIndex.map { Context.switchbackCacheKey(experimentName, $0) } ?? experimentName
+		if !switchbackEpochs.isEmpty, isSwitchbackEpochStale(experimentName, experiment) {
+			dropSwitchbackEpoch(experimentName)
+		}
+
+		let cached = assignmentCache[cacheKey]
+		if let assignment = cached {
 			if let override = overrides[experimentName] {
 				if assignment.overridden && assignment.variant == override
 					&& (experiment == nil || holdoutSetMatches(experiment!, assignment))
+					&& (experiment.map { switchbackConfigMatches($0, assignment) } ?? !assignment.switchback)
 				{
 					// override up-to-date
 					return assignment
@@ -1017,9 +1067,14 @@ public final class Context {
 				}
 			} else if let exp = experiment {
 				// A held-out experiment is forced to variant 0 and a matching rule wins over a custom
-				// assignment, so a custom mismatch is not staleness.
+				// assignment, so a custom mismatch is not staleness. A switchback compares the custom
+				// assignment it was resolved with, as most of its branches never read it.
 				let custom = cassignments[experimentName]
-				if custom == nil || custom == assignment.variant || assignment.ruleOverride || assignment.suppressed {
+				let customMatches =
+					assignment.switchback
+					? custom == assignment.customAssignment
+					: custom == nil || custom == assignment.variant || assignment.suppressed
+				if customMatches || assignment.ruleOverride {
 					if experimentMatches(exp, assignment) && audienceMatches(exp, assignment)
 						&& holdoutSetMatches(exp, assignment)
 					{
@@ -1033,6 +1088,9 @@ public final class Context {
 		let assignment = Assignment()
 		assignment.name = experimentName
 		assignment.eligible = true
+		// Within one period slot the serving unit and cluster key are read once: a slot replaced in the
+		// same epoch, e.g. after setAttribute changed the audience, keeps its cluster.
+		let cachedServing = cached?.switchbackServing
 
 		// Resolved for overrides too: the holdouts still publish their exposures. Arms are drawn from
 		// the definitions of the same data install as `experiment`, so they always agree with them.
@@ -1055,16 +1113,28 @@ public final class Context {
 			if let experimentVariables = experiment {
 				assignment.id = experimentVariables.data.id
 				assignment.unitType = experimentVariables.data.unitType
+				if experimentVariables.isSwitchback {
+					pinSwitchbackConfig(assignment, experimentVariables)
+					assignment.customAssignment = cassignments[experimentName]
+					let serving = switchbackServing(experimentVariables, cached: cachedServing, now: now!)
+					assignment.switchbackServing = serving
+					assignment.unitType = serving.unitType ?? Context.switchbackFallbackUnitType(experimentVariables)
+				}
 			}
 
 			assignment.overridden = true
 			assignment.variant = override
 		} else {
-			if let experiment = experiment {
+			if let experiment = experiment, experiment.isSwitchback {
+				resolveSwitchbackAssignment(
+					assignment, experiment, cachedServing: cachedServing, custom: cassignments[experimentName],
+					periodIndex: periodIndex, now: now!)
+			} else if let experiment = experiment {
 				let unitType = experiment.data.unitType
 
 				let rule =
-					experiment.rules != nil ? resolveRule(experiment, buildAttributeMap(), unitPinnedMissing: false) : nil
+					experiment.rules != nil
+					? resolveRule(experiment, buildAttributeMap(), unitType: unitType, unitPinnedMissing: false) : nil
 				assignment.ruleKey = experiment.data.assignmentRules ?? ""
 				assignment.ruleVariant = rule?.variant
 				assignment.ruleMissingUnit = rule?.missingUnit ?? false
@@ -1138,8 +1208,255 @@ public final class Context {
 			assignment.variables = experiment.variables[assignment.variant]
 		}
 
-		assignmentCache[experimentName] = assignment
+		assignmentCache[cacheKey] = assignment
+		if let experiment = experiment, experiment.isSwitchback {
+			retainSwitchbackPeriod(experimentName, experiment, periodIndex)
+		}
 		return assignment
+	}
+
+	// Port of java-sdk's resolveSwitchbackAssignment (the Collector's switchback branch, R33). The
+	// serving resolution decides whether the experiment applies and under which unit. For an eligible
+	// cluster the order is: assignment rules (a split rule randomizes over the serving unit), audience,
+	// full-on, then (only with a current period) traffic on the serving unit's hash, custom assignment
+	// and the draw over the raw cluster key. Before the anchor or with an unservable schedule the draw
+	// gives an ineligible control that records nothing. Holdouts never apply to a switchback. The
+	// caller holds `contextLock`.
+	private func resolveSwitchbackAssignment(
+		_ assignment: Assignment, _ experiment: ExperimentVariables, cachedServing: SwitchbackServing?, custom: Int?,
+		periodIndex: Int64?, now: Int64
+	) {
+		let data = experiment.data
+		pinSwitchbackConfig(assignment, experiment)
+		assignment.customAssignment = custom
+		assignment.ruleKey = data.assignmentRules ?? ""
+		assignment.id = data.id
+		assignment.iteration = data.iteration
+		assignment.trafficSplit = data.trafficSplit
+		assignment.fullOnVariant = data.fullOnVariant
+		assignment.attrsSeq = attrsSeq
+
+		let serving = switchbackServing(experiment, cached: cachedServing, now: now)
+		assignment.switchbackServing = serving
+		assignment.variant = 0
+		guard serving.status != .absent, let unitType = serving.unitType else {
+			// No linked unit: the experiment does not apply, like an unset unit type.
+			assignment.unitType = Context.switchbackFallbackUnitType(experiment)
+			assignment.eligible = false
+			assignment.switchbackSilent = true
+			return
+		}
+
+		assignment.unitType = unitType
+		assignment.assigned = true
+		guard serving.status == .eligible, let clusterKey = serving.clusterKey else {
+			assignment.eligible = false
+			assignment.switchbackSilent = true
+			return
+		}
+
+		let attrs = buildAttributeMap()
+		if experiment.rules != nil, let rule = resolveRule(experiment, attrs, unitType: unitType, unitPinnedMissing: false) {
+			// Recorded like a unit experiment's rule win: ruleOverride set, not "assigned".
+			assignment.ruleVariant = rule.variant
+			assignment.ruleMissingUnit = rule.missingUnit
+			assignment.assigned = false
+			assignment.ruleOverride = true
+			assignment.variant = rule.variant
+			return
+		}
+
+		if let audience = data.audience, !audience.isEmpty, let result = matcher.evaluate(audience, attrs) {
+			assignment.audienceMismatch = !result
+		}
+		if data.audienceStrict && assignment.audienceMismatch {
+			// Recorded like a unit experiment's strict mismatch: control, audienceMismatch, not "assigned".
+			assignment.assigned = false
+			return
+		}
+		if data.fullOnVariant != 0 {
+			assignment.variant = data.fullOnVariant
+			assignment.fullOn = true
+			return
+		}
+		guard let periodIndex = periodIndex, let uid = units[unitType] else {
+			// Before the anchor or an unservable schedule: no draw, so control and no exposure.
+			assignment.eligible = false
+			assignment.switchbackSilent = true
+			return
+		}
+
+		let assigner = getVariantAssigner(unitType, getUnitHash(unitType, uid))
+		if assigner.assign(data.trafficSplit, data.trafficSeedHi, data.trafficSeedLo) != 1 {
+			// A traffic miss on an eligible cluster is recorded, as for a unit experiment.
+			assignment.eligible = false
+			return
+		}
+		if let custom = custom {
+			assignment.variant = custom
+			assignment.custom = true
+			return
+		}
+		assignment.variant = SwitchbackAssigner.assign(
+			clusterKey, periodIndex: periodIndex, seed: Context.switchbackSeed(data), armCount: data.split.count)
+	}
+
+	// The slot's serving resolution: reused when this slot already read it (unless no linked unit was
+	// set then), otherwise read now. The caller holds `contextLock`.
+	private func switchbackServing(_ experiment: ExperimentVariables, cached: SwitchbackServing?, now: Int64)
+		-> SwitchbackServing
+	{
+		if let cached = cached, cached.status != .absent {
+			return cached
+		}
+		let hasUnit: (String) -> Bool = { self.units[$0] != nil }
+		guard let sources = experiment.switchbackSources else {
+			return SwitchbackServing.legacy(unitType: experiment.data.unitType, hasUnit: hasUnit)
+		}
+		return SwitchbackServing.resolve(
+			sources: sources, allowedValues: experiment.data.switchbackClusterValues, hasUnit: hasUnit,
+			read: { path in self.latestAttribute(path.rootKey, now: now).flatMap { path.resolveAttribute($0.value) } })
+	}
+
+	// The attribute the Collector records with an exposure at `now`: among attributes set at or before
+	// `now` whose trimmed name matches, the latest `setAt` wins, and a tie goes to the one set last. Only
+	// attributes set on the context are read, never the system attributes. The caller holds `contextLock`.
+	private func latestAttribute(_ name: String, now: Int64) -> Attribute? {
+		var selected: Attribute?
+		for attribute in attributes where attribute.setAt <= now && Context.javaTrim(attribute.name) == name {
+			if selected == nil || attribute.setAt >= selected!.setAt {
+				selected = attribute
+			}
+		}
+		return selected
+	}
+
+	// Java's String.trim(): strips leading and trailing characters up to U+0020.
+	private static func javaTrim(_ s: String) -> String {
+		let scalars = s.unicodeScalars
+		guard let first = scalars.firstIndex(where: { $0.value > 0x20 }) else { return "" }
+		let last = scalars.lastIndex(where: { $0.value > 0x20 })!
+		return String(scalars[first...last])
+	}
+
+	// The unit type a switchback with no serving unit is recorded under (an override is still exposed):
+	// the first linked type of a readable cluster map, otherwise the declared unitType the legacy path
+	// reads.
+	private static func switchbackFallbackUnitType(_ experiment: ExperimentVariables) -> String? {
+		return experiment.switchbackSources?.first?.unitType ?? experiment.data.unitType
+	}
+
+	private static func switchbackSeed(_ experiment: Experiment) -> Int64 {
+		return (Int64(truncatingIfNeeded: experiment.seedHi) << 32)
+			| (Int64(truncatingIfNeeded: experiment.seedLo) & 0xFFFF_FFFF)
+	}
+
+	// The Collector's switchback anchor bounds: hour aligned and in [0, 10000-01-01T00:00:00Z).
+	private static let switchbackAnchorAlignmentMs: Int64 = 3_600_000
+	private static let switchbackMaxAnchorMs: Int64 = 253_402_300_800_000
+	private static let switchbackRetainedPeriods = 2
+
+	// Whether the Collector can serve the schedule: a start that is set, hour aligned and in range (used
+	// as served, never rounded), a period > 0 and at least two arms. An unservable schedule only
+	// replaces the draw: assignment rules, audience and full-on still apply.
+	static func switchbackScheduleServable(_ experiment: Experiment) -> Bool {
+		guard let startAt = experiment.switchbackStartAt, startAt >= 0, startAt < switchbackMaxAnchorMs,
+			startAt % switchbackAnchorAlignmentMs == 0
+		else {
+			return false
+		}
+		guard let periodMs = experiment.switchbackPeriodMs, periodMs > 0 else { return false }
+		return experiment.split.count >= 2
+	}
+
+	// periodIndex = floorDiv(now - switchbackStartAt, switchbackPeriodMs), as the Collector computes it.
+	// Nil before the start, for an unservable schedule and for a cluster map taking the legacy path.
+	private static func currentSwitchbackPeriod(_ experiment: ExperimentVariables, now: Int64) -> Int64? {
+		let data = experiment.data
+		guard experiment.switchbackSources != nil, switchbackScheduleServable(data), let startAt = data.switchbackStartAt,
+			let periodMs = data.switchbackPeriodMs, now >= startAt
+		else {
+			return nil
+		}
+		return SwitchbackAssigner.floorDiv(now - startAt, periodMs)
+	}
+
+	private static func switchbackCacheKey(_ experimentName: String, _ periodIndex: Int64) -> String {
+		return experimentName + "\u{1F}" + String(periodIndex)
+	}
+
+	// Grid identity: a change to any of these re-maps periods or clusters to variants. Carryover and
+	// burn windows are analysis-only and excluded, as are seed and split, which do not invalidate unit
+	// assignments either.
+	private func switchbackConfigMatches(_ experiment: ExperimentVariables, _ assignment: Assignment) -> Bool {
+		guard experiment.isSwitchback == assignment.switchback else { return false }
+		guard assignment.switchback else { return true }
+		let data = experiment.data
+		return data.switchbackClusters == assignment.switchbackClusters
+			&& data.switchbackClusterValues == assignment.switchbackClusterValues
+			&& data.switchbackStartAt == assignment.switchbackStartAt
+			&& data.switchbackPeriodMs == assignment.switchbackPeriodMs
+			&& data.switchbackDesignType == assignment.switchbackDesignType
+	}
+
+	private func pinSwitchbackConfig(_ assignment: Assignment, _ experiment: ExperimentVariables) {
+		let data = experiment.data
+		assignment.switchback = true
+		assignment.switchbackClusters = data.switchbackClusters
+		assignment.switchbackClusterValues = data.switchbackClusterValues
+		assignment.switchbackStartAt = data.switchbackStartAt
+		assignment.switchbackPeriodMs = data.switchbackPeriodMs
+		assignment.switchbackDesignType = data.switchbackDesignType
+	}
+
+	// Switchback identity: id, iteration, the ordered cluster map, the allow-list, startAt, periodMs and
+	// design, i.e. every input to the period grid and the cluster key, plus unitType when either side
+	// takes the legacy path. An absent or unit-experiment previous definition has none to keep.
+	private static func sameSwitchbackIdentity(_ previous: ExperimentVariables?, _ installed: ExperimentVariables)
+		-> Bool
+	{
+		guard let previous = previous, previous.isSwitchback else { return false }
+		let a = previous.data
+		let b = installed.data
+		return a.id == b.id && a.iteration == b.iteration && a.switchbackClusters == b.switchbackClusters
+			&& a.switchbackClusterValues == b.switchbackClusterValues && a.switchbackStartAt == b.switchbackStartAt
+			&& a.switchbackPeriodMs == b.switchbackPeriodMs && a.switchbackDesignType == b.switchbackDesignType
+			&& ((previous.switchbackSources != nil && installed.switchbackSources != nil) || a.unitType == b.unitType)
+	}
+
+	// An epoch is stale once the installed definition is absent, not a switchback, or of another
+	// generation. Every identity change, including an intermediate unit or removed state that was never
+	// looked up, gives a fresh generation, so a stale epoch never matches a later identical definition.
+	private func isSwitchbackEpochStale(_ experimentName: String, _ experiment: ExperimentVariables?) -> Bool {
+		guard let epoch = switchbackEpochs[experimentName] else { return false }
+		guard let experiment = experiment, experiment.isSwitchback else { return true }
+		return epoch.generation != experiment.switchbackGeneration
+	}
+
+	// Drops every slot of the epoch, the bare-name slot included.
+	private func dropSwitchbackEpoch(_ experimentName: String) {
+		guard let epoch = switchbackEpochs.removeValue(forKey: experimentName) else { return }
+		for period in epoch.periods {
+			assignmentCache[Context.switchbackCacheKey(experimentName, period)] = nil
+		}
+		assignmentCache[experimentName] = nil
+	}
+
+	// Records a switchback resolution under the current epoch. At most `switchbackRetainedPeriods`
+	// period indices are kept; the lowest index other than `periodIndex` is evicted, so the slot just
+	// installed always survives. Re-entering an evicted period (a clock rewind) creates one new
+	// assignment for it, which then stays cached like any other.
+	private func retainSwitchbackPeriod(_ experimentName: String, _ experiment: ExperimentVariables, _ periodIndex: Int64?) {
+		var epoch = switchbackEpochs[experimentName] ?? SwitchbackEpoch(generation: experiment.switchbackGeneration)
+		if let periodIndex = periodIndex {
+			epoch.periods.insertUniqueSorted(periodIndex, isSorted: <)
+			while epoch.periods.count > Context.switchbackRetainedPeriods {
+				let evicted = epoch.periods[0] == periodIndex ? epoch.periods[1] : epoch.periods[0]
+				epoch.periods.removeAll { $0 == evicted }
+				assignmentCache[Context.switchbackCacheKey(experimentName, evicted)] = nil
+			}
+		}
+		switchbackEpochs[experimentName] = epoch
 	}
 
 	// Experiments sharing a key are walked in ascending id order, like the JavaScript SDK: each
@@ -1152,14 +1469,15 @@ public final class Context {
 		}
 
 		var suppressedFallback: [String: JSON]?
+		var now: Int64?
 		for experimentVariables in keyExperimentVariables {
 			let (assignment, claimed) =
 				peek
-				? (getAssignment(experimentVariables.data.name), false)
-				: getAssignmentClaimingExposure(experimentVariables.data.name, requireVariables: true)
+				? (getAssignment(experimentVariables.data.name, now: &now), false)
+				: getAssignmentClaimingExposure(experimentVariables.data.name, requireVariables: true, now: &now)
 			if let variables = assignment.variables {
 				if claimed {
-					triggerExposures(assignment)
+					triggerExposures(assignment, resolvedAt: now)
 				}
 
 				if let value = variables[key], assignment.assigned || assignment.overridden || assignment.ruleOverride {
@@ -1329,7 +1647,10 @@ public final class Context {
 
 		for experiment in data.experiments {
 			let experimentVariables = ExperimentVariables(experiment)
-			if let holdoutIds = experiment.holdoutIds, !holdoutsById.isEmpty {
+			if experimentVariables.isSwitchback {
+				// Holdouts never apply to a switchback.
+				experimentVariables.switchbackSources = Context.switchbackSources(experiment.switchbackClusters)
+			} else if let holdoutIds = experiment.holdoutIds, !holdoutsById.isEmpty {
 				// Sorted by id and deduplicated; an id with no holdout entry is ignored.
 				var holdouts: [Experiment] = []
 				for holdoutId in holdoutIds {
@@ -1414,12 +1735,35 @@ public final class Context {
 		contextLock.lock()
 		defer { contextLock.unlock() }
 		dataLock.lock()
+		for (name, installed) in index where installed.isSwitchback {
+			let previous = self.index[name]
+			if Context.sameSwitchbackIdentity(previous, installed), let previous = previous {
+				installed.switchbackGeneration = previous.switchbackGeneration
+			} else {
+				switchbackGenerationCounter += 1
+				installed.switchbackGeneration = switchbackGenerationCounter
+			}
+		}
 		self.data = data
 		self.holdoutsById = holdoutsById
 		self.index = index
 		self.indexVariables = indexVariables
 		self.customFieldValues = customFieldValues
 		dataLock.unlock()
+	}
+
+	// The linked unit types of a switchbackClusters map with their parsed paths, in declared order; nil
+	// for a missing or empty map, or one with a path that is not a supported attribute path.
+	private static func switchbackSources(_ clusters: [SwitchbackCluster]?) -> [(
+		unitType: String, path: SwitchbackAttributePath
+	)]? {
+		guard let clusters = clusters, !clusters.isEmpty else { return nil }
+		var sources: [(unitType: String, path: SwitchbackAttributePath)] = []
+		for cluster in clusters {
+			guard let path = SwitchbackAttributePath.parseSupported(cluster.attributePath) else { return nil }
+			sources.append((cluster.unitType, path))
+		}
+		return sources
 	}
 
 	private func applyDataFailed(_ error: Error) {
@@ -1510,10 +1854,24 @@ private class ExperimentVariables {
 	// Parsed `data.assignmentRules`; nil when there are none or they are not valid JSON.
 	var rules: [JSON]?
 	var holdouts: [Experiment]?
+	let isSwitchback: Bool
+	// The switchback's cluster sources in declared order; nil when its cluster map is missing, empty or
+	// unreadable (the legacy path).
+	var switchbackSources: [(unitType: String, path: SwitchbackAttributePath)]?
+	// Kept from the previous install while the switchback identity is unchanged, otherwise fresh.
+	var switchbackGeneration = 0
 
 	init(_ experiment: Experiment) {
 		data = experiment
+		isSwitchback = experiment.randomizationType == "switchback"
 	}
+}
+
+// One switchback experiment's cache slots: the bare-name slot (before the anchor or an unservable grid)
+// and its period slots, all created under one generation.
+private struct SwitchbackEpoch {
+	let generation: Int
+	var periods: [Int64] = []
 }
 
 private class ContextCustomFieldValue {
@@ -1558,6 +1916,20 @@ private final class Assignment: Equatable {
 	var holdouts: [PinnedHoldout]?
 	// On a holdout's own assignment: its split's length when `variant` was drawn.
 	var holdoutArmCount = 0
+	// The switchback grid this assignment was resolved under; compared by `switchbackConfigMatches`.
+	var switchback = false
+	var switchbackClusters: [SwitchbackCluster]?
+	var switchbackClusterValues: [String]?
+	var switchbackStartAt: Int64?
+	var switchbackPeriodMs: Int64?
+	var switchbackDesignType: String?
+	// The serving unit and cluster key read for this slot, once per slot.
+	var switchbackServing: SwitchbackServing?
+	// A switchback resolution the Collector records nothing for: no linked unit, an ineligible cluster,
+	// or no draw (before the anchor or an unservable schedule).
+	var switchbackSilent = false
+	// The custom assignment set when a switchback was resolved.
+	var customAssignment: Int?
 
 	var holdoutMissingUnit: Bool {
 		return holdouts?.contains { $0.arm == nil } ?? false
