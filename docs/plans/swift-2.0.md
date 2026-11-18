@@ -488,6 +488,9 @@ Behaviour parity is proven, not asserted:
   (a Foundation `NSNumber` formatting bug), on Apple platforms as the unsigned value. Only `match`,
   `in` and string equality see the text; numeric comparisons are unchanged. The backend does not
   produce such literals.
+- An integer literal outside the `Int64` range is stored as a `Double`, so inside arrays and objects
+  two such neighbouring values (e.g. `18446744073709551615` and `18446744073709551614`) compare
+  equal; 1.5.0 kept Foundation's exact `NSNumber`. The backend does not produce such literals.
 
 ## Migration
 

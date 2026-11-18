@@ -412,6 +412,15 @@ import Testing
 		#expect(SDKVersion.agent == "absmartly-swift-sdk/\(SDKVersion.version)")
 	}
 
+	// The publish workflow refuses a tag where these differ; catch the drift before tagging.
+	@Test func sdkVersionMatchesPodspec() throws {
+		let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+			.deletingLastPathComponent()
+		let podspec = try String(contentsOf: root.appendingPathComponent("ABsmartly.podspec"), encoding: .utf8)
+		let line = try #require(podspec.split(separator: "\n").first { $0.contains("spec.version =") })
+		#expect(line.contains("'\(SDKVersion.version)'"))
+	}
+
 	// MARK: - Retry policy (1.x DefaultHTTPClient.retry)
 
 	// 1.x: a request is attempted, then retried while `attempt <= retries` after a failure without a

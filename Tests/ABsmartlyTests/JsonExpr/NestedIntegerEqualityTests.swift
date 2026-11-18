@@ -16,19 +16,19 @@ import Testing
         #expect(ExprEvaluator.deepEquals(.array([high]), .array([high])))
     }
 
-    @Test func numericLeavesMatchFoundationCollections() {
-        let values: [(JSONValue, NSNumber)] = [
-            (.bool(true), NSNumber(value: true)), (.bool(false), NSNumber(value: false)),
-            (.int(1), NSNumber(value: Int64(1))), (.double(1), NSNumber(value: 1.0)),
-            (.int(9_007_199_254_740_993), NSNumber(value: Int64(9_007_199_254_740_993))),
-            (.double(9_007_199_254_740_992), NSNumber(value: 9_007_199_254_740_992.0)),
-            (.int(Int64.max), NSNumber(value: Int64.max))
-        ]
-        for (l, ln) in values {
-            for (r, rn) in values {
-                let expected = NSArray(object: ln).isEqual(to: [rn])
-                #expect(ExprEvaluator.deepEquals(.array([l]), .array([r])) == expected)
-                #expect(ExprEvaluator.deepEquals(.object(["n": l]), .object(["n": r])) == expected)
+    // Expected values come from JSONSerialization-parsed arrays, which is what 1.5.0 compared.
+    @Test func numericLeavesMatchFoundationCollections() throws {
+        let literals = ["true", "false", "0", "1", "1.0", "9007199254740992", "9007199254740993", "9223372036854775807"]
+        func parsed(_ literal: String) throws -> NSArray {
+            try #require(try JSONSerialization.jsonObject(with: Data("[\(literal)]".utf8)) as? NSArray)
+        }
+        for l in literals {
+            for r in literals {
+                let expected = try parsed(l).isEqual(to: try parsed(r) as! [Any])
+                let lhs = try JSONValue(parsing: "[\(l)]")
+                let rhs = try JSONValue(parsing: "[\(r)]")
+                #expect(ExprEvaluator.deepEquals(lhs, rhs) == expected, "\(l) vs \(r)")
+                #expect(ExprEvaluator.deepEquals(.object(["n": lhs[0]!]), .object(["n": rhs[0]!])) == expected, "\(l) vs \(r)")
             }
         }
     }

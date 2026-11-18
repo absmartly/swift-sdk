@@ -240,6 +240,11 @@ final class ExprEvaluator {
 			return l.utf16.elementsEqual(r.utf16)
 		case (.null, .null):
 			return true
+		case (.bool(let l), .bool(let r)):
+			return l == r
+		case (.bool, _), (_, .bool):
+			// Parsed JSON booleans never equal numbers inside Foundation collections (1.5.0).
+			return false
 		default:
 			guard let l = scalarNumber(lhs), let r = scalarNumber(rhs) else { return false }
 			return NSArray(object: l).isEqual(to: [r])
@@ -248,7 +253,6 @@ final class ExprEvaluator {
 
 	private static func scalarNumber(_ x: JSONValue) -> NSNumber? {
 		switch x {
-		case .bool(let value): return NSNumber(value: value)
 		case .int(let value): return NSNumber(value: value)
 		case .double(let value): return NSNumber(value: value)
 		default: return nil
