@@ -232,10 +232,10 @@ import Testing
 		("9223372036854775807", "9223372036854775807", false, false, true, false),
 	] + linuxOnlyRows
 
-	// Int64.min and below: whether Foundation's JSONSerialization returns an integer or a decimal for
-	// these differs between Apple and Linux Foundation. 2.0 uses the same parser as 1.5.0, so each
-	// platform matches 1.5.0 on that platform; these rows were measured on Linux.
-	#if canImport(FoundationNetworking)
+	// Int64.min and below: measured with 1.5.0 on Linux only, where JSONSerialization returns a
+	// decimal for them. Apple Foundation may return an integer instead (not measured). 2.0 uses the
+	// same parser as 1.5.0, so on each platform it matches 1.5.0 on that platform.
+	#if os(Linux)
 		static let linuxOnlyRows: [(literal: String, string: String, negativeMatch: Bool, inString: Bool, gtZero: Bool, semverZero: Bool?)] = [
 			("-9223372036854775808", "-9223372036854776000", true, false, false, nil),
 			("-9223372036854775809", "-9223372036854776000", true, false, false, nil),

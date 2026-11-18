@@ -70,7 +70,9 @@ extension Error {
 	/// `LocalizedError.errorDescription` directly, which is what `localizedDescription` returns.
 	var safeDescription: String {
 		#if os(Linux) && !compiler(>=6.2)
-			// `self is NSError` is always true on Linux (every error bridges), so test the dynamic type.
+			// The dynamic-type test behaves like `self is NSError`, which Swift 6.0 on Linux flags as
+			// "always true" (an error under -warnings-as-errors) although it is false at runtime for
+			// non-NSError errors.
 			if !(type(of: self) is NSError.Type) && Mirror(reflecting: self).displayStyle == .class {
 				return (self as? LocalizedError)?.errorDescription ?? String(describing: self)
 			}
