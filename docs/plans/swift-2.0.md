@@ -490,7 +490,8 @@ Behaviour parity is proven, not asserted:
   Foundation equates them. On Linux, and in javascript-sdk (`isEqualsDeep`), such elements never
   compare equal. Single-value comparisons and `in` items convert the right-hand value to the
   left-hand value's type (booleans to 0/1 against a number, numbers to a boolean against a boolean)
-  on every platform, as JS does (`in([true], 1)` is true, `in([2], true)` is false). Whether 2.0
+  on every platform, as JS does (`in([true], 1)` is true, `in([2], true)` is false), apart from
+  the fractional-number truncation listed above. Whether 2.0
   should move to the JS behaviour for nested comparisons on every platform is listed under owner
   decisions.
 
