@@ -660,6 +660,11 @@ public final class Context {
 				let readyResolver = self.readyResolver
 				self.readyResolver = nil
 				self.promiseLock.unlock()
+				// This refresh made the context ready before its initial load settled: that load's
+				// result is now ignored, so `.ready` is logged here, once, before `.refresh`.
+				if readyResolver != nil {
+					self.deliverOnMain { self.logEvent(event: .ready(data: data)) }
+				}
 				readyResolver?.fulfill(())
 				if self.pendingCount.load(ordering: .acquiring) > 0 { self.setTimeout() }
 				self.refreshing.store(false, ordering: .releasing)
@@ -840,6 +845,7 @@ public final class Context {
 				}
 			}
 		} else {
+			Context.flushObservedFailedHook?()
 			eventLock.lock()
 			// Recovery and this decision are serialized: a flush that observed the old failed
 			// state must not discard events queued after recovery.
@@ -855,6 +861,24 @@ public final class Context {
 		}
 
 		return Promise<Void>.value(())
+	}
+
+	// Test hook: runs after a flush has seen the context failed and before it takes `eventLock`, so
+	// a test can recover the context in that window.
+	private static var flushObservedFailedHookValue: (() -> Void)?
+	private static let flushObservedFailedHookLock = NSLock()
+
+	static var flushObservedFailedHook: (() -> Void)? {
+		get {
+			flushObservedFailedHookLock.lock()
+			defer { flushObservedFailedHookLock.unlock() }
+			return flushObservedFailedHookValue
+		}
+		set {
+			flushObservedFailedHookLock.lock()
+			defer { flushObservedFailedHookLock.unlock() }
+			flushObservedFailedHookValue = newValue
+		}
 	}
 
 	private func checkReady(_ expectNotClosed: Bool) throws {

@@ -90,8 +90,9 @@ security fixes, from the `release/1.x` branch) for 12 months after 2.0 ships.
   timers no longer block or wait for the main thread.
 - A context whose first load failed recovers when a later `refresh()` succeeds (`isFailed()` false,
   `readyError()` nil); 1.4.0 installed the refreshed data but kept the context failed and silently
-  discarded every exposure and goal. Swift-specific: the JavaScript SDK does not refresh a failed
-  context at all.
+  discarded every exposure and goal. A refresh that completes while the initial load is still
+  pending makes the context ready, settling `waitUntilReady()` and logging `.ready` once.
+  Swift-specific: the JavaScript SDK does not refresh a failed context at all.
 - No exposures after close; `refresh()` joins an in-flight refresh; `close()` waits for in-flight
   publishes; a pending automatic publish keeps the context alive until it is sent.
 - Work no longer runs on the main queue (timers, HTTP retries, publish recovery); `ready`, `refresh`,
@@ -112,9 +113,10 @@ security fixes, from the `release/1.x` branch) for 12 months after 2.0 ships.
 ### Compatibility notes
 - Checked on Linux before release: the 1.4.0 test suite and an app written against the 1.4.0 README
   compile unchanged against 1.5.0 (the 1.4.0 tests that fail are the contract changes above), and
-  `swift-api-digester` found no source-breaking change in 1.4.0's public API. It found no ABI break
-  either, comparing library-evolution builds of 1.4.0 (with Linux shims for CommonCrypto and OSLog)
-  and 1.5.0. Apple ABI was not measured.
+  `swift-api-digester` found no source-breaking change in 1.4.0's public API and no ABI break,
+  comparing library-evolution builds of 1.4.0 and 1.5.0. Building 1.4.0 on Linux needed local shims
+  (CommonCrypto, OSLog, FoundationNetworking, the vendored JSON) that are not in the repository, so
+  this is not reproducible from the repo alone. Apple ABI was not measured.
 - On Linux, `ABSmartlyError` subclasses `NSError`, because Foundation in Swift 6.0 and 6.1 crashes
   when `localizedDescription` is read on a class-based error that is not an `NSError`
   ([swift-corelibs-foundation#5221](https://github.com/swiftlang/swift-corelibs-foundation/issues/5221)).

@@ -3473,11 +3473,11 @@ final class ContextTest: XCTestCase {
 
 	func testTrackThenDropContextStillPublishes() throws {
 		var context: Context? = contextWithoutLogger(getContextConfig(withUnits: true), Promise.value(try getContextData()))
-		weak var weakContext = context
+		let weakContext = WeakContext(context)
 		context!.track("goal1", properties: nil)
 		let publishTimer = try XCTUnwrap(scheduler.scheduleAfterExecuteReceivedArguments?.execute)
 		context = nil
-		XCTAssertNotNil(weakContext, "a pending publish keeps the context alive")
+		XCTAssertNotNil(weakContext.value, "a pending publish keeps the context alive")
 
 		handler.publishEventReturnValue = Promise<Void>.value(())
 		publishTimer()
@@ -3778,6 +3778,33 @@ final class ContextV140BehaviourTest: XCTestCase {
 		XCTAssertEqual(1, scheduler.scheduleAfterExecuteCallsCount)
 	}
 
+	func testRefreshThatWinsTheInitialLoadLogsReadyOnce() throws {
+		let platformDefault = Context.deliversEventsOnMainThread
+		Context.deliversEventsOnMainThread = false
+		defer { Context.deliversEventsOnMainThread = platformDefault }
+
+		let (initial, initialSeal) = Promise<ContextData>.pending()
+		let context = makeContext(config(), initial)
+		provider.getContextDataReturnValue = Promise.value(try contextData())
+		let refreshed = expectation(description: "refreshed")
+		_ = context.refresh().done { refreshed.fulfill() }
+		wait(for: [refreshed], timeout: 2)
+
+		initialSeal.fulfill(try contextData())
+		let settled = expectation(description: "initial settled")
+		DispatchQueue.global().asyncAfter(deadline: .now() + 0.2) { settled.fulfill() }
+		wait(for: [settled], timeout: 2)
+
+		let kinds = logger.handleEventContextEventReceivedInvocations.compactMap { invocation -> String? in
+			switch invocation.event {
+			case .ready: return "ready"
+			case .refresh: return "refresh"
+			default: return nil
+			}
+		}
+		XCTAssertEqual(["ready", "refresh"], kinds)
+	}
+
 	func testRefreshWinsLateInitialFailure() throws {
         let (initial, initialSeal) = Promise<ContextData>.pending()
         let context = makeContext(config(), initial)
@@ -3833,6 +3860,31 @@ final class ContextV140BehaviourTest: XCTestCase {
 
 		XCTAssertEqual(1, provider.getContextDataCallsCount)
 		XCTAssertNotNil(context.getContextData())
+	}
+
+	// A flush that saw the context failed, then lost the race to a successful refresh, publishes the
+	// events queued after recovery instead of discarding them.
+	func testFlushThatSawFailedStateKeepsEventsQueuedAfterRecovery() throws {
+		let context = makeContext(config(), Promise(error: ABSmartlyError("load failed")))
+		XCTAssertTrue(context.isFailed())
+		provider.getContextDataReturnValue = Promise.value(try contextData())
+		handler.publishEventReturnValue = Promise.value(())
+
+		Context.flushObservedFailedHook = {
+			Context.flushObservedFailedHook = nil
+			let refreshed = XCTestExpectation()
+			_ = context.refresh().done { refreshed.fulfill() }
+			_ = XCTWaiter().wait(for: [refreshed], timeout: 2)
+			context.track("after-recovery", properties: nil)
+		}
+		defer { Context.flushObservedFailedHook = nil }
+
+		let published = XCTestExpectation()
+		_ = context.publish().done { published.fulfill() }
+		wait(for: [published], timeout: 2)
+
+		XCTAssertEqual(["after-recovery"], handler.publishEventReceivedEvent?.goals.map { $0.name })
+		XCTAssertEqual(0, context.getPendingCount())
 	}
 
 	func testSuccessfulRefreshRecoversAFailedContext() throws {
@@ -3914,5 +3966,15 @@ final class ContextV140BehaviourTest: XCTestCase {
 		XCTAssertEqual("\(ABsmartlyConfig.self)", "ABSmartlyConfig")
 		XCTAssertEqual("\(DefaultContextPublisher.self)", "DefaultContextEventHandler")
 		XCTAssertEqual("0", ClientConfig(apiKey: "k", application: "a", endpoint: "e", environment: "p").applicationVersion)
+	}
+}
+
+// Holds a context weakly without a `weak var` local, which Swift 6.4 flags as never mutated while
+// `weak let` does not compile before Swift 6.
+private final class WeakContext {
+	weak var value: Context?
+
+	init(_ value: Context?) {
+		self.value = value
 	}
 }
