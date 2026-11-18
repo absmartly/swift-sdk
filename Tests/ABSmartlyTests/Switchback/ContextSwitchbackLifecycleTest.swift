@@ -1064,3 +1064,44 @@ extension ContextSwitchbackLifecycleTest {
 		XCTAssertEqual([exposure(1, SB.anchor + 10)], publishExposures(context))
 	}
 }
+
+extension ContextSwitchbackLifecycleTest {
+	// A unit experiment refreshed into a switchback before its anchor: the bare-name slot holds the
+	// unit assignment, so the switchback must not reuse it (silent control, no second exposure).
+	func testUnitSlotIsNotReusedByAPreAnchorSwitchback() {
+		var unit = SB.switchback(arms: 2, periodMs: SB.hour)
+		unit["randomizationType"] = "unit"
+		unit["split"] = [0.0, 1.0]
+		let context = createContext(SB.data([unit]))
+		clock.now = SB.anchor + 10
+		XCTAssertEqual(1, context.getTreatment("exp_sb"))
+		XCTAssertEqual([exposure(1, SB.anchor + 10)], publishExposures(context))
+
+		var preAnchor = SB.switchback(arms: 2, periodMs: SB.hour)
+		preAnchor["switchbackStartAt"] = SB.anchor + 10 * SB.hour
+		preAnchor["split"] = [0.0, 1.0]
+		refresh(context, SB.data([preAnchor]))
+		XCTAssertEqual(0, context.getTreatment("exp_sb"))
+		XCTAssertEqual(0, context.getPendingCount())
+	}
+
+	// The same with an override: the overridden unit assignment must be re-resolved as a switchback
+	// override, published under the serving unit.
+	func testOverriddenUnitSlotIsRepinnedAsSwitchback() {
+		var unit = SB.switchback(arms: 2, periodMs: SB.hour)
+		unit["randomizationType"] = "unit"
+		unit["unitType"] = "user_id"
+		let context = createContext(SB.data([unit]), units: [SB.unitType: SB.uid, "user_id": "u1"])
+		context.setOverride(experimentName: "exp_sb", variant: 1)
+		clock.now = SB.anchor + 10
+		XCTAssertEqual(1, context.getTreatment("exp_sb"))
+		XCTAssertEqual(["user_id"], publishExposures(context).map { $0.unit })
+
+		var preAnchor = SB.switchback(arms: 2, periodMs: SB.hour)
+		preAnchor["unitType"] = "user_id"
+		preAnchor["switchbackStartAt"] = SB.anchor + 10 * SB.hour
+		refresh(context, SB.data([preAnchor]))
+		XCTAssertEqual(1, context.getTreatment("exp_sb"))
+		XCTAssertEqual([SB.unitType], publishExposures(context).map { $0.unit })
+	}
+}

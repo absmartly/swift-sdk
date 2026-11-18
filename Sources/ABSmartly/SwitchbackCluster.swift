@@ -46,7 +46,9 @@ final class SwitchbackClusterOrder {
 
 // A minimal JSON reader that records, for every object in the top-level `experiments` and `holdouts`
 // arrays, the key order of its `switchbackClusters` object. Anything it cannot read gives no entry,
-// so the experiment's order stays unknown.
+// so the experiment's order stays unknown. A cluster key holding an unpaired surrogate escape reads as
+// U+FFFD here; where the decoder keeps it otherwise, the keys do not match and that switchback serves
+// only control.
 struct OrderedJSONScanner {
 	private let bytes: [UInt8]
 	private var i = 0
