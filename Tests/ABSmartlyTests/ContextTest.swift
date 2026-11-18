@@ -3793,6 +3793,16 @@ final class ContextV140BehaviourTest: XCTestCase {
 		XCTAssertEqual(1, scheduler.scheduleAfterExecuteCallsCount)
 	}
 
+	// Completion closures may still be returning on another thread when the promise the test waited
+	// on settles, so give the last strong reference up to two seconds to go.
+	private func waitUntilReleased(_ weak: WeakContext) -> Bool {
+		let deadline = Date().addingTimeInterval(2)
+		while weak.value != nil && Date() < deadline {
+			usleep(1000)
+		}
+		return weak.value == nil
+	}
+
 	private func loggedLifecycleEvents() -> [String] {
 		return logger.handleEventContextEventReceivedInvocations.compactMap { invocation -> String? in
 			switch invocation.event {
@@ -3940,7 +3950,7 @@ final class ContextV140BehaviourTest: XCTestCase {
 		withExtendedLifetime(initial) {
 			let released = WeakContext(context)
 			context = nil
-			XCTAssertNil(released.value)
+			XCTAssertTrue(waitUntilReleased(released))
 		}
 	}
 
@@ -3990,8 +4000,24 @@ final class ContextV140BehaviourTest: XCTestCase {
 		withExtendedLifetime(initial) {
 			let released = WeakContext(context)
 			context = nil
-			XCTAssertNil(released.value)
+			XCTAssertTrue(waitUntilReleased(released))
 		}
+	}
+
+	// A publish the handler cancels re-queues its events and lets close() settle (rejected), like any
+	// other publish failure, instead of leaving the context closing forever.
+	func testCancelledPublishRequeuesEventsAndCloseSettles() throws {
+		let context = makeContext(config(), Promise.value(try contextData()))
+		context.track("goal1", properties: nil)
+		handler.publishEventReturnValue = Promise(error: PMKError.cancelled)
+
+		let closeSettled = expectation(description: "close settles")
+		context.close().catch(policy: .allErrors) { _ in closeSettled.fulfill() }
+		wait(for: [closeSettled], timeout: 2)
+
+		XCTAssertFalse(context.isClosing())
+		XCTAssertFalse(context.isClosed())
+		XCTAssertEqual(1, context.getPendingCount())
 	}
 
 	func testCancelledRefreshSettlesAndAllowsAnotherRefresh() throws {
@@ -4027,6 +4053,22 @@ final class ContextV140BehaviourTest: XCTestCase {
 		_ = context.publish().done { published.fulfill() }
 		wait(for: [published], timeout: 2)
 		XCTAssertEqual([1], handler.publishEventReceivedEvent?.exposures.map { $0.id })
+	}
+
+	// An override already exposed while the context was failed is not exposed a second time when a
+	// refresh recovers the context.
+	func testAssignmentExposedWhileFailedIsNotExposedAgainAfterRecovery() throws {
+		let context = makeContext(config(), Promise(error: ABSmartlyError("load failed")))
+		context.setOverride(experimentName: "exp_test_ab", variant: 1)
+		XCTAssertEqual(1, context.getTreatment("exp_test_ab"))
+
+		provider.getContextDataReturnValue = Promise.value(try contextData())
+		let refreshed = expectation(description: "refreshed")
+		_ = context.refresh().done { refreshed.fulfill() }
+		wait(for: [refreshed], timeout: 2)
+
+		XCTAssertEqual(1, context.getTreatment("exp_test_ab"))
+		XCTAssertEqual(1, context.getPendingCount())
 	}
 
 	func testFailedCloseRestartsRefreshTimer() throws {

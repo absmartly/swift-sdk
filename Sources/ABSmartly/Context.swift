@@ -219,8 +219,10 @@ public final class Context {
 						Logger.error("Context initialization failed: \(error.safeLocalizedDescription)")
 						if wins {
 							self.deliverOnMain { self.logError(error: error) }
-							// Goals queued while loading stay queued, as in v1.4.0: publishing a failed
-							// context would discard them, and a later successful refresh publishes them.
+							// No publish is scheduled for the goals queued while loading: a flush of a failed
+							// context discards its queue, so they wait for a successful refresh. (A later
+							// event on the still-failed context schedules a flush that discards everything,
+							// as in v1.4.0.)
 							self.settleReadiness(scheduleQueuedEvents: false)
 						}
 						#if DEBUG
@@ -293,7 +295,7 @@ public final class Context {
 			} else if let ready = currentReadyPromise {
 				_ = ready.done(on: DispatchQueue.global()) { [self] in
 					seal.fulfill(self)
-				}.catch(on: DispatchQueue.global()) { [self] _ in
+				}.catch(on: DispatchQueue.global(), policy: .allErrors) { [self] _ in
 					seal.fulfill(self)
 				}
 			}
@@ -722,9 +724,12 @@ public final class Context {
 				let previousState = self.state.load(ordering: .acquiring)
 				let winsInitialLoad = previousState == Context.loading
 				// Assignments read while there was no experiment data (e.g. an override) lack the
-				// experiment's id and variables; rebuild them from the new data.
+				// experiment's id and variables; rebuild them from the new data. Exposed ones are kept,
+				// so a user who already saw a variant is not exposed again.
 				if previousState != Context.readyState {
-					self.assignmentCache = [:]
+					self.assignmentCache = self.assignmentCache.filter { _, assignment in
+						assignment.exposed.load(ordering: .acquiring)
+					}
 				}
 				self.commitData(prepared)
 				self.state.store(Context.readyState, ordering: .releasing)
@@ -803,7 +808,7 @@ public final class Context {
 					self.closing.store(false, ordering: .releasing)
 					self.deliverOnMain { self.logEvent(event: .close) }
 					seal.fulfill(())
-				}.catch(on: DispatchQueue.global()) { [self] error in
+				}.catch(on: DispatchQueue.global(), policy: .allErrors) { [self] error in
 					// Stay open so the requeued events can be retried via publish()/close().
 					self.closing.store(false, ordering: .releasing)
 					self.setRefreshTimer()
@@ -900,7 +905,9 @@ public final class Context {
 					// Held strongly until the publish settles, so a failure is never reported as success.
 					let publishPromise = handler.publish(event: event).done(on: DispatchQueue.global()) { [self] in
 						self.deliverOnMain { self.logEvent(event: .publish(event: event)) }
-					}.recover(on: DispatchQueue.global()) { [self] error -> Promise<Void> in
+					}.recover(on: DispatchQueue.global(), policy: .allErrors) { [self] error -> Promise<Void> in
+						// .allErrors: a cancelled publish must re-queue its events too, or they are lost
+						// and close() never settles.
 						self.eventLock.lock()
 						self.exposures.insert(contentsOf: localExposures, at: 0)
 						self.achievements.insert(contentsOf: localAchievements, at: 0)
@@ -1297,7 +1304,7 @@ public final class Context {
 					after: publishDelay,
 					execute: { [self] in
 						// flush() already reports the failure as one `.error` event.
-						self.flush().catch(on: DispatchQueue.global()) { error in
+						self.flush().catch(on: DispatchQueue.global(), policy: .allErrors) { error in
 							Logger.error("Auto-flush failed: \(error.safeLocalizedDescription)")
 						}
 					})
@@ -1325,7 +1332,7 @@ public final class Context {
 				execute: { [weak self] in
 					guard let self = self else { return }
 					// refresh() already logs the failure and reports it as one `.error` event.
-					self.refresh().catch(on: DispatchQueue.global()) { _ in }
+					self.refresh().catch(on: DispatchQueue.global(), policy: .allErrors) { _ in }
 				})
 		}
 	}

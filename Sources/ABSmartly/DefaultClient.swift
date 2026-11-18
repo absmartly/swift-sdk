@@ -79,7 +79,8 @@ public final class DefaultClient: Client {
 				} catch {
 					seal.reject(error)
 				}
-			}.catch(on: DispatchQueue.global()) { error in
+			}.catch(on: DispatchQueue.global(), policy: .allErrors) { error in
+				// .allErrors: a cancelled request must still reject, or this promise never settles.
 				seal.reject(error)
 			}
 		}
@@ -95,7 +96,7 @@ public final class DefaultClient: Client {
 						return
 					}
 					seal.fulfill(())
-				}.catch(on: DispatchQueue.global()) { error in
+				}.catch(on: DispatchQueue.global(), policy: .allErrors) { error in
 					seal.reject(error)
 				}
 			} catch {
