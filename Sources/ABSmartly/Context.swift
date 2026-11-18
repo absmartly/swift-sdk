@@ -55,6 +55,8 @@ public final class Context {
 	private var holdoutAssignments: [HoldoutKey: Assignment] = [:]
 	// The cache slots of each switchback experiment, by experiment name. Guarded by `contextLock`.
 	private var switchbackEpochs: [String: SwitchbackEpoch] = [:]
+	// Set once a switchback slot was cached, so unit lookups skip `switchbackEpochs` until then.
+	private var hasSwitchbackEpochs = false
 	// Source of `ExperimentVariables.switchbackGeneration`. Guarded by `contextLock`.
 	private var switchbackGenerationCounter = 0
 
@@ -915,10 +917,18 @@ public final class Context {
 	// that `switchbackConfigMatches` compares.
 	private func experimentMatches(_ experimentVariables: ExperimentVariables, _ assignment: Assignment) -> Bool {
 		let experiment = experimentVariables.data
-		return experiment.id == assignment.id
-			&& (experimentVariables.isSwitchback || experiment.unitType == assignment.unitType)
+		return experiment.id == assignment.id && experiment.unitType == assignment.unitType
 			&& experiment.iteration == assignment.iteration && experiment.fullOnVariant == assignment.fullOnVariant
 			&& experiment.trafficSplit == assignment.trafficSplit
+	}
+
+	// `experimentMatches` for a switchback slot.
+	private func switchbackExperimentMatches(_ experimentVariables: ExperimentVariables, _ assignment: Assignment)
+		-> Bool
+	{
+		let experiment = experimentVariables.data
+		return experiment.id == assignment.id && experiment.iteration == assignment.iteration
+			&& experiment.fullOnVariant == assignment.fullOnVariant && experiment.trafficSplit == assignment.trafficSplit
 			&& switchbackConfigMatches(experimentVariables, assignment)
 	}
 
@@ -1027,33 +1037,28 @@ public final class Context {
 	}
 
 	// The cached assignment if still up to date, else a newly computed and cached one. The caller
-	// holds `contextLock`. `now` is the calling API method's single clock reading, taken here on first
-	// use: only a switchback reads it, so the period, its cache slot and its exposure's `exposedAt`
-	// agree, and a payload without switchbacks never reads the clock here.
+	// holds `contextLock`. `now` is the calling API method's single clock reading, taken on first use:
+	// only a switchback reads it, so its period, cache slot and exposure's `exposedAt` agree. Unit
+	// experiments take the path below unchanged and never read the clock here.
 	private func lookupAssignment(_ experimentName: String, now: inout Int64?) -> Assignment {
 		let experiment: ExperimentVariables? = getExperiment(experimentName)
 		#if DEBUG
 		afterExperimentLookup?()
 		#endif
 
-		var periodIndex: Int64?
 		if let experiment = experiment, experiment.isSwitchback {
-			if now == nil {
-				now = clock.millis()
-			}
-			periodIndex = Context.currentSwitchbackPeriod(experiment, now: now!)
+			return lookupSwitchbackAssignment(experimentName, experiment, now: &now)
 		}
-		let cacheKey = periodIndex.map { Context.switchbackCacheKey(experimentName, $0) } ?? experimentName
-		if !switchbackEpochs.isEmpty, isSwitchbackEpochStale(experimentName, experiment) {
+		// An epoch is dropped once its experiment is no longer that switchback, so a unit experiment
+		// never reads a switchback slot. A context that never resolved a switchback has no epochs.
+		if hasSwitchbackEpochs, switchbackEpochs[experimentName] != nil {
 			dropSwitchbackEpoch(experimentName)
 		}
 
-		let cached = assignmentCache[cacheKey]
-		if let assignment = cached {
+		if let assignment = assignmentCache[experimentName] {
 			if let override = overrides[experimentName] {
 				if assignment.overridden && assignment.variant == override
 					&& (experiment == nil || holdoutSetMatches(experiment!, assignment))
-					&& (experiment.map { switchbackConfigMatches($0, assignment) } ?? !assignment.switchback)
 				{
 					// override up-to-date
 					return assignment
@@ -1067,14 +1072,9 @@ public final class Context {
 				}
 			} else if let exp = experiment {
 				// A held-out experiment is forced to variant 0 and a matching rule wins over a custom
-				// assignment, so a custom mismatch is not staleness. A switchback compares the custom
-				// assignment it was resolved with, as most of its branches never read it.
+				// assignment, so a custom mismatch is not staleness.
 				let custom = cassignments[experimentName]
-				let customMatches =
-					assignment.switchback
-					? custom == assignment.customAssignment
-					: custom == nil || custom == assignment.variant || assignment.suppressed
-				if customMatches || assignment.ruleOverride {
+				if custom == nil || custom == assignment.variant || assignment.ruleOverride || assignment.suppressed {
 					if experimentMatches(exp, assignment) && audienceMatches(exp, assignment)
 						&& holdoutSetMatches(exp, assignment)
 					{
@@ -1088,9 +1088,6 @@ public final class Context {
 		let assignment = Assignment()
 		assignment.name = experimentName
 		assignment.eligible = true
-		// Within one period slot the serving unit and cluster key are read once: a slot replaced in the
-		// same epoch, e.g. after setAttribute changed the audience, keeps its cluster.
-		let cachedServing = cached?.switchbackServing
 
 		// Resolved for overrides too: the holdouts still publish their exposures. Arms are drawn from
 		// the definitions of the same data install as `experiment`, so they always agree with them.
@@ -1113,23 +1110,12 @@ public final class Context {
 			if let experimentVariables = experiment {
 				assignment.id = experimentVariables.data.id
 				assignment.unitType = experimentVariables.data.unitType
-				if experimentVariables.isSwitchback {
-					pinSwitchbackConfig(assignment, experimentVariables)
-					assignment.customAssignment = cassignments[experimentName]
-					let serving = switchbackServing(experimentVariables, cached: cachedServing, now: now!)
-					assignment.switchbackServing = serving
-					assignment.unitType = serving.unitType ?? Context.switchbackFallbackUnitType(experimentVariables)
-				}
 			}
 
 			assignment.overridden = true
 			assignment.variant = override
 		} else {
-			if let experiment = experiment, experiment.isSwitchback {
-				resolveSwitchbackAssignment(
-					assignment, experiment, cachedServing: cachedServing, custom: cassignments[experimentName],
-					periodIndex: periodIndex, now: now!)
-			} else if let experiment = experiment {
+			if let experiment = experiment {
 				let unitType = experiment.data.unitType
 
 				let rule =
@@ -1208,11 +1194,68 @@ public final class Context {
 			assignment.variables = experiment.variables[assignment.variant]
 		}
 
-		assignmentCache[cacheKey] = assignment
-		if let experiment = experiment, experiment.isSwitchback {
-			retainSwitchbackPeriod(experimentName, experiment, periodIndex)
-		}
+		assignmentCache[experimentName] = assignment
 		return assignment
+	}
+
+	// `lookupAssignment` for a switchback: its slot is the current period's (the bare name before the
+	// anchor or for an unservable grid), and holdouts never apply. The caller holds `contextLock`.
+	@inline(never)
+	private func lookupSwitchbackAssignment(
+		_ experimentName: String, _ experiment: ExperimentVariables, now: inout Int64?
+	) -> Assignment {
+		if now == nil {
+			now = clock.millis()
+		}
+		let periodIndex = Context.currentSwitchbackPeriod(experiment, now: now!)
+		if isSwitchbackEpochStale(experimentName, experiment) {
+			dropSwitchbackEpoch(experimentName)
+		}
+		let cacheKey = Context.switchbackCacheKey(experimentName, periodIndex)
+		let cached = assignmentCache[cacheKey]
+		if let cached = cached, isSwitchbackAssignmentCurrent(cached, experiment) {
+			return cached
+		}
+
+		let assignment = Assignment()
+		assignment.name = experimentName
+		assignment.eligible = true
+		// Within one period slot the serving unit and cluster key are read once: a slot replaced in the
+		// same epoch, e.g. after setAttribute changed the audience, keeps its cluster.
+		let cachedServing = cached?.switchbackServing
+		if let override = overrides[experimentName] {
+			assignment.id = experiment.data.id
+			pinSwitchbackConfig(assignment, experiment)
+			assignment.customAssignment = cassignments[experimentName]
+			let serving = switchbackServing(experiment, cached: cachedServing, now: now!)
+			assignment.switchbackServing = serving
+			assignment.unitType = serving.unitType ?? Context.switchbackFallbackUnitType(experiment)
+			assignment.overridden = true
+			assignment.variant = override
+		} else {
+			resolveSwitchbackAssignment(
+				assignment, experiment, cachedServing: cachedServing, custom: cassignments[experimentName],
+				periodIndex: periodIndex, now: now!)
+		}
+
+		if assignment.variant >= 0, assignment.variant < experiment.variables.count {
+			assignment.variables = experiment.variables[assignment.variant]
+		}
+
+		assignmentCache[cacheKey] = assignment
+		retainSwitchbackPeriod(experimentName, experiment, periodIndex)
+		return assignment
+	}
+
+	// Whether a cached switchback slot still holds. A switchback compares the custom assignment it was
+	// resolved with, as most of its branches never read it; a matching rule wins over it.
+	private func isSwitchbackAssignmentCurrent(_ assignment: Assignment, _ experiment: ExperimentVariables) -> Bool {
+		let name = experiment.data.name
+		if let override = overrides[name] {
+			return assignment.overridden && assignment.variant == override && switchbackConfigMatches(experiment, assignment)
+		}
+		guard cassignments[name] == assignment.customAssignment || assignment.ruleOverride else { return false }
+		return switchbackExperimentMatches(experiment, assignment) && audienceMatches(experiment, assignment)
 	}
 
 	// Port of java-sdk's resolveSwitchbackAssignment (the Collector's switchback branch, R33). The
@@ -1381,6 +1424,11 @@ public final class Context {
 		return SwitchbackAssigner.floorDiv(now - startAt, periodMs)
 	}
 
+	// The slot of a switchback resolution: the bare name before the anchor or for an unservable grid.
+	private static func switchbackCacheKey(_ experimentName: String, _ periodIndex: Int64?) -> String {
+		return periodIndex.map { switchbackCacheKey(experimentName, $0) } ?? experimentName
+	}
+
 	private static func switchbackCacheKey(_ experimentName: String, _ periodIndex: Int64) -> String {
 		return experimentName + "\u{1F}" + String(periodIndex)
 	}
@@ -1457,6 +1505,7 @@ public final class Context {
 			}
 		}
 		switchbackEpochs[experimentName] = epoch
+		hasSwitchbackEpochs = true
 	}
 
 	// Experiments sharing a key are walked in ascending id order, like the JavaScript SDK: each

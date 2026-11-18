@@ -1007,3 +1007,40 @@ extension ContextSwitchbackLifecycleTest {
 		XCTAssertEqual(["store_id", "store_id", "store_id", "device_id"], publishExposures(context).map { $0.unit })
 	}
 }
+
+extension ContextSwitchbackLifecycleTest {
+	// A split rule revalidated after an unrelated setAttribute randomizes over the serving unit, as at
+	// resolution, so the slot is kept and not exposed again.
+	func testSplitRuleRevalidationUsesTheServingUnit() {
+		var experiment = SB.switchback(arms: 2, periodMs: SB.hour)
+		experiment["unitType"] = "user_id"
+		experiment["assignmentRules"] =
+			"{\"rules\":[{\"type\":\"split\",\"environments\":[],\"percentages\":\"50/50\"}]}"
+		let userVariant = VariantAssigner(Hashing.hashBytes("fixed-user")).assign([0.5, 0.5], SB.seedHi, SB.seedLo)
+		var checked = 0
+		for u in 0..<32 {
+			let uid = "store-\(u)"
+			let expected = VariantAssigner(Hashing.hashBytes(uid)).assign([0.5, 0.5], SB.seedHi, SB.seedLo)
+			if expected == userVariant { continue }
+			checked += 1
+			let context = createContext(SB.data([experiment]), units: [SB.unitType: uid, "user_id": "fixed-user"])
+			XCTAssertEqual(expected, context.getTreatment("exp_sb"), uid)
+			context.setAttribute(name: "unrelated", value: JSON("x"))
+			XCTAssertEqual(expected, context.getTreatment("exp_sb"), uid)
+			XCTAssertEqual(1, context.getPendingCount(), uid)
+		}
+		XCTAssertGreaterThan(checked, 0)
+	}
+
+	// A custom assignment set after a switchback slot resolved takes effect in that period.
+	func testCustomAssignmentSetMidPeriodIsApplied() {
+		let context = createContext(SB.data([SB.switchback(arms: 3, periodMs: SB.hour)]))
+		clock.now = SB.anchor
+		XCTAssertEqual(SB.expected3Arms[0], context.peekTreatment("exp_sb"))
+		let custom = (SB.expected3Arms[0] + 1) % 3
+		context.setCustomAssignment(experimentName: "exp_sb", variant: custom)
+		XCTAssertEqual(custom, context.getTreatment("exp_sb"))
+		XCTAssertEqual(
+			[exposure(custom, SB.anchor, custom: true)], publishExposures(context))
+	}
+}

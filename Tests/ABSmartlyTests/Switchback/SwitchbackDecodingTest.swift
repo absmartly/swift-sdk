@@ -315,3 +315,37 @@ final class SwitchbackDecodingTest: SwitchbackTestCase {
 		XCTAssertEqual("s-1", serving.clusterKey)
 	}
 }
+
+extension SwitchbackDecodingTest {
+	private func orderPayload(_ order: [String], variantName: String = "A") -> Data {
+		let clusters = order.map { "\"\($0)\":\"\($0)_path\"" }.joined(separator: ",")
+		return Data(
+			("{\"experiments\":[{\"id\":1,\"name\":\"exp\",\"randomizationType\":\"switchback\","
+				+ "\"variants\":[{\"name\":\"\(variantName)\",\"config\":null}],\"switchbackClusters\":{\(clusters)}}]}").utf8)
+	}
+
+	private func order(_ data: ContextData?) -> [String]? {
+		return data?.experiments.first?.switchbackClusters?.map { $0.unitType }
+	}
+
+	// A decoder passed to ContextData.decode is left as it was: a later plain decode of another payload
+	// does not reuse this payload's order.
+	func testDecodeLeavesTheCallersDecoderUnchanged() throws {
+		let shared = JSONDecoder()
+		XCTAssertEqual(["x_type", "y_type"], order(try ContextData.decode(from: orderPayload(["x_type", "y_type"]), decoder: shared)))
+		XCTAssertNil(shared.userInfo[SwitchbackClusterOrder.userInfoKey])
+		XCTAssertNil(order(try shared.decode(ContextData.self, from: orderPayload(["y_type", "x_type"]))))
+		XCTAssertEqual(["y_type", "x_type"], order(try ContextData.decode(from: orderPayload(["y_type", "x_type"]), decoder: shared)))
+	}
+
+	// A leading UTF-8 BOM, or an unpaired surrogate escape anywhere in the payload, still keeps the order.
+	func testOrderSurvivesABOMAndUnpairedSurrogates() throws {
+		var bom = Data([0xEF, 0xBB, 0xBF])
+		bom.append(orderPayload(["y_type", "x_type"]))
+		if let decoded = try? ContextData.decode(from: bom) {
+			XCTAssertEqual(["y_type", "x_type"], order(decoded))
+		}
+		XCTAssertEqual(
+			["y_type", "x_type"], order(try ContextData.decode(from: orderPayload(["y_type", "x_type"], variantName: "\\ud800x"))))
+	}
+}

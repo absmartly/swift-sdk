@@ -63,6 +63,10 @@ struct OrderedJSONScanner {
 	}
 
 	private mutating func scanRoot() -> Bool {
+		// A UTF-8 byte order mark, which JSONSerialization accepts.
+		if bytes.starts(with: [0xEF, 0xBB, 0xBF]) {
+			i = 3
+		}
 		skipWhitespace()
 		guard peek() == UInt8(ascii: "{") else { return false }
 		return scanObject { scanner, key in
@@ -178,9 +182,9 @@ struct OrderedJSONScanner {
 		func flushUTF16() -> Bool {
 			guard !utf16.isEmpty else { return true }
 			var decoded = ""
+			// An unpaired surrogate reads as U+FFFD, so a payload the decoder accepts is still scanned.
 			for scalar in Unicode.Scalar.decode(utf16) {
-				guard let scalar = scalar else { return false }
-				decoded.unicodeScalars.append(scalar)
+				decoded.unicodeScalars.append(scalar ?? "\u{FFFD}")
 			}
 			utf8.append(contentsOf: decoded.utf8)
 			utf16 = []
