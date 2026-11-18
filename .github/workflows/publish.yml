@@ -17,6 +17,9 @@ concurrency:
 
 jobs:
   cocoapods:
+    # Off until a maintainer resolves the CocoaPods validation failure noted in the 1.5.0
+    # CHANGELOG: set the repository variable COCOAPODS_PUBLISH=true to publish on v* tags.
+    if: vars.COCOAPODS_PUBLISH == 'true'
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2

@@ -21,7 +21,7 @@ maintained (bug and security fixes, from the `release/1.x` branch) for 12 months
 | iOS         | iOS 10+    | Full support including UIDevice integration    |
 | macOS       | 10.10+     | Full support                                   |
 | Linux       | Swift 5.10+ | Swift Package Manager; tested in CI with Swift 5.10 and 6.1. `JSON` is a vendored copy of SwiftyJSON's `JSON` (same API); on Apple platforms it is `SwiftyJSON.JSON` |
-| Swift       | 5.3+ tools, Swift 5 language mode | Swift Package Manager and CocoaPods supported; builds with Swift 6 toolchains and can be used from Swift 6 apps |
+| Swift       | 5.3+ tools, Swift 5 language mode | Swift Package Manager (and CocoaPods, see below); builds with Swift 6 toolchains and can be used from Swift 6 apps |
 
 ## Installation
 
@@ -39,11 +39,15 @@ To install the A/B Smartly SDK using Swift Package Manager, following these step
 
 ### Cocoapods
 
-To install the A/B Smartly SDK with CocoaPods, add the following lines to your `Podfile`:
+The latest version on the CocoaPods trunk is 1.3.4; 1.4.0 and 1.5.0 are available through Swift
+Package Manager. To use CocoaPods, add the following lines to your `Podfile`:
 
 ```ruby
-pod 'ABSmartlySwiftSDK', '~> 1.5'
+pod 'ABSmartlySwiftSDK', '~> 1.3'
 ```
+
+To use 1.5.0 through CocoaPods before it is on the trunk, point the pod at the git tag:
+`pod 'ABSmartlySwiftSDK', :git => 'https://github.com/absmartly/swift-sdk.git', :tag => 'v1.5.0'`.
 
 Run the following command to update your Xcode project:
 ```

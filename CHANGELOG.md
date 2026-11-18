@@ -49,7 +49,9 @@ security fixes, from the `release/1.x` branch) for 12 months after 2.0 ships.
   for `.close`), `readyError()`, `getCustomFieldKeys(experimentName:)`.
 - `Hashing` is public, with `hash(String)`, `hash(Double)`, `utf8Bytes`, `base64UrlNoPadding`;
   `ABSmartlyError` is public.
-- Tags `v*` publish the podspec to the CocoaPods trunk (the tag, podspec and SDK version must agree).
+- A `v*` tag can publish the podspec to the CocoaPods trunk (the tag, podspec and SDK version must
+  agree). The job is off until the repository variable `COCOAPODS_PUBLISH` is `true`; see the
+  CocoaPods note under Compatibility.
 
 ### Changed (cross-SDK contract)
 - Audiences and assignment-rule conditions see the configured `application` and `environment` names
