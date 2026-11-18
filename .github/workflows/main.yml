@@ -41,15 +41,21 @@ jobs:
       - name: Run tests
         run: swift test
 
-      # Build for every Apple platform the package supports, against its iOS 10 / tvOS 10 /
-      # watchOS 3 minimums, so an availability regression fails CI.
+      # Build for every Apple platform the package supports, so an availability regression fails CI.
+      # Current Xcode cannot target the package's watchOS 3 minimum (its dependencies are clamped
+      # to watchOS 5), so watchOS is built at 5.0; iOS and tvOS build at the package minimums.
       - name: Build for iOS, tvOS and watchOS
         if: matrix.name == 'latest'
         run: |
-          xcodebuild -list
-          for destination in "generic/platform=iOS" "generic/platform=tvOS" "generic/platform=watchOS"; do
-            xcodebuild build -scheme ABSmartly -destination "$destination" -quiet
-          done
+          xcodebuild build -scheme ABSmartly -destination "generic/platform=iOS" -quiet
+          xcodebuild build -scheme ABSmartly -destination "generic/platform=tvOS" -quiet
+          xcodebuild build -scheme ABSmartly -destination "generic/platform=watchOS" -quiet \
+            WATCHOS_DEPLOYMENT_TARGET=5.0
+
+      # The CocoaPods spec is otherwise only validated when a v* tag publishes it.
+      - name: Lint podspec
+        if: matrix.name == 'latest'
+        run: pod lib lint ABSmartlySwiftSDK.podspec --allow-warnings
 
       # The Example app references this checkout as a local package and has its own lockfile.
       # Resolve strictly from it, so a lockfile that no longer satisfies Package.swift fails CI.

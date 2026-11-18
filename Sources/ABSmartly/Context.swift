@@ -1362,7 +1362,8 @@ public final class Context {
 
 	// ready/refresh/publish/close and `.error` events from asynchronously completed work reach the
 	// logger on the main thread, as in v1.4.0, so loggers may touch UIKit; the work itself stays off
-	// the main thread and never waits for the delivery. Events for data that was already loaded (or
+	// the main thread and never waits for the delivery. Events from work that completes concurrently
+	// (e.g. an initial load and a refresh finishing together) are not ordered relative to each other. Events for data that was already loaded (or
 	// already failed) when the context was created, and errors from misuse, are logged
 	// synchronously on the calling thread, as in v1.4.0.
 	// On Linux, where nothing may service the main queue, events use the completing thread.
