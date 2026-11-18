@@ -3778,6 +3778,26 @@ final class ContextV140BehaviourTest: XCTestCase {
 		XCTAssertEqual(1, scheduler.scheduleAfterExecuteCallsCount)
 	}
 
+	private func loggedLifecycleEvents() -> [String] {
+		return logger.handleEventContextEventReceivedInvocations.compactMap { invocation -> String? in
+			switch invocation.event {
+			case .ready: return "ready"
+			case .refresh: return "refresh"
+			case .error: return "error"
+			default: return nil
+			}
+		}
+	}
+
+	// Waits for the initial load's completion handler, instead of sleeping.
+	private func settleInitialLoad(_ settle: () -> Void) {
+		let settled = XCTestExpectation(description: "initial load handled")
+		Context.setTestHook(.initialLoadSettled) { settled.fulfill() }
+		defer { Context.setTestHook(.initialLoadSettled, nil) }
+		settle()
+		wait(for: [settled], timeout: 2)
+	}
+
 	func testRefreshThatWinsTheInitialLoadLogsReadyOnce() throws {
 		let platformDefault = Context.deliversEventsOnMainThread
 		Context.deliversEventsOnMainThread = false
@@ -3790,50 +3810,64 @@ final class ContextV140BehaviourTest: XCTestCase {
 		_ = context.refresh().done { refreshed.fulfill() }
 		wait(for: [refreshed], timeout: 2)
 
-		initialSeal.fulfill(try contextData())
-		let settled = expectation(description: "initial settled")
-		DispatchQueue.global().asyncAfter(deadline: .now() + 0.2) { settled.fulfill() }
-		wait(for: [settled], timeout: 2)
+		let data = try contextData()
+		settleInitialLoad { initialSeal.fulfill(data) }
 
-		let kinds = logger.handleEventContextEventReceivedInvocations.compactMap { invocation -> String? in
-			switch invocation.event {
-			case .ready: return "ready"
-			case .refresh: return "refresh"
-			default: return nil
-			}
-		}
-		XCTAssertEqual(["ready", "refresh"], kinds)
+		XCTAssertEqual(["ready", "refresh"], loggedLifecycleEvents())
+		XCTAssertFalse(context.getExperiments().isEmpty)
+	}
+
+	// The initial load finishes while a refresh is in flight: `.ready` comes from the initial load
+	// and the refresh only logs `.refresh`.
+	func testInitialLoadThatWinsARefreshLogsReadyOnce() throws {
+		let platformDefault = Context.deliversEventsOnMainThread
+		Context.deliversEventsOnMainThread = false
+		defer { Context.deliversEventsOnMainThread = platformDefault }
+
+		let (initial, initialSeal) = Promise<ContextData>.pending()
+		let context = makeContext(config(), initial)
+		let (refresh, refreshSeal) = Promise<ContextData>.pending()
+		provider.getContextDataReturnValue = refresh
+		let refreshed = expectation(description: "refreshed")
+		_ = context.refresh().done { refreshed.fulfill() }
+
+		let data = try contextData()
+		settleInitialLoad { initialSeal.fulfill(data) }
+		refreshSeal.fulfill(data)
+		wait(for: [refreshed], timeout: 2)
+
+		XCTAssertEqual(["ready", "refresh"], loggedLifecycleEvents())
 	}
 
 	func testRefreshWinsLateInitialFailure() throws {
-        let (initial, initialSeal) = Promise<ContextData>.pending()
-        let context = makeContext(config(), initial)
-        provider.getContextDataReturnValue = Promise.value(try contextData())
-        let refreshed = expectation(description: "refreshed")
-        _ = context.refresh().done { refreshed.fulfill() }
-        wait(for: [refreshed], timeout: 2)
-        initialSeal.reject(ABSmartlyError("late initial failure"))
-        let settled = expectation(description: "initial settled")
-        DispatchQueue.global().asyncAfter(deadline: .now() + 0.2) { settled.fulfill() }
-        wait(for: [settled], timeout: 2)
-        XCTAssertFalse(context.isFailed())
-        XCTAssertNotNil(context.getContextData())
-    }
+		let (initial, initialSeal) = Promise<ContextData>.pending()
+		let context = makeContext(config(), initial)
+		provider.getContextDataReturnValue = Promise.value(try contextData())
+		let refreshed = expectation(description: "refreshed")
+		_ = context.refresh().done { refreshed.fulfill() }
+		wait(for: [refreshed], timeout: 2)
+
+		settleInitialLoad { initialSeal.reject(ABSmartlyError("late initial failure")) }
+
+		XCTAssertFalse(context.isFailed())
+		XCTAssertNil(context.readyError())
+		XCTAssertNotNil(context.getContextData())
+		XCTAssertFalse(loggedLifecycleEvents().contains("error"))
+	}
 
 	func testRefreshWinsLateInitialSuccess() throws {
-        let (initial, initialSeal) = Promise<ContextData>.pending()
-        let context = makeContext(config(), initial)
-        provider.getContextDataReturnValue = Promise.value(try contextData())
-        let refreshed = expectation(description: "refreshed")
-        _ = context.refresh().done { refreshed.fulfill() }
-        wait(for: [refreshed], timeout: 2)
-        initialSeal.fulfill(ContextData())
-        let settled = expectation(description: "initial settled")
-        DispatchQueue.global().asyncAfter(deadline: .now() + 0.2) { settled.fulfill() }
-        wait(for: [settled], timeout: 2)
-        XCTAssertFalse(context.isFailed())
-        XCTAssertFalse(context.getExperiments().isEmpty)
-    }
+		let (initial, initialSeal) = Promise<ContextData>.pending()
+		let context = makeContext(config(), initial)
+		provider.getContextDataReturnValue = Promise.value(try contextData())
+		let refreshed = expectation(description: "refreshed")
+		_ = context.refresh().done { refreshed.fulfill() }
+		wait(for: [refreshed], timeout: 2)
+
+		settleInitialLoad { initialSeal.fulfill(ContextData()) }
+
+		XCTAssertFalse(context.isFailed())
+		XCTAssertFalse(context.getExperiments().isEmpty)
+	}
 
 	func testFailedCloseRestartsRefreshTimer() throws {
         let cfg = config()
@@ -3870,14 +3904,14 @@ final class ContextV140BehaviourTest: XCTestCase {
 		provider.getContextDataReturnValue = Promise.value(try contextData())
 		handler.publishEventReturnValue = Promise.value(())
 
-		Context.flushObservedFailedHook = {
-			Context.flushObservedFailedHook = nil
+		Context.setTestHook(.flushObservedFailed) {
+			Context.setTestHook(.flushObservedFailed, nil)
 			let refreshed = XCTestExpectation()
 			_ = context.refresh().done { refreshed.fulfill() }
 			_ = XCTWaiter().wait(for: [refreshed], timeout: 2)
 			context.track("after-recovery", properties: nil)
 		}
-		defer { Context.flushObservedFailedHook = nil }
+		defer { Context.setTestHook(.flushObservedFailed, nil) }
 
 		let published = XCTestExpectation()
 		_ = context.publish().done { published.fulfill() }
