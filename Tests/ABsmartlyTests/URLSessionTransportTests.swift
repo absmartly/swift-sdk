@@ -53,7 +53,8 @@ import Testing
 		let response = HTTPResponse(statusCode: 200, body: Data(#"{"key": "value"}"#.utf8))
 		#expect(response.statusCode == 200)
 		#expect(response.body == Data(#"{"key": "value"}"#.utf8))
-		#expect(Connection.statusMessage(200).lowercased() == "ok")
+		// Foundation's text differs by platform ("no error" on Apple, "OK" on Linux); 1.x used the same call.
+		#expect(Connection.statusMessage(200) == HTTPURLResponse.localizedString(forStatusCode: 200))
 	}
 
 	@Test func badURL() async throws {

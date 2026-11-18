@@ -175,7 +175,9 @@ import Testing
 			"fullOnVariant", "applications", "variants", "audienceStrict", "audience", "customFieldValues",
 			"assignmentRules",
 		].map { "\"\($0)\":null" }.joined(separator: ",")
-		#expect(try Self.experiment(fields) == (try Self.experiment("")))
+		let experiment = try Self.experiment(fields)
+		let defaults = try Self.experiment("")
+		#expect(experiment == defaults)
 	}
 
 	@Test(arguments: [
@@ -188,7 +190,8 @@ import Testing
 	])
 	func wrongTypedFieldTakesItsDefault(field: String) throws {
 		let experiment = try Self.experiment(field)
-		#expect(experiment == (try Self.experiment("")), "\(field)")
+		let defaults = try Self.experiment("")
+		#expect(experiment == defaults, "\(field)")
 	}
 
 	@Test func wrongTypedFieldDoesNotAffectItsNeighbours() throws {

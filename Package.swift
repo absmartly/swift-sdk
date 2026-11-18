@@ -16,8 +16,9 @@ let package = Package(
 		.library(name: "ABsmartlyUI", targets: ["ABsmartlyUI"]),
 	],
 	dependencies: [
-		// Only used for MD5 on Linux; Apple platforms use CryptoKit.
-		.package(url: "https://github.com/apple/swift-crypto.git", "3.0.0"..<"5.0.0")
+		// Only used for MD5 on Linux; Apple platforms use CryptoKit. Below 4.0, whose manifest needs
+		// tools 6.1, so the Swift 6.0 floor can resolve it.
+		.package(url: "https://github.com/apple/swift-crypto.git", "3.0.0"..<"4.0.0")
 	],
 	targets: [
 		.target(

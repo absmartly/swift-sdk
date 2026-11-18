@@ -255,7 +255,8 @@ extension ContextTests {
 	@Test func waitUntilReadySettlesAfterOwnerReleasesContext() async throws {
 		let env = ContextEnv()
 		var (context, gate): (Context?, Gate<HTTPResponse>) = await env.loadingContext()
-		weak let weakContext = context
+		// `var` (Swift 6.0 has no `weak let`), cleared below so newer compilers see it mutated.
+		weak var weakContext = context
 		// 1.x kept only the waitUntilReady() promise; here the waiting task is all that is kept.
 		let ready = Task { [weak context] () -> Context.State? in
 			guard let context else { return nil }
@@ -264,6 +265,7 @@ extension ContextTests {
 		}
 		context = nil
 		#expect(weakContext != nil, "the load keeps the context alive")
+		weakContext = nil
 
 		gate.fulfill(fixture: "context")
 		#expect(try await ready.value == .ready)

@@ -97,7 +97,8 @@ enum Fixtures {
 			return URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
 				.appendingPathComponent("Resources")
 		#else
-			return Bundle.module.resourceURL!.appendingPathComponent("Resources")
+			// `.copy("Resources")` puts the directory itself in the bundle.
+			return Bundle.module.url(forResource: "Resources", withExtension: nil)!
 		#endif
 	}()
 

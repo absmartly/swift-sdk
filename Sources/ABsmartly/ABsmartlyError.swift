@@ -70,7 +70,8 @@ extension Error {
 	/// `LocalizedError.errorDescription` directly, which is what `localizedDescription` returns.
 	var safeDescription: String {
 		#if os(Linux) && !compiler(>=6.2)
-			if !(self is NSError) && Mirror(reflecting: self).displayStyle == .class {
+			// `self is NSError` is always true on Linux (every error bridges), so test the dynamic type.
+			if !(type(of: self) is NSError.Type) && Mirror(reflecting: self).displayStyle == .class {
 				return (self as? LocalizedError)?.errorDescription ?? String(describing: self)
 			}
 		#endif

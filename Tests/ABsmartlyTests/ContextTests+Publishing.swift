@@ -560,10 +560,12 @@ extension ContextTests {
 	@Test func trackThenDropContextStillPublishes() async {
 		let env = ContextEnv()
 		var context: Context? = env.context(options: Context.Options(publishDelay: 0.05))
-		weak let weakContext = context
+		// `var` (Swift 6.0 has no `weak let`), cleared below so newer compilers see it mutated.
+		weak var weakContext = context
 		context!.track("goal1", properties: nil)
 		context = nil
 		#expect(weakContext != nil, "a pending publish keeps the context alive")
+		weakContext = nil
 
 		#expect(await eventually(timeout: 5) { env.publishCount == 1 })
 		#expect(env.lastSentEvent?["goals"]?.arrayValue?.compactMap { $0["name"]?.stringValue } == ["goal1"])
