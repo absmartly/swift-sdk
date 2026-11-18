@@ -1,6 +1,7 @@
 # 1.x test suite port
 
-Every 1.x test file was ported to swift-testing against the 2.0 API. This records, per file, what a
+Every 1.x test file was ported to swift-testing against the 2.0 API except
+`SwiftyJSONCompatibilityTest.swift` (see below). This records, per file, what a
 1.x test maps to and the tests that were not ported (or only partly), with the reason. It replaces
 the porting notes that used to head each test file.
 
@@ -78,7 +79,7 @@ read safely when wrapped.
 
 Not ported: PublicErrorFormattingTest.testLocalizedDescriptionOfABSmartlyError's `ABSmartlyError("…")`
   initialiser and `errorMessage` property — 2.0's `ABsmartlyError` is an enum with fixed cases; the
-  formatting assertions are ported per case below.
+  formatting assertions are ported per case in ErrorTests.swift.
 
 ## `JSONValueTests.swift`
 
@@ -89,7 +90,7 @@ Not ported: the ordering assertions (<, >, <=, >=) of JSONComparisonTest.testNum
   testParsedValuesCompareLikeLiterals, testBoolIsNotANumber, testBoolComparisons and
   testStringComparisons — `JSONValue` is not `Comparable` by design (SwiftyJSON's operators were only
   kept for 1.x source compatibility; the SDK orders values with the expression evaluator's own
-  comparison, covered by the JsonExpr tests). Their equality assertions are ported below.
+  comparison, covered by the JsonExpr tests). Their equality assertions are ported in JSONValueTests.swift.
 Not ported: JSONComparisonTest's `.type` checks (`.number`/`.bool`) as such — `JSONValue` has cases
   instead of a type enum; mapped to case checks.
 
@@ -116,7 +117,6 @@ Not ported: DefaultHTTPClientTest.testRetryStaticMethod — retries moved out of
   SDK (`Connection`); ported as ConnectionTests.retriesTransportErrorsUntilSuccess.
 DefaultHTTPClientTest.testDefaultHTTPResponse maps to `HTTPResponse`, which has no status message or
   content type in 2.0 (the SDK derives the message from the code); the remaining fields are checked.
-
 
 ## `Hashing/MD5Tests.swift`
 
@@ -201,3 +201,9 @@ Ported from 1.x PerformanceTests.swift. 1.x wrapped each workload in XCTest's `m
 runs the block 10 times and reports timings without asserting on them. swift-testing has no
 `measure`, so each workload runs 10 times (`measured`) under a generous 10 s bound, which only a
 pathological regression (or a hang) would hit; the 1.x assertions on the results are kept.
+
+## `SwiftyJSONCompatibilityTest.swift` (1.x, 2 tests)
+
+Not ported: both tests checked that `ABSmartly.JSON` was SwiftyJSON's `JSON` on Apple platforms (so
+  apps could pass SwiftyJSON values to the SDK). 2.0 replaces `JSON` with its own `JSONValue` and
+  depends on no SwiftyJSON, so there is no interop to test; `JSONValueTests.swift` covers `JSONValue`.

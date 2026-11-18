@@ -256,7 +256,8 @@ extension ContextTests {
 		var (context, gate): (Context?, Gate<HTTPResponse>) = await env.loadingContext()
 		// `var` (Swift 6.0 has no `weak let`), cleared below so newer compilers see it mutated.
 		weak var weakContext = context
-		// Only the waiting task holds the context (weakly), so nothing else keeps it alive.
+		// The test keeps only the waiting task, which holds the context weakly: the in-flight load is
+		// what keeps it alive.
 		let ready = Task { [weak context] () -> Context.State? in
 			guard let context else { return nil }
 			try await context.ready()
