@@ -584,18 +584,24 @@ final class ContextSwitchbackLifecycleTest: SwitchbackTestCase {
 		unit["assignmentRules"] = Self.assignVariant1ToUS
 		let context = createContext(SB.data([unit]))
 		let before = context.peekTreatment("exp_sb")
+		#if DEBUG
 		let identity = context.cachedAssignmentIdentity("exp_sb")
 		XCTAssertEqual(identity, context.cachedAssignmentIdentity("exp_sb"))
+		#endif
 
 		context.setAttribute(name: "country", value: JSON("US"))
 		XCTAssertEqual(1, context.peekTreatment("exp_sb"))
+		#if DEBUG
 		let rebuilt = context.cachedAssignmentIdentity("exp_sb")
 		if before != 1 {
 			XCTAssertNotEqual(identity, rebuilt)
 		}
+		#endif
 		// Current again: the same assignment is served.
 		XCTAssertEqual(1, context.peekTreatment("exp_sb"))
+		#if DEBUG
 		XCTAssertEqual(rebuilt, context.cachedAssignmentIdentity("exp_sb"))
+		#endif
 	}
 
 	// A legacy (missing or unreadable cluster map) switchback serves under its declared unitType, so a
@@ -646,8 +652,10 @@ final class ContextSwitchbackLifecycleTest: SwitchbackTestCase {
 		clock.now = SB.anchor + 10
 		XCTAssertEqual(0, context.getTreatment("exp_ineligible"))
 		XCTAssertEqual(0, context.getTreatment("exp_absent"))
+		#if DEBUG
 		let ineligibleSlot = context.cachedAssignmentIdentity("exp_ineligible")
 		let absentSlot = context.cachedAssignmentIdentity("exp_absent")
+		#endif
 
 		context.setAttribute(name: "x", value: JSON(1))
 		let changedRules = "{\"rules\":[{\"type\":\"assign\",\"environments\":[],\"variant\":1,\"name\":\"changed\"}]}"
@@ -659,8 +667,10 @@ final class ContextSwitchbackLifecycleTest: SwitchbackTestCase {
 		XCTAssertEqual(0, context.getTreatment("exp_absent"))
 		XCTAssertEqual(0, context.getPendingCount())
 		// Neither slot consulted its rules, so a rule change does not rebuild it.
+		#if DEBUG
 		XCTAssertEqual(ineligibleSlot, context.cachedAssignmentIdentity("exp_ineligible"))
 		XCTAssertEqual(absentSlot, context.cachedAssignmentIdentity("exp_absent"))
+		#endif
 	}
 
 	// A rule-won switchback re-resolved in the same period (an attribute set, a different rule with the
