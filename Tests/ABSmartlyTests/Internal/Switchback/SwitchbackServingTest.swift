@@ -63,6 +63,14 @@ final class SwitchbackServingTest: XCTestCase {
 		}
 		XCTAssertNil(SwitchbackServing.clusterKey(nil))
 
+		// A Decimal keys only when whole (java-sdk: an integral BigDecimal is an integer).
+		XCTAssertEqual("42", SwitchbackServing.clusterKey(JSON(NSDecimalNumber(string: "42"))))
+		XCTAssertEqual("42", SwitchbackServing.clusterKey(JSON(NSDecimalNumber(string: "42.000"))))
+		XCTAssertEqual("-7", SwitchbackServing.clusterKey(JSON(Decimal(-7))))
+		XCTAssertEqual("100000000000000000000", SwitchbackServing.clusterKey(JSON(NSDecimalNumber(string: "1e20"))))
+		XCTAssertNil(SwitchbackServing.clusterKey(JSON(NSDecimalNumber(string: "4.5"))))
+		XCTAssertNil(SwitchbackServing.clusterKey(JSON(NSDecimalNumber.notANumber)))
+
 		// Parsed from JSON text, as attributes from a payload or the wrapper arrive.
 		let parsed = try JSON(data: Data("[3, 3.0, 3e0, -0, 30e-1, 4000000002, true, 1, 0]".utf8)).arrayValue
 		XCTAssertEqual(
