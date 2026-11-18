@@ -15,21 +15,24 @@ public final class Context {
 	private let logger: ContextEventLogger?
 	private let parser: VariableParser
 	private let matcher: AudienceMatcher
-	private var promise: Promise<ContextData>?
 
 	private var pendingCount = ManagedAtomic<UInt>(0)
 
-	private var ready = ManagedAtomic<Bool>(false)
-	private var failed = ManagedAtomic<Bool>(false)
+	// Loading, ready or failed, published as one value so isReady()/isFailed() never see a
+	// half-made transition (a recovering context stays ready throughout). Changed under contextLock.
+	private static let loading: UInt8 = 0
+	private static let readyState: UInt8 = 1
+	private static let failedState: UInt8 = 2
+	private var state = ManagedAtomic<UInt8>(Context.loading)
 	private var closed = ManagedAtomic<Bool>(false)
 	private var closing = ManagedAtomic<Bool>(false)
 	private var refreshing = ManagedAtomic<Bool>(false)
 
 	private var readyPromise: Promise<Void>?
 	private var readyResolver: Resolver<Void>?
-	// Whether the context has become ready or failed, i.e. its `.ready` (or initial `.error`) is
-	// logged. Read and set under `contextLock` by the initial load and by a refresh that wins it.
-	private var readySettled = false
+	// What the initial load's completion handlers hold the context through. A refresh that wins the
+	// initial load empties it, so a provider promise that never settles stops retaining the context.
+	private var initialLoadOwner: ContextOwner?
 	private var refreshPromise: Promise<Void>?
 	private var closePromise: Promise<Void>?
 
@@ -90,7 +93,6 @@ public final class Context {
 		self.logger = logger
 		self.parser = parser
 		self.matcher = matcher
-		self.promise = promise
 
 		var systemAttributes: [String: JSON] = [:]
 		if let application = application, !application.isEmpty {
@@ -129,11 +131,11 @@ public final class Context {
 		}
 
 		if promise.isResolved {
-			readySettled = true
 			if let data = promise.value {
-				applyData(data)
+				commitData(prepareData(data))
 				// Mark ready before delivery so a logger's ready handler can read the context.
-				markReady()
+				state.store(Context.readyState, ordering: .releasing)
+				setRefreshTimer()
 				logEvent(event: .ready(data: data))
 				// Goals tracked from inside the ready callback were queued before the
 				// context was ready, so their publish timer could not start then.
@@ -143,75 +145,98 @@ public final class Context {
 			} else if let error = promise.error {
 				// As in v1.4.0: the context is failed (and ready) when the `.error` event is delivered.
 				applyDataFailed(error)
-				failed.store(true, ordering: .releasing)
+				state.store(Context.failedState, ordering: .releasing)
 				logError(error: error)
 			}
 		} else {
 			readyPromise = Promise<Void> { [weak self] seal in
-				// Kept so a refresh that completes before the initial fetch can settle existing
-				// waitUntilReady() callers. Set while the initializer runs, before any completion.
+				// Whichever of the initial load and a refresh makes the context ready first takes this
+				// resolver and settles it, after scheduling queued goals. Set before any completion runs.
 				self?.readyResolver = seal
 				guard let self = self else {
 					seal.fulfill(())
 					return
 				}
+				let owner = ContextOwner(self)
+				self.initialLoadOwner = owner
 
-					// Completion handlers hold the context strongly so a caller that keeps only
-					// waitUntilReady()'s promise still gets it settled.
-					promise.done(on: DispatchQueue.global()) { [self] data in
-						// Mark ready before delivery so a logger's ready handler can read the context.
+					// The completion handlers hold the context until the provider's promise settles, so a
+					// caller that keeps only waitUntilReady()'s promise still gets it settled.
+					promise.done(on: DispatchQueue.global()) { data in
+						guard let self = owner.take() else {
+							// Superseded by a refresh, which already made the context ready.
+							#if DEBUG
+							Context.runTestHook(.initialLoadSettled)
+							#endif
+							return
+						}
+						// The configured VariableParser runs here, outside every lock.
+						let prepared = self.prepareData(data)
 						self.contextLock.lock()
-						let superseded = self.readySettled
-						if !superseded {
-							self.readySettled = true
-							self.applyData(data)
-							self.markReady()
+						let wins = self.state.load(ordering: .acquiring) == Context.loading
+						if wins {
+							self.commitData(prepared)
+							// Ready before delivery so a logger's ready handler can read the context.
+							self.state.store(Context.readyState, ordering: .releasing)
 						}
 						self.contextLock.unlock()
-						if !superseded { self.deliverOnMain { self.logEvent(event: .ready(data: data)) } }
-						self.promiseLock.lock()
-						self.readyPromise = nil
-						self.readyResolver = nil
-						self.promiseLock.unlock()
-
-						if self.pendingCount.load(ordering: .acquiring) > 0 {
-							self.setTimeout()
+						if wins {
+							self.setRefreshTimer()
+							self.deliverOnMain { self.logEvent(event: .ready(data: data)) }
+							self.settleReadiness()
 						}
 						#if DEBUG
 						Context.runTestHook(.initialLoadSettled)
 						#endif
-						seal.fulfill(())
-					}.catch(on: DispatchQueue.global()) { [self] error in
+					}.catch(on: DispatchQueue.global()) { error in
+						guard let self = owner.take() else {
+							// Superseded by a refresh, which already made the context ready.
+							#if DEBUG
+							Context.runTestHook(.initialLoadSettled)
+							#endif
+							return
+						}
 						// As in v1.4.0: the context is failed (and ready) when the `.error` event is delivered.
 						self.contextLock.lock()
-						let superseded = self.readySettled
-						if !superseded {
-							self.readySettled = true
+						let wins = self.state.load(ordering: .acquiring) == Context.loading
+						if wins {
 							self.applyDataFailed(error)
-							self.failed.store(true, ordering: .releasing)
+							self.state.store(Context.failedState, ordering: .releasing)
 						}
 						self.contextLock.unlock()
 						Logger.error("Context initialization failed: \(error.safeLocalizedDescription)")
-						self.promiseLock.lock()
-						self.readyPromise = nil
-						self.readyResolver = nil
-						self.promiseLock.unlock()
-						if !superseded { self.deliverOnMain { self.logError(error: error) } }
+						if wins {
+							self.deliverOnMain { self.logError(error: error) }
+							self.settleReadiness()
+						}
 						#if DEBUG
 						Context.runTestHook(.initialLoadSettled)
 						#endif
-						seal.reject(error)
 					}
 				}
 			}
 		}
 
+	// Called once, by whichever completion made the context ready (or failed): schedules goals that
+	// were queued while loading, then settles waitUntilReady() callers.
+	private func settleReadiness() {
+		if pendingCount.load(ordering: .acquiring) > 0 {
+			setTimeout()
+		}
+		promiseLock.lock()
+		let resolver = readyResolver
+		readyResolver = nil
+		readyPromise = nil
+		promiseLock.unlock()
+		resolver?.fulfill(())
+	}
+
 	public func isReady() -> Bool {
-		return ready.load(ordering: .acquiring) || failed.load(ordering: .acquiring)
+		return state.load(ordering: .acquiring) != Context.loading
 	}
 
 	public func isFailed() -> Bool {
-		return failed.load(ordering: .acquiring)
+		return state.load(ordering: .acquiring) == Context.failedState
 	}
 
 	public func readyError() -> Error? {
@@ -518,6 +543,9 @@ public final class Context {
 
 		let (assignment, claimed) = getAssignmentClaimingExposure(experimentName)
 		if claimed {
+			#if DEBUG
+			Context.runTestHook(.exposureClaimed)
+			#endif
 			queueExposure(assignment)
 		}
 
@@ -559,7 +587,11 @@ public final class Context {
 			eventLock.lock()
 			defer { eventLock.unlock() }
 
-			guard !closed.load(ordering: .acquiring), !closing.load(ordering: .acquiring) else { return }
+			guard !closed.load(ordering: .acquiring), !closing.load(ordering: .acquiring) else {
+				// Not queued, so not exposed: a read after a failed close can still expose it.
+				assignment.exposed.store(false, ordering: .releasing)
+				return
+			}
 			exposures.append(exposure)
 			pendingCount.wrappingIncrement(by: 1, ordering: .releasing)
 		}
@@ -652,36 +684,33 @@ public final class Context {
 
 			// Held strongly until the fetch settles, so the returned promise always settles.
 			self.provider.getContextData().done(on: DispatchQueue.global()) { [self] data in
+				// The configured VariableParser runs here, outside every lock.
+				let prepared = self.prepareData(data)
 				// A context whose first load failed (or is still loading) becomes ready once a refresh
 				// succeeds, so events queued from the refreshed data are published instead of
-				// discarded. The data, ready/failed flags and error change together under the
-				// context and event locks, so no evaluation or flush sees the new data while the
-				// context still reports failed.
+				// discarded. Data, error and state change together under contextLock and eventLock,
+				// so no evaluation or flush sees the new data while the context still reports failed.
 				self.contextLock.lock()
-				// This refresh settles the initial load when it got here first: that load's result
-				// is then ignored, so `.ready` is logged here, exactly once, before `.refresh`.
-				let winsInitialLoad = !self.readySettled
-				self.readySettled = true
 				self.eventLock.lock()
-				self.dataLock.lock()
-				self.failedError = nil
-				self.dataLock.unlock()
-				self.applyData(data)
-				self.ready.store(true, ordering: .releasing)
-				self.failed.store(false, ordering: .releasing)
+				let winsInitialLoad = self.state.load(ordering: .acquiring) == Context.loading
+				self.commitData(prepared)
+				self.state.store(Context.readyState, ordering: .releasing)
 				self.eventLock.unlock()
 				self.contextLock.unlock()
 				self.setRefreshTimer()
-				var readyResolver: Resolver<Void>?
 				if winsInitialLoad {
+					// The initial load's late result is ignored: stop it retaining the context.
 					self.promiseLock.lock()
-					readyResolver = self.readyResolver
-					self.readyResolver = nil
+					let owner = self.initialLoadOwner
+					self.initialLoadOwner = nil
 					self.promiseLock.unlock()
+					owner?.release()
+					// `.ready` is logged here, once.
 					self.deliverOnMain { self.logEvent(event: .ready(data: data)) }
+					self.settleReadiness()
+				} else if self.pendingCount.load(ordering: .acquiring) > 0 {
+					self.setTimeout()
 				}
-				readyResolver?.fulfill(())
-				if self.pendingCount.load(ordering: .acquiring) > 0 { self.setTimeout() }
 				self.refreshing.store(false, ordering: .releasing)
 				self.deliverOnMain { self.logEvent(event: .refresh(data: data)) }
 				seal.fulfill(())
@@ -884,10 +913,12 @@ public final class Context {
 	// Test hooks, compiled into debug builds only, that let tests interleave lifecycle steps
 	// deterministically: `flushObservedFailed` runs after a flush has seen the context failed and
 	// before it takes `eventLock`; `initialLoadSettled` runs after the initial load's completion has
-	// been handled (whether it was applied or superseded by a refresh).
+	// been handled (whether it was applied or superseded by a refresh); `exposureClaimed` runs after
+	// a read claimed an exposure and before it is queued.
 	enum TestHook: Hashable {
 		case flushObservedFailed
 		case initialLoadSettled
+		case exposureClaimed
 	}
 
 	private static var testHooks: [TestHook: () -> Void] = [:]
@@ -1271,16 +1302,23 @@ public final class Context {
 	}
 
 	internal func setData(_ data: ContextData) {
-		applyData(data)
-		markReady()
-	}
-
-	private func markReady() {
-		ready.store(true, ordering: .releasing)
+		commitData(prepareData(data))
+		contextLock.lock()
+		_ = state.compareExchange(expected: Context.loading, desired: Context.readyState, ordering: .acquiringAndReleasing)
+		contextLock.unlock()
 		setRefreshTimer()
 	}
 
-	private func applyData(_ data: ContextData) {
+	private struct PreparedData {
+		let data: ContextData
+		let index: [String: ExperimentVariables]
+		let indexVariables: [String: [ExperimentVariables]]
+		let customFieldValues: [String: [String: ContextCustomFieldValue]]
+	}
+
+	// Builds the indexes for new context data. Runs the configured VariableParser, so it is called
+	// without holding any lock; commitData publishes the result.
+	private func prepareData(_ data: ContextData) -> PreparedData {
 		var index: [String: ExperimentVariables] = [:]
 		var indexVariables: [String: [ExperimentVariables]] = [:]
 		var customFieldValues: [String: [String: ContextCustomFieldValue]] = [:]
@@ -1341,11 +1379,19 @@ public final class Context {
 			customFieldValues[experiment.name] = experimentCustomFieldValues
 		}
 
+		return PreparedData(
+			data: data, index: index, indexVariables: indexVariables, customFieldValues: customFieldValues)
+	}
+
+	// Publishes prepared data and clears a previous load failure in one dataLock section, so
+	// readyError() is only cleared together with the recovered data.
+	private func commitData(_ prepared: PreparedData) {
 		dataLock.lock()
-		self.data = data
-		self.index = index
-		self.indexVariables = indexVariables
-		self.customFieldValues = customFieldValues
+		self.data = prepared.data
+		self.index = prepared.index
+		self.indexVariables = prepared.indexVariables
+		self.customFieldValues = prepared.customFieldValues
+		self.failedError = nil
 		dataLock.unlock()
 	}
 
@@ -1412,6 +1458,28 @@ public final class Context {
 		threadDictionary[key] = true
 		defer { threadDictionary.removeObject(forKey: key) }
 		logEvent(event: .error(error: error))
+	}
+}
+
+// Holds a context strongly until taken or released; the initial load's completions go through it.
+private final class ContextOwner {
+	private let lock = NSLock()
+	private var context: Context?
+
+	init(_ context: Context) {
+		self.context = context
+	}
+
+	func take() -> Context? {
+		lock.lock()
+		defer { lock.unlock() }
+		let taken = context
+		context = nil
+		return taken
+	}
+
+	func release() {
+		_ = take()
 	}
 }
 

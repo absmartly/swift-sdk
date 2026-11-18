@@ -126,9 +126,9 @@ final class DefaultHTTPClientTest: XCTestCase {
 		config.retries = 0
 		let httpClient = DefaultHTTPClient(config: config)
 		let server = try LocalHTTPServer()
+		defer { server.stop() }
 		server.getResponseBody = "ok"
 		try server.start()
-		defer { server.stop() }
 
 		let closePromise = httpClient.close()
 

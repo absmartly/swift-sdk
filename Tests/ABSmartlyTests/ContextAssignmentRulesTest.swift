@@ -8,7 +8,7 @@ final class ContextAssignmentRulesTest: XCTestCase {
 	var handler = ContextEventHandlerMock()
 	var logger = ContextEventLoggerMock()
 	var scheduler = SchedulerMock()
-	var clock = ClockMock()
+	let clock = FixedClock(1_620_000_000_000)
 
 	let seedHi = 3_603_515
 	let seedLo = 233_373_850
@@ -21,7 +21,6 @@ final class ContextAssignmentRulesTest: XCTestCase {
 		scheduler = SchedulerMock()
 		scheduler.scheduleAfterExecuteReturnValue = ScheduledHandleMock()
 		scheduler.scheduleWithFixedDelayAfterRepeatingExecuteReturnValue = ScheduledHandleMock()
-		clock.millisReturnValue = 1_620_000_000_000
 	}
 
 	// A three-variant experiment on `session_id`; each variant sets `color` to its index.

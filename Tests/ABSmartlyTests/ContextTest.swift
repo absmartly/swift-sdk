@@ -10,7 +10,7 @@ final class ContextTest: XCTestCase {
 	var logger: ContextEventLoggerMock = ContextEventLoggerMock()
 	var parser: VariableParser = DefaultVariableParser()
 	var scheduler: SchedulerMock = SchedulerMock()
-	var clock: ClockMock = ClockMock()
+	let clock = FixedClock(1_620_000_000_000)
 
 	override func setUp() async throws {
 		provider = ContextDataProviderMock()
@@ -20,7 +20,6 @@ final class ContextTest: XCTestCase {
 		scheduler = SchedulerMock()
 		scheduler.scheduleAfterExecuteReturnValue = ScheduledHandleMock()
 		scheduler.scheduleWithFixedDelayAfterRepeatingExecuteReturnValue = ScheduledHandleMock()
-		clock.millisReturnValue = 1_620_000_000_000
 	}
 
 	let expectedVariants: [String: Int] = [
@@ -1983,22 +1982,39 @@ final class ContextTest: XCTestCase {
 		let context = try createContext(config: contextConfig)
 		logger.clearInvocations()
 
+		let firstError = XCTestExpectation(description: "first .error")
+		let secondError = XCTestExpectation(description: "second .error")
+		secondError.isInverted = true
+		let lock = NSLock()
+		var errorCount = 0
+		logger.handleEventContextEventClosure = { _, event in
+			guard case .error = event else { return }
+			lock.lock()
+			errorCount += 1
+			let count = errorCount
+			lock.unlock()
+			if count == 1 {
+				firstError.fulfill()
+			} else {
+				secondError.fulfill()
+			}
+		}
+
 		let (failed, resolver) = Promise<ContextData>.pending()
 		provider.getContextDataReturnValue = failed
-		scheduler.scheduleWithFixedDelayAfterRepeatingExecuteReceivedArguments?.execute()
-		resolver.reject(ABSmartlyError("refresh failed"))
+		// The refresh timer holds the context weakly, so keep it alive explicitly: in optimized
+		// builds `_ = context` at the end would not.
+		withExtendedLifetime(context) {
+			scheduler.scheduleWithFixedDelayAfterRepeatingExecuteReceivedArguments?.execute()
+			resolver.reject(ABSmartlyError("refresh failed"))
 
-		let settled = XCTestExpectation()
-		DispatchQueue.global().asyncAfter(deadline: .now() + 0.3) { settled.fulfill() }
-		wait(for: [settled], timeout: 1.0)
-		RunLoop.main.run(until: Date().addingTimeInterval(0.1))
-
-		let errors = logger.handleEventContextEventReceivedInvocations.filter {
-			if case .error = $0.event { return true }
-			return false
+			wait(for: [firstError], timeout: 2.0)
+			// Any duplicate would come from the same completion chain, well within this window.
+			wait(for: [secondError], timeout: 0.5)
 		}
-		XCTAssertEqual(1, errors.count)
-		_ = context
+		lock.lock()
+		XCTAssertEqual(1, errorCount)
+		lock.unlock()
 	}
 
 	func testRefreshExceptionally() throws {
@@ -3735,14 +3751,13 @@ final class ContextTest: XCTestCase {
 
 // Behaviour kept from v1.4.0 for the 1.5.0 release (see CHANGELOG "Compatibility").
 final class ContextV140BehaviourTest: XCTestCase {
-	var clock = ClockMock()
+	let clock = FixedClock(1_620_000_000_000)
 	var scheduler = SchedulerMock()
 	var handler = ContextEventHandlerMock()
 	var provider = ContextDataProviderMock()
 	var logger = ContextEventLoggerMock()
 
 	override func setUp() {
-		clock.millisReturnValue = 1_620_000_000_000
 		scheduler.scheduleAfterExecuteReturnValue = ScheduledHandleMock()
 		scheduler.scheduleWithFixedDelayAfterRepeatingExecuteReturnValue = ScheduledHandleMock()
 	}
@@ -3789,6 +3804,7 @@ final class ContextV140BehaviourTest: XCTestCase {
 		}
 	}
 
+	#if DEBUG
 	// Waits for the initial load's completion handler, instead of sleeping.
 	private func settleInitialLoad(_ settle: () -> Void) {
 		let settled = XCTestExpectation(description: "initial load handled")
@@ -3869,6 +3885,28 @@ final class ContextV140BehaviourTest: XCTestCase {
 		XCTAssertFalse(context.getExperiments().isEmpty)
 	}
 
+	#endif
+
+	// A provider promise that never settles does not keep a closed context alive once a refresh has
+	// made it ready and the caller lets go.
+	func testContextWhoseInitialLoadNeverSettlesIsReleasedAfterRefreshAndClose() throws {
+		let (initial, _) = Promise<ContextData>.pending()
+		var context: Context? = Context(
+			config: config(), clock: clock, scheduler: scheduler, handler: handler, provider: provider, logger: nil,
+			parser: DefaultVariableParser(), matcher: AudienceMatcher(), promise: initial)
+		provider.getContextDataReturnValue = Promise.value(try contextData())
+		let refreshed = XCTestExpectation()
+		_ = context!.refresh().done { refreshed.fulfill() }
+		wait(for: [refreshed], timeout: 2)
+		let closed = XCTestExpectation()
+		_ = context!.close().done { closed.fulfill() }
+		wait(for: [closed], timeout: 2)
+
+		let released = WeakContext(context)
+		context = nil
+		XCTAssertNil(released.value)
+	}
+
 	func testFailedCloseRestartsRefreshTimer() throws {
         let cfg = config()
         cfg.refreshInterval = 10
@@ -3896,6 +3934,35 @@ final class ContextV140BehaviourTest: XCTestCase {
 		XCTAssertNotNil(context.getContextData())
 	}
 
+	#if DEBUG
+	// A read that claimed an exposure just before close() started does not queue it; the claim is
+	// released, so after the final publish fails and the context reopens, the next read exposes it.
+	func testExposureDroppedByAClosingContextIsExposedAfterAFailedClose() throws {
+		let context = makeContext(config(), Promise.value(try contextData()))
+		context.track("goal1", properties: nil)
+		handler.publishEventReturnValue = Promise(error: ABSmartlyError("publish failed"))
+
+		let closeFailed = XCTestExpectation(description: "close failed")
+		Context.setTestHook(.exposureClaimed) {
+			Context.setTestHook(.exposureClaimed, nil)
+			_ = context.close().catch { _ in closeFailed.fulfill() }
+		}
+		defer { Context.setTestHook(.exposureClaimed, nil) }
+
+		XCTAssertEqual(1, context.getTreatment("exp_test_ab"))
+		wait(for: [closeFailed], timeout: 2)
+		XCTAssertFalse(context.isClosed())
+		XCTAssertEqual(1, context.getPendingCount())  // the re-queued goal only
+
+		XCTAssertEqual(1, context.getTreatment("exp_test_ab"))
+		XCTAssertEqual(2, context.getPendingCount())
+		handler.publishEventReturnValue = Promise.value(())
+		let published = XCTestExpectation()
+		_ = context.publish().done { published.fulfill() }
+		wait(for: [published], timeout: 2)
+		XCTAssertEqual(["exp_test_ab"], handler.publishEventReceivedEvent?.exposures.map { $0.name })
+	}
+
 	// A flush that saw the context failed, then lost the race to a successful refresh, publishes the
 	// events queued after recovery instead of discarding them.
 	func testFlushThatSawFailedStateKeepsEventsQueuedAfterRecovery() throws {
@@ -3920,6 +3987,8 @@ final class ContextV140BehaviourTest: XCTestCase {
 		XCTAssertEqual(["after-recovery"], handler.publishEventReceivedEvent?.goals.map { $0.name })
 		XCTAssertEqual(0, context.getPendingCount())
 	}
+
+	#endif
 
 	func testSuccessfulRefreshRecoversAFailedContext() throws {
 		let context = makeContext(config(), Promise(error: ABSmartlyError("load failed")))

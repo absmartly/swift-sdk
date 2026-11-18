@@ -89,6 +89,10 @@ jobs:
       - name: Run tests
         run: swift test
 
+      # Optimized builds compile out the DEBUG-only lifecycle test hooks; the rest must still pass.
+      - name: Run tests (release)
+        run: swift test -c release
+
       # Toolchains 5.9+ read Package@swift-5.9.swift; also build from the tools-version 5.3
       # Package.swift that older toolchains use, so a change to it alone cannot go unnoticed.
       - name: Build with Package.swift only

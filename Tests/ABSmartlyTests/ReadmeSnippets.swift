@@ -347,10 +347,15 @@ struct ContentView: View {
         .task {
             do {
                 let deviceId = UIDevice.current.identifierForVendor?.uuidString ?? UUID().uuidString
-                context = try await absmartly.createContext(deviceId: deviceId)
-
-                let treatment = context?.getTreatment("button_test")
-                buttonColor = context?.getVariableValue("button.color", defaultValue: "blue")?.stringValue ?? "blue"
+                let loaded = try await absmartly.createContext(deviceId: deviceId)
+                // The load keeps going after the view disappears (cancellation does not stop it),
+                // so close a context that arrives too late instead of keeping it.
+                if Task.isCancelled {
+                    try? await loaded.close()
+                    return
+                }
+                context = loaded
+                buttonColor = loaded.getVariableValue("button.color", defaultValue: "blue")?.stringValue ?? "blue"
             } catch {
                 print("Failed to initialize ABSmartly: \(error)")
             }
@@ -474,8 +479,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
 @available(iOS 13, macOS 10.15, tvOS 13, watchOS 6, *)
 class ExperimentManager {
-    private var sdk: ABSmartlySDK!
+    private let sdk: ABSmartlySDK
     private var loadTask: Task<Void, Never>?
+
+    init(sdk: ABSmartlySDK) {
+        self.sdk = sdk
+    }
 
     func loadExperiment(deviceId: String) {
         loadTask = Task {
@@ -490,7 +499,8 @@ class ExperimentManager {
                 return
             }
             if Task.isCancelled {
-                return  // the screen went away while loading
+                try? await context.close()  // the screen went away while loading
+                return
             }
             handleExperiment(context: context)
         }
@@ -509,6 +519,16 @@ class ExperimentManager {
 // README block 26
 @available(iOS 13, macOS 10.15, tvOS 13, watchOS 6, *)
 func readmeSnippet26(sdk: ABSmartlySDK, context: Context, config: ContextConfig, contextData: ContextData) async throws {
+	let manager = ExperimentManager(sdk: sdk)
+	manager.loadExperiment(deviceId: "device-123")
+	// later, e.g. when the screen goes away:
+	manager.cancelLoad()
+	_ = manager
+}
+
+// README block 27
+@available(iOS 13, macOS 10.15, tvOS 13, watchOS 6, *)
+func readmeSnippet27(sdk: ABSmartlySDK, context: Context, config: ContextConfig, contextData: ContextData) async throws {
 	let sdk = try ABSmartlySDK(
 	    endpoint: "https://your-company.absmartly.io/v1",
 	    apiKey: "YOUR-API-KEY",
@@ -519,9 +539,9 @@ func readmeSnippet26(sdk: ABSmartlySDK, context: Context, config: ContextConfig,
 	_ = sdk
 }
 
-// README block 27
+// README block 28
 @available(iOS 13, macOS 10.15, tvOS 13, watchOS 6, *)
-func readmeSnippet27(sdk: ABSmartlySDK, context: Context, config: ContextConfig, contextData: ContextData) async throws {
+func readmeSnippet28(sdk: ABSmartlySDK, context: Context, config: ContextConfig, contextData: ContextData) async throws {
 	let httpClientConfig = DefaultHTTPClientConfig()
 	httpClientConfig.connectionResourceTimeout = 10.0
 	httpClientConfig.connectionRequestTimeout = 10.0

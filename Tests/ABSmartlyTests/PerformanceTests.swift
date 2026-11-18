@@ -10,7 +10,7 @@ final class PerformanceTests: XCTestCase {
 	var logger: ContextEventLoggerMock = ContextEventLoggerMock()
 	var parser: VariableParser = DefaultVariableParser()
 	var scheduler: SchedulerMock = SchedulerMock()
-	var clock: ClockMock = ClockMock()
+	let clock = FixedClock(1_620_000_000_000)
 
 	let units = [
 		"email": "bleh@absmartly.com",
@@ -26,7 +26,6 @@ final class PerformanceTests: XCTestCase {
 		scheduler = SchedulerMock()
 		scheduler.scheduleAfterExecuteReturnValue = ScheduledHandleMock()
 		scheduler.scheduleWithFixedDelayAfterRepeatingExecuteReturnValue = ScheduledHandleMock()
-		clock.millisReturnValue = 1_620_000_000_000
 	}
 
 	func getContextData(source: String = "context") throws -> ContextData {

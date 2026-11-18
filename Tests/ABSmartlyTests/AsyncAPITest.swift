@@ -12,7 +12,7 @@ final class AsyncAPITest: XCTestCase {
 	var provider = ContextDataProviderMock()
 	var handler = ContextEventHandlerMock()
 	var scheduler = SchedulerMock()
-	var clock = ClockMock()
+	let clock = FixedClock(1_620_000_000_000)
 
 	override func setUp() {
 		provider = ContextDataProviderMock()
@@ -20,7 +20,6 @@ final class AsyncAPITest: XCTestCase {
 		scheduler = SchedulerMock()
 		scheduler.scheduleAfterExecuteReturnValue = ScheduledHandleMock()
 		scheduler.scheduleWithFixedDelayAfterRepeatingExecuteReturnValue = ScheduledHandleMock()
-		clock.millisReturnValue = 1_620_000_000_000
 	}
 
 	private func contextData() throws -> ContextData {

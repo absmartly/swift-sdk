@@ -10,8 +10,6 @@ final class ConcurrencyTests: XCTestCase {
 	var logger: ContextEventLoggerMock = ContextEventLoggerMock()
 	var parser: VariableParser = DefaultVariableParser()
 	var scheduler: SchedulerMock = SchedulerMock()
-	// The generated ClockMock counts calls without synchronization; these tests call the clock from
-	// many threads at once, so they use a thread-safe fixed clock instead.
 	let clock = FixedClock(1_620_000_000_000)
 
 	let units = [
@@ -260,17 +258,5 @@ final class ConcurrencyTests: XCTestCase {
 
 		let attrs = context.getAttributes()
 		XCTAssertEqual(attrs.count, 100)
-	}
-}
-
-final class FixedClock: Clock {
-	private let value: Int64
-
-	init(_ value: Int64) {
-		self.value = value
-	}
-
-	func millis() -> Int64 {
-		return value
 	}
 }
