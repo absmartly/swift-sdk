@@ -198,7 +198,6 @@ struct ContextState {
 	// Whether the cached assignment still holds for the current attributes and rules: the matching
 	// rule (if any) must give the same variant, and the audience result must not have flipped. On
 	// success the assignment's stamps advance, so the next read does not re-evaluate.
-	// `revalidated` is set when the stamps moved, so the caller writes the assignment back only then.
 	private mutating func audienceMatches(_ entry: DataIndex.Entry, _ assignment: Assignment) -> Bool {
 		let ruleKey = entry.data.assignmentRules ?? ""
 		let ruleKeyChanged = ruleKey != assignment.ruleKey

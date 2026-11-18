@@ -3,8 +3,6 @@
 // (`DefaultHTTPClient.retry`, now `Connection.send`'s loop over the `Transport`).
 //
 // Not ported: DefaultClientTest.testClose — neither the client nor the transport has a close() in 2.0.
-// Not ported: DefaultClientTest.testSDKVersionMatchesPodspec (podspec half) — the 2.0 tree has no podspec
-//   yet (ABsmartly.podspec is a release item); the X-Agent half is `sdkVersionAgent` below.
 // Not ported: DefaultHTTPClientTest.testRetryStaticMethod as a static generic helper — 2.0 has no
 //   PromiseKit `retry(times:delay:body:)`; the same assertions (fail twice, succeed on attempt 3) are
 //   `retriesTransportErrorsUntilSuccess`.

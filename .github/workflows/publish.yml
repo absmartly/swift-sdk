@@ -4,8 +4,8 @@ name: Publish Swift-SDK
 # against the podspec and SDK version, publishes the pod (2.x: pod `ABsmartly`; 1.x on release/1.x
 # keeps pod `ABSmartlySwiftSDK`) and creates the GitHub release. A 1.x tag never becomes the latest
 # release. Requires the COCOAPODS_TRUNK_TOKEN secret (a trunk session token of a registered owner of
-# the pod). The CocoaPods trunk is read-only from 2026-12-02; after that the pod step fails and only
-# the SwiftPM tag and GitHub release are published.
+# the pod). If trunk publishing fails (including after the planned 2026-12-02 freeze), this job
+# stops before creating the GitHub release; the SwiftPM tag already exists.
 on:
   push:
     tags:

@@ -3,8 +3,7 @@ import Testing
 
 @testable import ABsmartly
 
-// Contracts pinned after the independent review of fe05bcd: atomic single-key overrides, the
-// setOverrides merge direction, refresh on a failed context, and a JSON-null custom field.
+// Atomic overrides, merge direction, failed-context refresh, and JSON-null custom fields.
 @Suite struct GateFollowUpTests {
 	// 1.5.0's setOverride/setCustomAssignment never lost a concurrent write; the 2.0 single-key
 	// mutators must not either.
