@@ -144,6 +144,8 @@ public final class Context {
 			}
 		} else {
 			readyPromise = Promise<Void> { [weak self] seal in
+				// Kept so a refresh that completes before the initial fetch can settle existing
+				// waitUntilReady() callers. Set while the initializer runs, before any completion.
 				self?.readyResolver = seal
 				guard let self = self else {
 					seal.fulfill(())
@@ -164,6 +166,7 @@ public final class Context {
 						if !superseded { self.deliverOnMain { self.logEvent(event: .ready(data: data)) } }
 						self.promiseLock.lock()
 						self.readyPromise = nil
+						self.readyResolver = nil
 						self.promiseLock.unlock()
 
 						if self.pendingCount.load(ordering: .acquiring) > 0 {
@@ -182,6 +185,7 @@ public final class Context {
 						Logger.error("Context initialization failed: \(error.safeLocalizedDescription)")
 						self.promiseLock.lock()
 						self.readyPromise = nil
+						self.readyResolver = nil
 						self.promiseLock.unlock()
 						if !superseded { self.deliverOnMain { self.logError(error: error) } }
 						seal.reject(error)
@@ -636,10 +640,11 @@ public final class Context {
 
 			// Held strongly until the fetch settles, so the returned promise always settles.
 			self.provider.getContextData().done(on: DispatchQueue.global()) { [self] data in
-				// A context whose first load failed recovers once a refresh succeeds, so the events
-				// queued from the refreshed data are published instead of discarded. (v1.4.0 kept
-				// it failed and dropped them.) Cleared before the data is visible, so no flush can see
-				// the new data with the context still failed.
+				// A context whose first load failed (or is still loading) becomes ready once a refresh
+				// succeeds, so events queued from the refreshed data are published instead of
+				// discarded. The data, ready/failed flags and error change together under the
+				// context and event locks, so no evaluation or flush sees the new data while the
+				// context still reports failed.
 				self.contextLock.lock()
 				self.eventLock.lock()
 				self.dataLock.lock()
