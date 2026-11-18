@@ -3786,6 +3786,7 @@ final class ContextV140BehaviourTest: XCTestCase {
 		_ = context.refresh().done { refreshed.fulfill() }
 		wait(for: [refreshed], timeout: 1.0)
 		XCTAssertFalse(context.isFailed())
+		XCTAssertNil(context.readyError())
 
 		XCTAssertEqual(1, context.getTreatment("exp_test_ab"))
 		handler.publishEventReturnValue = Promise.value(())

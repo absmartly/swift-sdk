@@ -622,11 +622,15 @@ public final class Context {
 
 			// Held strongly until the fetch settles, so the returned promise always settles.
 			self.provider.getContextData().done(on: DispatchQueue.global()) { [self] data in
-				self.setData(data)
 				// A context whose first load failed recovers once a refresh succeeds, so the events
 				// queued from the refreshed data are published instead of discarded. (v1.4.0 kept
-				// it failed and dropped them.)
+				// it failed and dropped them.) Cleared before the data is visible, so no flush can see
+				// the new data with the context still failed.
+				self.dataLock.lock()
+				self.failedError = nil
+				self.dataLock.unlock()
 				self.failed.store(false, ordering: .releasing)
+				self.setData(data)
 				self.refreshing.store(false, ordering: .releasing)
 				self.deliverOnMain { self.logEvent(event: .refresh(data: data)) }
 				seal.fulfill(())

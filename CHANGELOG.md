@@ -88,8 +88,10 @@ security fixes, from the `release/1.x` branch) for 12 months after 2.0 ships.
   unset, as documented in 1.4.0's README; 1.4.0 stored it but never used it.
 - `DefaultScheduler` runs its callbacks on a private utility queue instead of the main queue, so
   timers no longer block or wait for the main thread.
-- A context whose first load failed recovers when a later `refresh()` succeeds; 1.4.0 installed the
-  refreshed data but kept the context failed and silently discarded every exposure and goal.
+- A context whose first load failed recovers when a later `refresh()` succeeds (`isFailed()` false,
+  `readyError()` nil); 1.4.0 installed the refreshed data but kept the context failed and silently
+  discarded every exposure and goal. Swift-specific: the JavaScript SDK does not refresh a failed
+  context at all.
 - No exposures after close; `refresh()` joins an in-flight refresh; `close()` waits for in-flight
   publishes; a pending automatic publish keeps the context alive until it is sent.
 - Work no longer runs on the main queue (timers, HTTP retries, publish recovery); `ready`, `refresh`,
