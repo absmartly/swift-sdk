@@ -174,6 +174,9 @@ public final class Context {
 							#endif
 							return
 						}
+						#if DEBUG
+						Context.runTestHook(.initialLoadTookContext)
+						#endif
 						// The configured VariableParser runs here, outside every lock.
 						let prepared = self.prepareData(data)
 						self.contextLock.lock()
@@ -200,6 +203,9 @@ public final class Context {
 							#endif
 							return
 						}
+						#if DEBUG
+						Context.runTestHook(.initialLoadTookContext)
+						#endif
 						// As in v1.4.0: the context is failed (and ready) when the `.error` event is delivered.
 						self.contextLock.lock()
 						let wins = self.state.load(ordering: .acquiring) == Context.loading
@@ -918,11 +924,13 @@ public final class Context {
 	// deterministically: `flushObservedFailed` runs after a flush has seen the context failed and
 	// before it takes `eventLock`; `initialLoadSettled` runs after the initial load's completion has
 	// been handled (whether it was applied or superseded by a refresh); `exposureClaimed` runs after
-	// a read claimed an exposure and before it is queued.
+	// a read claimed an exposure and before it is queued; `initialLoadTookContext` runs after the
+	// initial load's completion took its context reference and before it checks the state.
 	enum TestHook: Hashable {
 		case flushObservedFailed
 		case initialLoadSettled
 		case exposureClaimed
+		case initialLoadTookContext
 	}
 
 	private static var testHooks: [TestHook: () -> Void] = [:]

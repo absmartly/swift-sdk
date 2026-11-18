@@ -15,9 +15,10 @@ security fixes, from the `release/1.x` branch) for 12 months after 2.0 ships.
   `ContextEventHandler` and `HTTPClient` methods, and `DefaultHTTPClient.request`. Each awaits the existing Promise, so behaviour is
   unchanged; cancelling the calling task does not cancel the request. They are in a separate module
   because, inside an `async` function, Swift prefers an async overload, so 1.4.0 code such as
-  `_ = context.publish()` there would no longer compile if they were in `ABSmartly`. Importing
-  `ABSmartlyAsync` makes them visible in the whole target, so such code then needs `try await` or an
-  explicit `Promise` type (see the README). With Swift 6
+  `_ = context.publish()` there would no longer compile if they were in `ABSmartly`. Once any module
+  in a build imports `ABSmartlyAsync`, the overloads are visible to all code using `ABSmartly`, so
+  such code then needs `try await`, an explicit `Promise` type, or Swift 6's `MemberImportVisibility`
+  (see the README). With Swift 6
   compilers they run in the caller's isolation (`#isolation`), so they can be awaited from
   `@MainActor` code in Swift 6 apps without Sendable diagnostics. Not available through CocoaPods.
 - Assignment rules (`Experiment.assignmentRules`), matching the JavaScript SDK. The first rule whose

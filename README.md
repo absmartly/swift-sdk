@@ -174,11 +174,14 @@ A type of your own that adopts two of `Client`, `ContextDataProvider`, `ContextE
 `HTTPClient` gets two async versions of the methods they share, so call them through one protocol:
 `try await (myClient as Client).close()`.
 
-Adding `import ABSmartlyAsync` anywhere in a target makes the async overloads visible in all of that
-target's files. Inside an `async` function Swift then prefers them, so 1.4 code there such as
-`_ = context.publish()` needs either `try await context.publish()` or an explicit type to keep the
-Promise: `let promise: Promise<Void> = context.publish()`. Targets that never import
-`ABSmartlyAsync` see exactly the 1.4 API.
+Once any module in your build imports `ABSmartlyAsync` (your own target or a dependency), Swift makes
+the async overloads visible to every file that uses `ABSmartly`, even files that only `import
+ABSmartly`. Inside an `async` function Swift then prefers them, so 1.4 code there such as
+`_ = context.publish()` stops compiling. Fix it with `try await context.publish()`, or keep the
+Promise with an explicit type: `let promise: Promise<Void> = context.publish()`. With a Swift 6
+toolchain you can instead enable the `MemberImportVisibility` upcoming feature
+(`swiftSettings: [.enableUpcomingFeature("MemberImportVisibility")]`), which limits the overloads to
+files that import `ABSmartlyAsync` themselves.
 
 Cancelling the calling `Task` does not cancel the underlying request: the call still waits for the
 fetch, publish or close to finish and returns its result. Check `Task.isCancelled` afterwards if you

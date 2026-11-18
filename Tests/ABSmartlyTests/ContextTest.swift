@@ -3855,6 +3855,36 @@ final class ContextV140BehaviourTest: XCTestCase {
 		XCTAssertEqual(["ready", "refresh"], loggedLifecycleEvents())
 	}
 
+	// The initial load has already taken its context reference when a refresh makes the context
+	// ready; its state check must then ignore its result.
+	private func refreshWhileInitialLoadIsCompleting(_ settle: (Resolver<ContextData>) -> Void) throws -> Context {
+		let (initial, initialSeal) = Promise<ContextData>.pending()
+		let context = makeContext(config(), initial)
+		provider.getContextDataReturnValue = Promise.value(try contextData())
+		Context.setTestHook(.initialLoadTookContext) {
+			Context.setTestHook(.initialLoadTookContext, nil)
+			let refreshed = XCTestExpectation()
+			_ = context.refresh().done { refreshed.fulfill() }
+			_ = XCTWaiter().wait(for: [refreshed], timeout: 2)
+		}
+		defer { Context.setTestHook(.initialLoadTookContext, nil) }
+		settleInitialLoad { settle(initialSeal) }
+		return context
+	}
+
+	func testInitialSuccessCompletingAfterARefreshWonIsIgnored() throws {
+		let context = try refreshWhileInitialLoadIsCompleting { $0.fulfill(ContextData()) }
+		XCTAssertFalse(context.getExperiments().isEmpty)
+		XCTAssertEqual(["ready", "refresh"], loggedLifecycleEvents())
+	}
+
+	func testInitialFailureCompletingAfterARefreshWonIsIgnored() throws {
+		let context = try refreshWhileInitialLoadIsCompleting { $0.reject(ABSmartlyError("late failure")) }
+		XCTAssertFalse(context.isFailed())
+		XCTAssertNil(context.readyError())
+		XCTAssertEqual(["ready", "refresh"], loggedLifecycleEvents())
+	}
+
 	func testRefreshWinsLateInitialFailure() throws {
 		let (initial, initialSeal) = Promise<ContextData>.pending()
 		let context = makeContext(config(), initial)

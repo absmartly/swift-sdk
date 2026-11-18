@@ -1,7 +1,8 @@
 // Opt-in module: `import ABSmartlyAsync` (which also imports ABSmartly) adds these overloads.
 // They are not in ABSmartly itself because, inside an `async` function, Swift prefers an async
 // overload, so v1.4.0 code such as `_ = context.publish()` there would stop compiling. Once any
-// file of a target imports this module, the overloads are visible in all of that target's files.
+// module in a build imports this one, the overloads are visible to every file using ABSmartly,
+// unless that file's module enables MemberImportVisibility (Swift 6).
 @_exported import ABSmartly
 import Foundation
 import PromiseKit
