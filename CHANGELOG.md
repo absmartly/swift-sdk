@@ -93,8 +93,10 @@ security fixes, from the `release/1.x` branch) for 12 months after 2.0 ships.
   timers no longer block or wait for the main thread.
 - A context whose first load failed recovers when a later `refresh()` succeeds (`isFailed()` false,
   `readyError()` nil); 1.4.0 installed the refreshed data but kept the context failed and silently
-  discarded every exposure and goal. A refresh that completes while the initial load is still
-  pending makes the context ready, settling `waitUntilReady()` and logging `.ready` once.
+  discarded every exposure and goal. Exposures made while it was failed (without experiment data)
+  are dropped on recovery and the next read exposes the user's actual variant once; goals are kept.
+  A refresh that completes while the initial load is still pending makes the context ready,
+  settling `waitUntilReady()` and logging `.ready` once.
   Swift-specific: the JavaScript SDK does not refresh a failed context at all.
 - No exposures after close; `refresh()` joins an in-flight refresh; `close()` waits for in-flight
   publishes; a pending automatic publish keeps the context alive until it is sent.

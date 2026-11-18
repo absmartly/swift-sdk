@@ -4055,9 +4055,9 @@ final class ContextV140BehaviourTest: XCTestCase {
 		XCTAssertEqual([1], handler.publishEventReceivedEvent?.exposures.map { $0.id })
 	}
 
-	// An override already exposed while the context was failed is not exposed a second time when a
-	// refresh recovers the context.
-	func testAssignmentExposedWhileFailedIsNotExposedAgainAfterRecovery() throws {
+	// An exposure queued while the context was failed has no experiment data. Recovery drops it and
+	// the next read exposes the rebuilt assignment once, with the experiment's id and unit.
+	func testExposureMadeWhileFailedIsReplacedByOneAttributedExposureAfterRecovery() throws {
 		let context = makeContext(config(), Promise(error: ABSmartlyError("load failed")))
 		context.setOverride(experimentName: "exp_test_ab", variant: 1)
 		XCTAssertEqual(1, context.getTreatment("exp_test_ab"))
@@ -4067,10 +4067,9 @@ final class ContextV140BehaviourTest: XCTestCase {
 		_ = context.refresh().done { refreshed.fulfill() }
 		wait(for: [refreshed], timeout: 2)
 
+		XCTAssertEqual(0, context.getPendingCount())
 		XCTAssertEqual(1, context.getTreatment("exp_test_ab"))
 		XCTAssertEqual(1, context.getPendingCount())
-		// The rebuilt override carries the experiment's variables, and the exposure queued while
-		// failed is published with the experiment's id and unit.
 		XCTAssertEqual(JSON("large"), context.peekVariableValue("banner.size"))
 		handler.publishEventReturnValue = Promise.value(())
 		let published = expectation(description: "published")
@@ -4082,6 +4081,77 @@ final class ContextV140BehaviourTest: XCTestCase {
 		XCTAssertEqual("session_id", exposure.unit)
 		XCTAssertEqual(1, exposure.variant)
 	}
+
+	// The failed context's automatic publish discarded the exposure before recovery: the rebuilt
+	// assignment is still exposed (and published) by the next read.
+	func testExposureDiscardedWhileFailedIsExposedAfterRecovery() throws {
+		let context = makeContext(config(), Promise(error: ABSmartlyError("load failed")))
+		context.setOverride(experimentName: "exp_test_ab", variant: 1)
+		XCTAssertEqual(1, context.getTreatment("exp_test_ab"))
+		let discarded = expectation(description: "failed flush")
+		_ = context.publish().done { discarded.fulfill() }
+		wait(for: [discarded], timeout: 2)
+		XCTAssertEqual(0, context.getPendingCount())
+
+		provider.getContextDataReturnValue = Promise.value(try contextData())
+		let refreshed = expectation(description: "refreshed")
+		_ = context.refresh().done { refreshed.fulfill() }
+		wait(for: [refreshed], timeout: 2)
+
+		XCTAssertEqual(1, context.getTreatment("exp_test_ab"))
+		XCTAssertEqual(1, context.getPendingCount())
+	}
+
+	// A read of a non-overridden experiment while failed gives variant 0 without experiment data;
+	// after recovery the user's real variant is exposed, not the failed-state one.
+	func testRecoveryExposesTheRealVariantNotTheFailedStateOne() throws {
+		let context = makeContext(config(), Promise(error: ABSmartlyError("load failed")))
+		XCTAssertEqual(0, context.getTreatment("exp_test_ab"))
+
+		provider.getContextDataReturnValue = Promise.value(try contextData())
+		let refreshed = expectation(description: "refreshed")
+		_ = context.refresh().done { refreshed.fulfill() }
+		wait(for: [refreshed], timeout: 2)
+
+		XCTAssertEqual(1, context.getTreatment("exp_test_ab"))
+		handler.publishEventReturnValue = Promise.value(())
+		let published = expectation(description: "published")
+		_ = context.publish().done { published.fulfill() }
+		wait(for: [published], timeout: 2)
+		let exposures = handler.publishEventReceivedEvent?.exposures ?? []
+		XCTAssertEqual(1, exposures.count)
+		XCTAssertEqual(1, exposures.first?.id)
+		XCTAssertEqual(1, exposures.first?.variant)
+		XCTAssertEqual(true, exposures.first?.assigned)
+	}
+
+	#if DEBUG
+	// A recovery that completes between a read's claim and its enqueue: the stale exposure is
+	// dropped and the next read exposes the rebuilt assignment, attributed.
+	func testExposureClaimedBeforeARecoveryIsDroppedAndReExposed() throws {
+		let context = makeContext(config(), Promise(error: ABSmartlyError("load failed")))
+		context.setOverride(experimentName: "exp_test_ab", variant: 1)
+		provider.getContextDataReturnValue = Promise.value(try contextData())
+		Context.setTestHook(.exposureClaimed) {
+			Context.setTestHook(.exposureClaimed, nil)
+			let refreshed = XCTestExpectation()
+			_ = context.refresh().done { refreshed.fulfill() }
+			XCTAssertEqual(.completed, XCTWaiter().wait(for: [refreshed], timeout: 2))
+		}
+		defer { Context.setTestHook(.exposureClaimed, nil) }
+
+		XCTAssertEqual(1, context.getTreatment("exp_test_ab"))
+		XCTAssertEqual(0, context.getPendingCount())
+		XCTAssertEqual(1, context.getTreatment("exp_test_ab"))
+		handler.publishEventReturnValue = Promise.value(())
+		let published = expectation(description: "published")
+		_ = context.publish().done { published.fulfill() }
+		wait(for: [published], timeout: 2)
+		let exposures = handler.publishEventReceivedEvent?.exposures ?? []
+		XCTAssertEqual([1], exposures.map { $0.id })
+		XCTAssertEqual(["session_id"], exposures.map { $0.unit })
+	}
+	#endif
 
 	// Reads and exposures from other threads while a refresh recovers a failed context: under
 	// ThreadSanitizer (CI) this checks the recovery's data publication and the exposure claim.

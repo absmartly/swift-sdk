@@ -51,9 +51,10 @@ public final class Context {
 	private var hashedUnits: [String: [UInt8]] = [:]
 	private var assigners: [String: VariantAssigner] = [:]
 	private var assignmentCache: [String: Assignment] = [:]
-	// Experiments exposed while the context had no data (failed); their rebuilt assignments start
-	// exposed, so recovery does not expose them again. Under contextLock.
-	private var exposedWithoutData: Set<String> = []
+	// Incremented when a refresh recovers a failed context. Exposures claimed before that were made
+	// without experiment data and are dropped instead of queued. Written under contextLock and
+	// eventLock, so reading under either is safe.
+	private var dataGeneration = 0
 
 	private let contextLock = NSRecursiveLock()
 	// The string each unit is hashed from, and the UID as it was given (string or number).
@@ -572,11 +573,11 @@ public final class Context {
 		guard ensureReady(true) else { return 0 }
 
 		let (assignment, claimed) = getAssignmentClaimingExposure(experimentName)
-		if let exposure = claimed {
+		if let claimed = claimed {
 			#if DEBUG
 			Context.runTestHook(.exposureClaimed)
 			#endif
-			queueExposure(exposure, for: assignment)
+			queueExposure(claimed, for: assignment)
 		}
 
 		return assignment.variant
@@ -589,7 +590,7 @@ public final class Context {
 	// soon as it is found.
 	private func getAssignmentClaimingExposure(
 		_ experimentName: String, requireVariables: Bool = false
-	) -> (Assignment, claimed: Exposure?) {
+	) -> (Assignment, claimed: ClaimedExposure?) {
 		contextLock.lock()
 		defer { contextLock.unlock() }
 
@@ -604,8 +605,8 @@ public final class Context {
 			expected: false, desired: true, ordering: .acquiringAndReleasing
 		).0
 		// Built while contextLock is held, so it reads the assignment's fields consistently with any
-		// refresh (which updates them under contextLock).
-		return (assignment, claimed ? makeExposure(assignment) : nil)
+		// refresh; the generation lets the queue drop it if a recovery happened in between.
+		return (assignment, claimed ? ClaimedExposure(exposure: makeExposure(assignment), generation: dataGeneration) : nil)
 	}
 
 	private func makeExposure(_ assignment: Assignment) -> Exposure {
@@ -616,8 +617,15 @@ public final class Context {
 			ruleOverride: assignment.ruleOverride)
 	}
 
-	private func queueExposure(_ exposure: Exposure, for assignment: Assignment) {
+	private func queueExposure(_ claimed: ClaimedExposure, for assignment: Assignment) {
+		let exposure = claimed.exposure
 		eventLock.lock()
+		// Made before a recovery replaced the data it came from: drop it, the rebuilt assignment
+		// will be exposed by the next read.
+		if claimed.generation != dataGeneration {
+			eventLock.unlock()
+			return
+		}
 		guard !closed.load(ordering: .acquiring), !closing.load(ordering: .acquiring) else {
 			eventLock.unlock()
 			// Not queued, so not exposed: a read after a failed close can still expose it.
@@ -726,20 +734,17 @@ public final class Context {
 				self.eventLock.lock()
 				let previousState = self.state.load(ordering: .acquiring)
 				let winsInitialLoad = previousState == Context.loading
-				// Assignments read while there was no experiment data (e.g. an override) lack the
-				// experiment's id and variables, so all are rebuilt from the new data. A rebuilt one
-				// that was already exposed stays exposed (the user is not exposed again), and its
-				// queued exposure gets the experiment's id and unit type.
-				if previousState != Context.readyState {
-					var exposedNames: Set<String> = []
-					for (name, assignment) in self.assignmentCache where assignment.exposed.load(ordering: .acquiring) {
-						exposedNames.insert(name)
-					}
+				// Recovering a failed context: assignments and exposures made while it had no experiment
+				// data (e.g. an override, with no experiment id or variables) are discarded, as v1.4.0
+				// discarded every event of a failed context. The next read rebuilds the assignment from
+				// the new data and exposes it once, correctly attributed. Goals are kept.
+				if previousState == Context.failedState {
 					self.assignmentCache = [:]
-					self.exposedWithoutData = exposedNames
-					self.exposures = self.exposures.map { exposure in
-						guard exposure.id == 0, let experiment = prepared.index[exposure.name] else { return exposure }
-						return exposure.withExperiment(id: experiment.data.id, unit: experiment.data.unitType)
+					self.dataGeneration += 1
+					let dropped = self.exposures.count
+					self.exposures = []
+					if dropped > 0 {
+						self.pendingCount.wrappingDecrement(by: UInt(dropped), ordering: .releasing)
 					}
 				}
 				self.commitData(prepared)
@@ -1242,9 +1247,6 @@ public final class Context {
 			assignment.variables = experiment.variables[assignment.variant]
 		}
 
-		if exposedWithoutData.remove(experimentName) != nil {
-			assignment.exposed.store(true, ordering: .releasing)
-		}
 		assignmentCache[experimentName] = assignment
 		return assignment
 	}
@@ -1258,13 +1260,17 @@ public final class Context {
 		}
 
 		for experimentVariables in keyExperimentVariables {
-			let (assignment, claimed) =
-				peek
-				? (getAssignment(experimentVariables.data.name), nil)
-				: getAssignmentClaimingExposure(experimentVariables.data.name, requireVariables: true)
+			let assignment: Assignment
+			let claimed: ClaimedExposure?
+			if peek {
+				assignment = getAssignment(experimentVariables.data.name)
+				claimed = nil
+			} else {
+				(assignment, claimed) = getAssignmentClaimingExposure(experimentVariables.data.name, requireVariables: true)
+			}
 			if let variables = assignment.variables {
-				if let exposure = claimed {
-					queueExposure(exposure, for: assignment)
+				if let claimed = claimed {
+					queueExposure(claimed, for: assignment)
 				}
 
 				if let value = variables[key], assignment.assigned || assignment.overridden || assignment.ruleOverride {
@@ -1516,6 +1522,12 @@ public final class Context {
 		defer { threadDictionary.removeObject(forKey: key) }
 		logEvent(event: .error(error: error))
 	}
+}
+
+// An exposure a read claimed, and the data generation it was made from.
+private struct ClaimedExposure {
+	let exposure: Exposure
+	let generation: Int
 }
 
 // Holds a context strongly until taken or released; the initial load's completions go through it.
