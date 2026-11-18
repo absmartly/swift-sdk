@@ -1,14 +1,3 @@
-// Ported from 1.x DefaultHTTPClientTest.swift and HTTPIntegrationTest.swift: `URLSessionTransport`
-// (1.x DefaultHTTPClient) over a real `URLSession`, with a `URLProtocol` stub and a real local HTTP
-// server on 127.0.0.1.
-//
-// Not ported: DefaultHTTPClientTest.testCloseInvalidatesSession — `URLSessionTransport` has no close();
-//   the SDK has no client-wide shutdown in 2.0 (contexts close individually).
-// Not ported: DefaultHTTPClientTest.testRetryStaticMethod — retries moved out of the transport into the
-//   SDK (`Connection`); ported as ConnectionTests.retriesTransportErrorsUntilSuccess.
-// DefaultHTTPClientTest.testDefaultHTTPResponse maps to `HTTPResponse`, which has no status message or
-//   content type in 2.0 (the SDK derives the message from the code); the remaining fields are checked.
-
 #if canImport(Darwin)
 	import Darwin
 #elseif canImport(Glibc)
@@ -53,7 +42,7 @@ import Testing
 		let response = HTTPResponse(statusCode: 200, body: Data(#"{"key": "value"}"#.utf8))
 		#expect(response.statusCode == 200)
 		#expect(response.body == Data(#"{"key": "value"}"#.utf8))
-		// Foundation's text differs by platform ("no error" on Apple, "OK" on Linux); 1.x used the same call.
+		// Foundation's text differs by platform ("no error" on Apple, "OK" on Linux).
 		#expect(Connection.statusMessage(200) == HTTPURLResponse.localizedString(forStatusCode: 200))
 	}
 
@@ -161,7 +150,7 @@ import Testing
 		#expect(body["goals"]?.arrayValue?.count == 1)
 	}
 
-	// MARK: - Real local HTTP server (1.x HTTPIntegrationTest)
+	// MARK: - Real local HTTP server
 
 	/// Exercises the real `URLSessionTransport` against a real HTTP server bound to 127.0.0.1 on an
 	/// ephemeral port: genuine TCP/HTTP requests, so this verifies the actual wire contract.

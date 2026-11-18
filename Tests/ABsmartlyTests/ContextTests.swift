@@ -1,26 +1,3 @@
-// Port of the 1.x ContextTest.swift (151 tests) to the 2.0 API. The tests are split over
-// ContextTests.swift, ContextTests+Treatments.swift, ContextTests+Publishing.swift,
-// ContextTests+Refresh.swift and ContextTests+Behaviour.swift, all in the `ContextTests` suite.
-//
-// Mapping: 1.x's pending/fulfilled/rejected data promise is a context loaded through the
-// `FakeTransport` (a `Gate` holds the GET open; a thrown `TestError(message)` arrives as
-// `.transport(message)`); the publish handler mock is the PUTs the transport records; the scheduler
-// mock is real timers with short delays; the logger mock is `LoggedEvents`.
-//
-// Not ported (or only partly ported):
-// - testJsonCustomFieldObjectUsesConfiguredVariableParser — 2.0 has no pluggable VariableParser by
-//   design (custom fields and variables are parsed by the SDK).
-// - testCompletionEventsAreDeliveredOnTheMainThread — needs `Context.deliversEventsOnMainThread`
-//   flipped to true, a process-wide test hook that every `Harness` resets to false; swift-testing
-//   runs suites in parallel, so flipping it would race with every other suite.
-// - testCloseEventKeepsItsCaseName, its `ContextEventLoggerEvent.finalize == .close` assertion — the
-//   `.finalize` alias is dropped in 2.0 by design. The `.close` delivery part is ported.
-// - testNumericUnitsKeepTheirTypeAndHashLikeJavaScript, its `setUnit(unitType:value: JSON(true))`
-//   assertions ("must be a string or a number") — 2.0's `setUnit` only accepts String, Int and
-//   Double, so a non-string, non-number UID cannot be expressed. The rest is ported.
-// - testHashingHelpers, its `Hashing.utf8Bytes` assertion — the helper is gone in 2.0 (hashing uses
-//   `String.utf8`). The base64url assertions are ported.
-
 import Foundation
 import Testing
 

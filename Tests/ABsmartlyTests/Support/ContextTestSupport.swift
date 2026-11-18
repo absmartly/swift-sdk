@@ -4,7 +4,7 @@ import Testing
 @testable import ABsmartly
 
 /// An error with a fixed message, thrown by test transports. The SDK reports it as
-/// `.transport(message)`, like 1.x reported `ABSmartlyError(message)`.
+/// `.transport(message)`.
 struct TestError: LocalizedError {
 	let message: String
 	init(_ message: String) { self.message = message }
@@ -23,8 +23,7 @@ final class Box<Value>: @unchecked Sendable {
 	func mutate(_ body: (inout Value) -> Void) { lock.withLock { body(&_value) } }
 }
 
-/// A one-shot result that async code can wait for: the 2.0 replacement for a pending PromiseKit
-/// promise (`Promise.pending()`) resolved later by the test.
+/// A one-shot result that async code can wait for, settled later by the test.
 final class Gate<Value: Sendable>: @unchecked Sendable {
 	private let lock = NSLock()
 	private var result: Result<Value, any Error>?
@@ -60,8 +59,8 @@ extension Gate where Value == HTTPResponse {
 	func fulfill(contextData: ContextData) { fulfill(data: try! JSONEncoder().encode(contextData)) }
 }
 
-/// The 1.x `ContextEventLoggerMock`: every event with the context it was for, plus an optional
-/// hook (1.x's `handleEventContextEventClosure`) called outside the lock.
+/// A recording event logger: every event with the context it was for, plus an optional hook
+/// called outside the lock.
 final class LoggedEvents: @unchecked Sendable {
 	private let lock = NSLock()
 	private var entries: [(context: ObjectIdentifier, event: Context.Event)] = []
@@ -102,12 +101,12 @@ final class LoggedEvents: @unchecked Sendable {
 		events.compactMap { if case .publish(let p) = $0 { return p } else { return nil } }
 	}
 
-	/// 1.x's `logger.clearInvocations()`.
+	/// Forgets the events recorded so far.
 	func clear() { lock.withLock { entries = [] } }
 }
 
-/// The 1.x `ContextTest` fixture: a `Harness` (fake transport, fixed clock) whose logger is a
-/// `LoggedEvents`, and helpers to create contexts the way 1.x's `createContext` did.
+/// The context test fixture: a `Harness` (fake transport, fixed clock) whose logger is a
+/// `LoggedEvents`, and helpers to create ready, loading and failed contexts.
 struct ContextEnv {
 	let harness: Harness
 	let log = LoggedEvents()
@@ -124,7 +123,7 @@ struct ContextEnv {
 	var client: ABsmartlyClient { harness.client }
 	var now: Int64 { Fixtures.now }
 
-	/// A context created ready from fixture data (1.x: `createContext` with a fulfilled promise).
+	/// A context created ready from fixture data.
 	func context(
 		_ fixture: String = "context", units: [UnitType: String] = Fixtures.units, attributes: [String: JSONValue] = [:],
 		overrides: [String: Int] = [:], customAssignments: [String: Int] = [:], options: Context.Options? = nil
@@ -143,7 +142,7 @@ struct ContextEnv {
 			options: options, data: data)
 	}
 
-	/// A context whose data is fetched through a GET the test settles later (1.x: a pending promise).
+	/// A context whose data is fetched through a GET the test settles later.
 	/// Returns once that GET is in flight, so later requests do not race it for the gated response.
 	func loadingContext(
 		units: [UnitType: String] = Fixtures.units, attributes: [String: JSONValue] = [:],
@@ -156,7 +155,7 @@ struct ContextEnv {
 		return (context, gate)
 	}
 
-	/// A context whose data load fails with `message` (1.x: a rejected promise). Returns once it failed.
+	/// A context whose data load fails with `message`. Returns once it failed.
 	func failedContext(_ message: String = "test", units: [UnitType: String] = Fixtures.units) async -> Context {
 		transport.enqueue { _ in throw TestError(message) }
 		let context = client.makeContext(units: units)
@@ -186,7 +185,7 @@ struct ContextEnv {
 	}
 
 	/// Creates a context directly, with any application and environment names, including none (the
-	/// client requires both; 1.x's `Context` init took them as optionals).
+	/// client requires both).
 	func directContext(
 		data: ContextData, units: [UnitType: String] = Fixtures.units, attributes: [String: JSONValue] = [:],
 		overrides: [String: Int] = [:], customAssignments: [String: Int] = [:], application: String? = "website",
@@ -210,7 +209,7 @@ struct ContextEnv {
 	var lastSentEvent: JSONValue? { sentEvents.last }
 }
 
-/// Exposure with 1.x's positional argument order, at the fixture time.
+/// An exposure from positional arguments, at the fixture time.
 func exposure(
 	_ id: Int, _ name: String, _ unit: String?, _ variant: Int, _ assigned: Bool, _ eligible: Bool, _ overridden: Bool,
 	_ fullOn: Bool, _ custom: Bool, _ audienceMismatch: Bool, ruleOverride: Bool = false, at time: Int64 = Fixtures.now
@@ -229,7 +228,7 @@ func attribute(_ name: String, _ value: JSONValue, at time: Int64 = Fixtures.now
 	PublishEvent.Attribute(name: name, value: value, setAt: time)
 }
 
-/// The hashed fixture units, as 1.x's `publishUnits`.
+/// The fixture units as published (UIDs hashed).
 let fixturePublishUnits: [PublishEvent.Unit] = [
 	PublishEvent.Unit(type: "email", uid: "IuqYkNRfEx5yClel4j3NbA"),
 	PublishEvent.Unit(type: "session_id", uid: "pAE3a1i5Drs5mKRNq56adA"),
@@ -246,8 +245,7 @@ func expectedBody(
 	return normalized(try! JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(event)))
 }
 
-/// Sorts a publish body's units by type and attributes by name then time, so array equality works
-/// (1.x's tests sorted the received event the same way).
+/// Sorts a publish body's units by type and attributes by name then time, so array equality works.
 func normalized(_ body: JSONValue) -> JSONValue {
 	guard case .object(var object) = body else { return body }
 	if case .array(let units)? = object["units"] {

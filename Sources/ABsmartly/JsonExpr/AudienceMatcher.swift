@@ -1,6 +1,6 @@
 import Foundation
 
-// Audience filters and assignment rules, ported from 1.5.0's AudienceMatcher.
+// Audience filters and assignment rules.
 enum AudienceMatcher {
 	/// The audience result: nil when the experiment has no audience filter (missing, `null`, `{}`
 	/// without `filter`) or the filter is not an object or array.

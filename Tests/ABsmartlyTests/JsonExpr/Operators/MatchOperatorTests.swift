@@ -3,7 +3,6 @@ import Testing
 
 @testable import ABsmartly
 
-// Ported from 1.x JsonExpr/Operators/MatchOperatorTest.swift.
 @Suite struct MatchOperatorTests {
 	private func match(_ text: JSONValue, _ pattern: JSONValue) -> JSONValue {
 		eval(apply("match", [text, pattern]))
@@ -52,9 +51,7 @@ import Testing
 	}
 
 	// No nested quantifier, but exponential backtracking on a near-miss input: the match gives up
-	// after its 0.1 s budget. 1.x also raced the call against a 5 s outer deadline on another queue;
-	// the generous 2 s bound below is kept, the outer deadline is not (a synchronous call cannot be
-	// abandoned from Swift concurrency either way).
+	// after its 0.1 s budget, well within the generous 2 s bound below.
 	@Test func overlappingAlternationTimesOut() {
 		let input = String(repeating: "a", count: 60) + "b"
 		let start = Date()

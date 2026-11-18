@@ -1,12 +1,3 @@
-// Ported from 1.x ContextDataDeserializerTest.swift, ContextEventSerializerTest.swift and
-// DefaultVariableParserTest.swift.
-//
-// Not ported: ContextDataDeserializerTest.testApplicationIsAReferenceType (the `AnyObject` half) — 1.x
-//   kept `Application` a class for source compatibility; 2.0's `ExperimentApplication` is a `Sendable`
-//   struct by design. Its equality assertion is ported in `applicationEquality`.
-// DefaultVariableParser is internal to `DataIndex` in 2.0; its tests go through `JSONValue(parsing:)`
-// (the parser it uses) and through a context's variables.
-
 import Foundation
 import Testing
 
@@ -152,7 +143,7 @@ import Testing
 	}
 
 	@Test func experimentsListIsRequired() {
-		// As 1.x: `experiments` itself is not lenient.
+		// `experiments` itself is not lenient: it must be present and an array.
 		#expect(throws: DecodingError.self) { try Self.decode("{}") }
 		#expect(throws: DecodingError.self) { try Self.decode(#"{"experiments": null}"#) }
 		#expect(throws: DecodingError.self) { try Self.decode(#"{"experiments": {}}"#) }
@@ -231,7 +222,7 @@ import Testing
 	}
 
 	@Test func numericFieldsAcceptWholeFloats() throws {
-		// JSONDecoder reads 1.0 as Int 1 (as 1.x did); a fractional value is wrong-typed.
+		// JSONDecoder reads 1.0 as Int 1; a fractional value is wrong-typed.
 		let experiment = try Self.experiment(#""id":2.0,"iteration":3e0,"split":[1,0]"#)
 		#expect(experiment.id == 2)
 		#expect(experiment.iteration == 3)
@@ -250,7 +241,7 @@ import Testing
 		#expect(reencoded == data)
 	}
 
-	// MARK: - Publish body encoding (1.x ContextEventSerializerTest)
+	// MARK: - Publish body encoding
 
 	@Test func serialize() throws {
 		let units = [
@@ -309,7 +300,7 @@ import Testing
 		let exposure = Exposure(
 			id: 0, name: "missing", unit: nil, variant: 0, exposedAt: 5, assigned: false, eligible: true,
 			overridden: false, fullOn: false, custom: false, audienceMismatch: false, ruleOverride: true)
-		// A nil unit is left out (synthesised Encodable, as 1.x).
+		// A nil unit is left out (synthesised Encodable).
 		#expect(
 			String(decoding: try encoder.encode(exposure), as: UTF8.self)
 				== #"{"assigned":false,"audienceMismatch":false,"custom":false,"eligible":true,"exposedAt":5,"fullOn":false,"id":0,"name":"missing","overridden":false,"ruleOverride":true,"variant":0}"#
@@ -332,7 +323,7 @@ import Testing
 		#expect(object["goals"]?[0]?.objectValue?.keys.contains("properties") == true)
 	}
 
-	// MARK: - Variable parsing (1.x DefaultVariableParserTest)
+	// MARK: - Variable parsing
 
 	static let expectedVariables: [String: JSONValue] = [
 		"a": 1,

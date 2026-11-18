@@ -3,10 +3,6 @@ import Testing
 
 @testable import ABsmartly
 
-// Ported from 1.x JsonExpr/ExprEvaluatorTest.swift. 1.x injected mock operators into the evaluator;
-// in 2.0 the operators are a switch in `ExprEvaluator.apply`, so the dispatch tests evaluate real
-// expressions and observe whether an argument was evaluated through `evaluationProbe`. 1.x's
-// `numberConvert` and `stringConvert` returned `JSON.null` for "no value"; 2.0 returns nil.
 @Suite struct ExprEvaluatorTests {
 	@Test func evaluateConsidersListAsAndCombinator() {
 		let evaluator = ExprEvaluator(vars: [:])
@@ -18,7 +14,7 @@ import Testing
 		#expect(evaluator.evaluate(args) == false)
 	}
 
-	// Not a 1.x test: the positive control for `evaluationProbe`, which the dispatch and
+	// The positive control for `evaluationProbe`, which the dispatch and
 	// short-circuit tests rely on to observe that an argument was not evaluated.
 	@Test func evaluationProbeIsDetectedWhenEvaluated() {
 		let marker = uniqueMarker()

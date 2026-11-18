@@ -3,8 +3,7 @@ import Testing
 
 @testable import ABsmartly
 
-// Custom fields, numeric units, misuse, logger re-entrancy and system attributes (the rest of 1.x
-// ContextTest).
+// Custom fields, numeric units, misuse, logger re-entrancy and system attributes.
 extension ContextTests {
 	// MARK: - Custom fields
 
@@ -102,7 +101,7 @@ extension ContextTests {
 		#expect(context.customFieldValue("flag", in: "exp")?.boolValue == true)
 	}
 
-	// 1.x: `setData` is internal. In 2.0 the equivalent is the internal `install(_:)`.
+	// Installing data is internal (`install(_:)`), reachable here only through `@testable`.
 	@Test func setDataIsNotPublic() {
 		let env = ContextEnv()
 		let context = env.context()
@@ -137,7 +136,7 @@ extension ContextTests {
 		gate.reject(TestError("load failed"))
 		try? await context.ready()
 
-		// 1.x: isReady() and isFailed() both false while the error is logged.
+		// The error is logged while the context is still loading, before it is marked failed.
 		#expect(stateWhenLogged.value == .loading)
 		#expect(context.state == .failed(.transport("load failed")))
 	}

@@ -1,12 +1,3 @@
-// Ported from 1.x DefaultClientTest.swift (the SDK's request building, status handling and
-// (de)serialisation, now `Connection`) and the retry part of DefaultHTTPClientTest.swift
-// (`DefaultHTTPClient.retry`, now `Connection.send`'s loop over the `Transport`).
-//
-// Not ported: DefaultClientTest.testClose — neither the client nor the transport has a close() in 2.0.
-// Not ported: DefaultHTTPClientTest.testRetryStaticMethod as a static generic helper — 2.0 has no
-//   PromiseKit `retry(times:delay:body:)`; the same assertions (fail twice, succeed on attempt 3) are
-//   `retriesTransportErrorsUntilSuccess`.
-
 import Foundation
 #if canImport(FoundationNetworking)
 	import FoundationNetworking
@@ -170,7 +161,7 @@ import Testing
 	}
 
 	@Test func endpointIsAppendedAsGiven() {
-		// Like 1.x's `endpoint + "/context"`: a trailing slash is kept.
+		// "/context" is appended to the endpoint as given: a trailing slash is kept, as in 1.5.0.
 		let transport = FakeTransport()
 		var configuration = Self.configuration(transport: transport)
 		configuration.endpoint = URL(string: "https://test.absmartly.io/v1/")!
@@ -421,9 +412,9 @@ import Testing
 		#expect(line.contains("'\(SDKVersion.version)'"))
 	}
 
-	// MARK: - Retry policy (1.x DefaultHTTPClient.retry)
+	// MARK: - Retry policy
 
-	// 1.x: a request is attempted, then retried while `attempt <= retries` after a failure without a
+	// A request is attempted, then retried while `attempt <= retries` after a failure without a
 	// response; a 502/503 counts as such a failure only while `attempt < retries`, so the
 	// `retries`-th attempt's 502/503 is the final response (then rejected as an HTTP error).
 
@@ -476,7 +467,7 @@ import Testing
 	}
 
 	@Test func retriesTransportErrorsUntilSuccess() async throws {
-		// 1.x testRetryStaticMethod: retry(times: 3) failing twice succeeds on attempt 3.
+		// With 3 retries, two transport failures are followed by success on the third attempt.
 		let (connection, transport) = Self.connection(retries: 3)
 		transport.enqueue { _ in throw URLError(.networkConnectionLost) }
 		transport.enqueue { _ in throw URLError(.networkConnectionLost) }

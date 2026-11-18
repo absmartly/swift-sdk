@@ -3,7 +3,7 @@ import Testing
 
 @testable import ABsmartly
 
-// Treatments and variables (1.x ContextTest, peekTreatment ... getTreatmentCallsEventLogger).
+// Treatments and variables.
 extension ContextTests {
 	// MARK: - Peek
 
@@ -157,7 +157,7 @@ extension ContextTests {
 			#expect(env.log.events[i] == .exposure(exposure))
 		}
 
-		// verify not called again with the same exposure
+		// Each exposure is logged once: repeat reads log nothing.
 		env.log.clear()
 		_ = context.variableValue("banner.border")
 		_ = context.variableValue("banner.size")
@@ -409,7 +409,7 @@ extension ContextTests {
 		#expect(context.treatment(for: "not_found") == 0)
 		#expect(context.pendingEventCount == 1 + data.experiments.count)
 
-		// call again
+		// Repeat reads return the same variants; their exposures are already queued.
 		for experiment in data.experiments {
 			if let variant = ContextFixtures.expectedVariants[experiment.name] {
 				#expect(context.treatment(for: experiment.name) == variant)
@@ -490,7 +490,7 @@ extension ContextTests {
 			#expect(env.log.events[i] == .exposure(exposure))
 		}
 
-		// verify not called again with the same exposure
+		// Each exposure is logged once: repeat reads log nothing.
 		env.log.clear()
 		_ = context.treatment(for: "exp_test_ab")
 		_ = context.treatment(for: "not_found")

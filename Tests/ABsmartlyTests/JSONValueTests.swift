@@ -1,14 +1,3 @@
-// Ported from 1.x JSONComparisonTest.swift (SwiftyJSON `JSON` equality, now `JSONValue`), plus the
-// `JSONValue` type's own tests.
-//
-// Not ported: the ordering assertions (<, >, <=, >=) of JSONComparisonTest.testNumberOrdering,
-//   testParsedValuesCompareLikeLiterals, testBoolIsNotANumber, testBoolComparisons and
-//   testStringComparisons — `JSONValue` is not `Comparable` by design (SwiftyJSON's operators were only
-//   kept for 1.x source compatibility; the SDK orders values with the expression evaluator's own
-//   comparison, covered by the JsonExpr tests). Their equality assertions are ported below.
-// Not ported: JSONComparisonTest's `.type` checks (`.number`/`.bool`) as such — `JSONValue` has cases
-//   instead of a type enum; mapped to case checks.
-
 import Foundation
 import Testing
 
@@ -34,7 +23,7 @@ private func J(_ value: JSONValue) -> JSONValue { value }
 		return hasher.finalize()
 	}
 
-	// MARK: - 1.x JSONComparisonTest (equality)
+	// MARK: - Equality
 
 	@Test func numberEquality() {
 		#expect(J(1) == J(1))

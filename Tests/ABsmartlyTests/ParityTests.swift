@@ -6,7 +6,7 @@ import Testing
 // Replays the parity probe on 2.0 and compares it with what 1.5.0 recorded
 // (Resources/parity/probe-1.5.0.json, written by Tools/ParityRecorder against the pinned 1.5.0
 // commit). The steps mirror Tools/ParityRecorder/Sources/ParityRecorder/main.swift exactly; keep them
-// in sync. Timestamps are dropped on both sides and units sorted by type (1.x publishes them in
+// in sync. Timestamps are dropped on both sides and units sorted by type (1.5.0 publishes them in
 // dictionary order); everything else must be identical.
 @Suite struct ParityTests {
 	static let timestampKeys: Set<String> = ["publishedAt", "exposedAt", "achievedAt", "setAt"]

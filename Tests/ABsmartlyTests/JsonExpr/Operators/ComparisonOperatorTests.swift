@@ -2,12 +2,6 @@ import Testing
 
 @testable import ABsmartly
 
-// Ported from 1.x JsonExpr/Operators/EqualsOperatorTest.swift, GreaterThanOperatorTest.swift,
-// GreaterThanOrEqualOperatorTest.swift, LessThanOperatorTest.swift and
-// LessThanOrEqualOperatorTest.swift. 1.x also asserted the mock evaluator's `evaluate` and
-// `compare` call counts and arguments; those are internals of the switch in 2.0. What they pinned
-// is kept: a null left operand stops before the right one is evaluated (checked with an
-// `evaluationProbe`), and each result comes from comparing the two operands.
 @Suite struct ComparisonOperatorTests {
 	private func rightSkippedWhenLeftIsNull(_ op: String, _ marker: String) -> Bool {
 		let result = eval([op: [["value": .null], evaluationProbe(marker)]])

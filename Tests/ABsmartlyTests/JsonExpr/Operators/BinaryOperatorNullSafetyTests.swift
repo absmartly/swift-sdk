@@ -2,8 +2,6 @@ import Testing
 
 @testable import ABsmartly
 
-// Ported from 1.x JsonExpr/Operators/BinaryOperatorNullSafetyTest.swift. Where 1.x asserted
-// `result.boolValue` is false, the result is also pinned to null, which is what 1.5.0 returns.
 @Suite struct BinaryOperatorNullSafetyTests {
 	@Test func equalsNullNull() {
 		#expect(eval(apply("eq", [.null, .null])) == .null)

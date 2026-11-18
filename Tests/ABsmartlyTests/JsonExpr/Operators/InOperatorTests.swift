@@ -2,10 +2,6 @@ import Testing
 
 @testable import ABsmartly
 
-// Ported from 1.x JsonExpr/Operators/InOperatorTest.swift. 1.x also asserted the mock evaluator's
-// `evaluate`, `stringConvert` and `compare` call counts and arguments (internals of 2.0's switch);
-// the results are asserted unchanged, and an array haystack's early exit on the first match is
-// checked by result only.
 @Suite struct InOperatorTests {
 	@Test func string() {
 		#expect(eval(apply("in", ["abcdefghijk", "abc"])).isTrue)

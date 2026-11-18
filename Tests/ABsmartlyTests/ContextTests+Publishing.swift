@@ -5,8 +5,7 @@ import Testing
 
 private let ok = HTTPResponse(statusCode: 200, body: Data("{}".utf8))
 
-// Goals, publish and close (1.x ContextTest, testTrack ... testCloseStopsRefreshTimer, and the
-// publish/close fixes).
+// Goals, publish and close.
 extension ContextTests {
 	// MARK: - Goals
 

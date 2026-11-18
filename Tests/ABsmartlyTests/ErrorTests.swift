@@ -1,12 +1,3 @@
-// Ported from 1.x PublicErrorFormattingTest.swift: formats SDK errors the way an app does, through
-// the public API only (no `@testable`). On Linux with Swift 6.0 and 6.1, `localizedDescription`
-// crashed for class-based errors; 2.0's error is an enum, and transport errors that are classes are
-// read safely when wrapped.
-//
-// Not ported: PublicErrorFormattingTest.testLocalizedDescriptionOfABSmartlyError's `ABSmartlyError("…")`
-//   initialiser and `errorMessage` property — 2.0's `ABsmartlyError` is an enum with fixed cases; the
-//   formatting assertions are ported per case below.
-
 import Foundation
 import Testing
 

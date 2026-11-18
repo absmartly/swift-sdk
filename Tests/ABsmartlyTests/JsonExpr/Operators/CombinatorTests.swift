@@ -2,9 +2,6 @@ import Testing
 
 @testable import ABsmartly
 
-// Ported from 1.x JsonExpr/Operators/AndCombinatorTest.swift and OrCombinatorTest.swift. 1.x counted
-// the mock evaluator's `evaluate` and `booleanConvert` calls; here short-circuiting is checked by
-// putting an `evaluationProbe` after the deciding item and asserting it was never evaluated.
 @Suite struct AndCombinatorTests {
 	@Test func combineTrue() {
 		#expect(eval(apply("and", [true])).isTrue)

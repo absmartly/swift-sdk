@@ -22,8 +22,7 @@ enum LogCapture {
 }
 
 /// An expression that, when evaluated, logs a message containing `marker` (an invalid regex) and
-/// gives null. Used where 1.x asserted on a mock evaluator's `evaluate` calls: 2.0's operators are
-/// not injectable, so "was this argument evaluated" is observed through the log instead.
+/// gives null. Operators take no injectable evaluator, so "was this argument evaluated" is observed through the log instead.
 func evaluationProbe(_ marker: String) -> JSONValue {
 	LogCapture.install()
 	return ["match": [["value": "x"], ["value": .string("[" + marker)]]]

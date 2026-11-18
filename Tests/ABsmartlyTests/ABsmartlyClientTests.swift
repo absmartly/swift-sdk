@@ -1,13 +1,3 @@
-// Ported from 1.x ABSmartlySDKTest.swift and ContextConfigTest.swift.
-//
-// Not ported: ABsmartlySDKTest.testThrowsWithInvalidConfig — 2.0 has no `Client` to leave out ("Missing
-//   Client instance"): the client is the SDK itself, and the transport defaults to URLSessionTransport.
-// Not ported: ABsmartlySDKTest.testClose — 2.0's client has no close(); contexts are closed individually
-//   and the transport has no lifecycle.
-// Not ported: ABsmartlySDKTest.testBackwardsCompatibility — ClientConfig/DefaultClient/ABsmartlyConfig were
-//   replaced by ABsmartlyClient.Configuration by design (no 1.x compat shim, decision 7).
-// ContextConfig no longer exists: its tests are ported to the creation parameters that replace it.
-
 import Foundation
 #if canImport(FoundationNetworking)
 	import FoundationNetworking
@@ -204,7 +194,7 @@ import Testing
 	}
 
 	@Test func customTransportServesFetchAndContextCreation() async throws {
-		// 1.x's custom ContextDataProvider is a custom Transport in 2.0.
+		// A custom Transport serves both the data fetch and context creation.
 		let transport = FakeTransport(contextData: Self.emptyData)
 		var configuration = ABsmartlyClient.Configuration(
 			endpoint: Self.endpoint, apiKey: "test-api-key", application: "website", environment: "production")
@@ -304,7 +294,7 @@ import Testing
 		#expect(context.attribute("app_version") == nil)
 	}
 
-	// MARK: - Context creation parameters (1.x ContextConfig)
+	// MARK: - Context creation parameters
 
 	@Test func setUnit() {
 		let context = Harness().context(data: ContextData(), units: [.sessionID: "0ab1e23f4eee"])

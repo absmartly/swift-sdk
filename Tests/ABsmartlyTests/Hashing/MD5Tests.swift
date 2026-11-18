@@ -2,9 +2,6 @@ import Testing
 
 @testable import ABsmartly
 
-// Ported from 1.x Internal/MD5Test.swift. 1.x had `Hashing.hash(_:) -> String` and
-// `Hashing.hashBytes(_:) -> [UInt8]`; 2.0 has only `Hashing.hashUnit(_:) -> [UInt8]` (the ASCII
-// bytes of the base64url MD5), so `hash` is that decoded as a string.
 @Suite struct MD5Tests {
 	let testCases: [(input: String, expected: String)] = [
 		("", "1B2M2Y8AsgTpgAmY7PhCfg"),

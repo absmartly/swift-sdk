@@ -3,7 +3,7 @@ import Testing
 
 @testable import ABsmartly
 
-// Not ported from 1.x: edge tables pinning 2.0 to 1.5.0's answers (which follow the javascript-sdk
+// Edge tables pinning 2.0 to 1.5.0's answers (which follow the javascript-sdk
 // reference semantics). Every expected value below was measured by running 1.5.0 itself
 // (swift-sdk at 1.5.0, Linux) on the same input.
 //

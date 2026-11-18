@@ -1,7 +1,3 @@
-// Port of the 1.x ConcurrencyTests.swift (7 tests) to the 2.0 API. Work that 1.x dispatched onto a
-// concurrent DispatchQueue runs in a task group here, which spreads it over the cooperative pool's
-// threads in the same way. Every test is ported.
-
 import Foundation
 import Testing
 

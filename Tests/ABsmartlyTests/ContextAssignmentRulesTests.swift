@@ -1,12 +1,3 @@
-// Port of the 1.x ContextAssignmentRulesTest.swift (30 tests) to the 2.0 API.
-//
-// Partly ported:
-// - testSameOutcomeRevalidationIsNotRepeated, its `matcher.evaluations` counts — 1.x injected a
-//   subclassed `AudienceMatcher` to count audience evaluations; 2.0's matcher is a stateless enum
-//   with no injection point, by design. The observable assertions (same variant, peek and variable
-//   on every read, a single exposure across an unrelated attribute change and a refresh whose rules
-//   changed without changing the outcome) are ported.
-
 import Foundation
 import Testing
 
@@ -54,7 +45,7 @@ import Testing
 
 	let env = ContextEnv()
 
-	/// 1.x's `createContext`: application "website", the given environment (or none), one
+	/// A context with application "website", the given environment (or none), one
 	/// `session_id` unit unless `unit` is nil.
 	func createContext(
 		_ data: ContextData, unit: String? = "unit-1", environment: String? = "production",
@@ -427,8 +418,7 @@ import Testing
 
 	// A revalidation that keeps the outcome keeps the cached assignment: after an unrelated attribute
 	// change, and after a refresh whose rules changed without changing the outcome, every read gives
-	// the same variant and no new exposure is queued. (1.x also counted audience evaluations through
-	// an injected matcher; see the note at the top of the file.)
+	// the same variant and no new exposure is queued.
 	@Test func sameOutcomeRevalidationIsNotRepeated() async throws {
 		let audience = "{\"filter\":[{\"eq\":[{\"var\":\"country\"},{\"value\":\"DE\"}]}]}"
 		let first = Self.contextData(

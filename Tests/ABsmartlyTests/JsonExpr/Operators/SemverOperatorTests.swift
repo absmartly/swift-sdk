@@ -3,12 +3,6 @@ import Testing
 
 @testable import ABsmartly
 
-// Ported from 1.x JsonExpr/Operators/SemverOperatorTest.swift.
-//
-// Not ported: testNumberConversionIsLocaleIndependent — it set the 1.x evaluator's public
-// `formatter.locale` to ar_EG/fa_IR/de_DE; 2.0's formatter is a private implementation detail with
-// no way to change its locale. `jsNumberString` (what semver uses for numbers) never touches a
-// formatter, and `numberConversionMatchesJavaScript` pins its output.
 @Suite struct SemverOperatorTests {
 	let evaluator = ExprEvaluator(vars: [:])
 

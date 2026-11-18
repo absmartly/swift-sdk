@@ -3,8 +3,7 @@ import Testing
 
 @testable import ABsmartly
 
-// Refresh (1.x ContextTest, testRefresh ... testRefreshClearsAssignmentCacheForIterationChange, and
-// the refresh fixes).
+// Refresh.
 extension ContextTests {
 	@Test func refresh() async throws {
 		let env = ContextEnv()
@@ -151,7 +150,7 @@ extension ContextTests {
 	}
 
 	/// Refreshes with `fixture` after reading `experimentName` (expected `before`), then expects
-	/// `after` and one more exposure: the shared shape of the 1.x cache-clearing refresh tests.
+	/// `after` and one more exposure: the shared shape of the cache-clearing refresh tests.
 	private func refreshChangesAssignment(
 		_ experimentName: String, before: Int, fixture: String, after: Int
 	) async throws {
@@ -257,7 +256,7 @@ extension ContextTests {
 		var (context, gate): (Context?, Gate<HTTPResponse>) = await env.loadingContext()
 		// `var` (Swift 6.0 has no `weak let`), cleared below so newer compilers see it mutated.
 		weak var weakContext = context
-		// 1.x kept only the waitUntilReady() promise; here the waiting task is all that is kept.
+		// Only the waiting task holds the context (weakly), so nothing else keeps it alive.
 		let ready = Task { [weak context] () -> Context.State? in
 			guard let context else { return nil }
 			try await context.ready()

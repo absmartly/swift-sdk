@@ -673,7 +673,8 @@ public final class Context: Sendable {
 		return stream
 	}
 
-	// Delivers an exposure or goal just queued, then starts the publish timer.
+	// Exposures and goals reach the logger synchronously on the caller's thread, so a logger sees
+	// each one before the call that queued it returns.
 	private func didQueue(_ event: Event) {
 		emit(event, onMain: false)
 		storage.withLock { schedulePublish(&$0) }

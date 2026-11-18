@@ -2,7 +2,6 @@ import Testing
 
 @testable import ABsmartly
 
-// Ported from 1.x JsonExpr/JsonExprTest.swift.
 @Suite struct JsonExprTests {
 	static let John: [String: JSONValue] = ["age": 20, "language": "en-US", "returning": false]
 	static let Terry: [String: JSONValue] = ["age": 20, "language": "en-GB", "returning": true]

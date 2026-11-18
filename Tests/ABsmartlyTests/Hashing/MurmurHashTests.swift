@@ -2,7 +2,6 @@ import Testing
 
 @testable import ABsmartly
 
-// Ported from 1.x Internal/MurmurHashTest.swift.
 @Suite struct MurmurHashTests {
 	private func murmur(_ input: String, _ seed: UInt32) -> UInt32 {
 		MurmurHash.hash(Array(input.utf8), seed: seed)

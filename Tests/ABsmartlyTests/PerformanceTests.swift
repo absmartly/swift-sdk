@@ -3,10 +3,6 @@ import Testing
 
 @testable import ABsmartly
 
-// Ported from 1.x PerformanceTests.swift. 1.x wrapped each workload in XCTest's `measure`, which
-// runs the block 10 times and reports timings without asserting on them. swift-testing has no
-// `measure`, so each workload runs 10 times (`measured`) under a generous 10 s bound, which only a
-// pathological regression (or a hang) would hit; the 1.x assertions on the results are kept.
 @Suite(.timeLimit(.minutes(1))) struct PerformanceTests {
 	private static let iterations = 10
 	private static let bound: TimeInterval = 10
@@ -79,7 +75,7 @@ import Testing
 		#expect(queuedDuringMeasure % 100 == 0)
 	}
 
-	// 1.x had no assertion here; the peeks are also checked to queue nothing.
+	// The peeks are also checked to queue nothing.
 	@Test func variableAccessPerformance() {
 		let context = Harness().context()
 		let variableKeys = ["banner.border", "banner.size", "button.color", "submit.color", "submit.shape"]
@@ -119,7 +115,7 @@ import Testing
 		#expect(context.customAssignments["exp_50"] != nil)
 	}
 
-	// Setting the same UID again is accepted, so the 10 runs leave 100 units as in 1.x.
+	// Setting the same UID again is accepted, so the 10 runs leave 100 units.
 	@Test func unitSettingPerformance() throws {
 		let context = Harness().context(units: [:])
 

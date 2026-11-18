@@ -2,7 +2,6 @@ import Testing
 
 @testable import ABsmartly
 
-// Ported from 1.x VariantAssignerTest.swift.
 @Suite struct VariantAssignerTests {
 	@Test func chooseVariant() {
 		#expect(VariantAssigner.chooseVariant([0, 1], 0) == 1)

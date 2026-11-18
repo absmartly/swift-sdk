@@ -2,8 +2,6 @@ import Testing
 
 @testable import ABsmartly
 
-// Ported from 1.x AudienceMatcherTest.swift. 1.x's `evaluate` took the audience string; 2.0 parses
-// it once (`parseAudience`) and evaluates the parsed filter.
 @Suite struct AudienceMatcherTests {
 	private func evaluate(_ audience: String, _ attributes: [String: JSONValue]) -> Bool? {
 		AudienceMatcher.evaluate(AudienceMatcher.parseAudience(audience), attributes)
@@ -15,8 +13,7 @@ import Testing
 		#expect(evaluate("null", [:]) == nil)
 	}
 
-	// 1.x installed `Logger.errorObserver` for the duration of the test; 2.0's log observer is
-	// process-wide, so the shared capture is filtered for messages about these two audiences.
+	// The log observer is process-wide, so the shared capture is filtered for messages about these two audiences.
 	@Test func emptyAudienceIsNotLoggedAsAnError() {
 		LogCapture.install()
 		#expect(evaluate("null", [:]) == nil)

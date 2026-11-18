@@ -2,10 +2,6 @@ import Testing
 
 @testable import ABsmartly
 
-// Ported from 1.x JsonExpr/Operators/NotOperatorTest.swift, NullOperatorTest.swift,
-// ValueOperatorTest.swift and VarOperatorTest.swift. 1.x's mock evaluator returned "abc" for the
-// path "a/b/c"; here the variables hold that value. "evaluate is not called" (value, var) is
-// checked by passing an `evaluationProbe` as the argument.
 @Suite struct NotOperatorTests {
 	@Test func `false`() {
 		#expect(eval(unary("not", false)).isTrue)
