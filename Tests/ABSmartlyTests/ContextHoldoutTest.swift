@@ -1510,21 +1510,66 @@ final class ContextHoldoutTest: XCTestCase {
 		XCTAssertEqual(0, context.getPendingCount())
 	}
 
-	// An override cached with holdout coverage is rebuilt once a refresh removes the experiment, so
-	// the retired holdout's exposure is not published.
-	func testOverrideCachedWithCoverageDropsItWhenTheExperimentIsRemoved() {
+	// An up-to-date override stays cached when a refresh removes its experiment, as in JavaScript and
+	// Java: an exposed one is not exposed again, and a peeked one still publishes its pinned exposures.
+	func testOverrideKeepsItsCachedAssignmentWhenTheExperimentIsRemoved() {
+		let data = contextData(
+			[experiment(1, "exp_gone", holdoutIds: [11])], holdouts: [holdout(11, "holdout_gone", seeds: Self.holdoutA)])
+		let own = exposure(1, "exp_gone", 1, assigned: false, overridden: true)
+
+		let exposed = createContext(data) { $0.setOverride(experimentName: "exp_gone", variant: 1) }
+		XCTAssertEqual(1, exposed.getTreatment("exp_gone"))
+		exposed.setData(contextData([]))
+		XCTAssertEqual(1, exposed.getTreatment("exp_gone"))
+		XCTAssertEqual([own, holdoutExposure(11, "holdout_gone", 0)], loggedExposures())
+
+		setUp()
+		let peeked = createContext(data) { $0.setOverride(experimentName: "exp_gone", variant: 1) }
+		XCTAssertEqual(1, peeked.peekTreatment("exp_gone"))
+		peeked.setData(contextData([]))
+		XCTAssertEqual(1, peeked.getTreatment("exp_gone"))
+		XCTAssertEqual([own, holdoutExposure(11, "holdout_gone", 0)], loggedExposures())
+	}
+
+	// A same-iteration rename keeps the arm, and the exposure carries the name of the definition the
+	// assignment was resolved with, as in JavaScript.
+	func testHoldoutExposureUsesTheResolvedDefinitionsName() {
 		let context = createContext(
+			contextData([experiment(1, "exp_a", holdoutIds: [11])], holdouts: [holdout(11, "old_name", seeds: Self.holdoutA)]))
+		XCTAssertEqual(0, context.peekTreatment("exp_a"))
+
+		context.setData(
 			contextData(
-				[experiment(1, "exp_gone", holdoutIds: [11])], holdouts: [holdout(11, "holdout_gone", seeds: Self.holdoutA)])
-		) { $0.setOverride(experimentName: "exp_gone", variant: 1) }
+				[experiment(1, "exp_a", holdoutIds: [11]), experiment(2, "exp_b", holdoutIds: [11])],
+				holdouts: [holdout(11, "new_name", seeds: Self.holdoutA)]))
 
-		XCTAssertEqual(1, context.peekTreatment("exp_gone"))
+		XCTAssertEqual(0, context.getTreatment("exp_b"))
+		XCTAssertEqual([holdoutExposure(11, "new_name", 0)], loggedExposures())
+	}
 
-		context.setData(contextData([]))
+	// The publisher is called without holding the context's lock, so one that waits on a refresh (which
+	// installs data under that lock) finishes.
+	func testPublisherWaitingOnRefreshDoesNotDeadlock() throws {
+		let provider = ContextDataProviderMock()
+		provider.getContextDataReturnValue = Promise<ContextData>.value(contextData([experiment(1, "exp_a")]))
+		let config = ContextConfig()
+		config.setUnit(unitType: Self.unitType, uid: Self.uid)
+		let context = Context(
+			config: config, clock: clock, scheduler: scheduler, handler: handler, provider: provider, logger: logger,
+			parser: DefaultVariableParser(), matcher: AudienceMatcher(),
+			promise: Promise<ContextData>.value(contextData([experiment(1, "exp_a")])))
+		let refreshed = DispatchSemaphore(value: 0)
+		handler.publishEventClosure = { _ in
+			DispatchQueue.global().async {
+				_ = context.refresh().done(on: DispatchQueue.global()) { refreshed.signal() }
+			}
+			XCTAssertEqual(.success, refreshed.wait(timeout: .now() + 5))
+			return Promise<Void>.value(())
+		}
 
-		XCTAssertEqual(1, context.getTreatment("exp_gone"))
-		XCTAssertEqual(
-			[Exposure(0, "exp_gone", nil, 1, now, false, true, true, false, false, false)], loggedExposures())
+		context.track("goal")
+		try context.publish().wait()
+		XCTAssertEqual(1, handler.publishEventCallsCount)
 	}
 
 	// The override fast path revalidates coverage too: a holdout added by a refresh rebuilds the

@@ -512,15 +512,16 @@ public final class Context {
 	// the assignment was resolved. All of them are queued before the logger hears of any, so a logger
 	// that closes the context cannot flush between them.
 	private func triggerExposures(_ assignment: Assignment) {
-		var queued: [Assignment] = []
+		var queued: [(Assignment, name: String)] = []
 		if !assignment.suppressed || assignment.overridden || assignment.ruleOverride {
-			queued.append(assignment)
+			queued.append((assignment, assignment.name))
 		}
 		for holdout in assignment.holdouts ?? [] {
 			if let arm = holdout.arm,
 				arm.exposed.compareExchange(expected: false, desired: true, ordering: .acquiringAndReleasing).0
 			{
-				queued.append(arm)
+				// Named by the definition the assignment was resolved with, as in JavaScript.
+				queued.append((arm, holdout.definition.name))
 			}
 		}
 		queueExposures(queued)
@@ -550,11 +551,11 @@ public final class Context {
 		return (assignment, claimed)
 	}
 
-	private func queueExposures(_ assignments: [Assignment]) {
+	private func queueExposures(_ assignments: [(Assignment, name: String)]) {
 		guard !assignments.isEmpty else { return }
-		let exposures = assignments.map { assignment in
+		let exposures = assignments.map { assignment, name in
 			Exposure(
-				assignment.id, assignment.name, assignment.unitType, assignment.variant,
+				assignment.id, name, assignment.unitType, assignment.variant,
 				clock.millis(), assignment.assigned, assignment.eligible,
 				assignment.overridden, assignment.fullOn, assignment.custom, assignment.audienceMismatch,
 				ruleOverride: assignment.ruleOverride)
@@ -779,8 +780,10 @@ public final class Context {
 				}
 
 				if eventCount > 0 {
+					// The units and attributes are read under `contextLock`, but the publisher is called
+					// after releasing it, so a publisher that waits on the context (or a refresh, which
+					// installs data under `contextLock`) cannot deadlock.
 					contextLock.lock()
-					defer { contextLock.unlock() }
 					localUnits = units.map {
 						let hashBytes = getUnitHash($0.key, $0.value)
 						if let hashString = String(bytes: hashBytes, encoding: .ascii) {
@@ -791,6 +794,7 @@ public final class Context {
 						}
 					}
 					localAttributes = attributes
+					contextLock.unlock()
 
 					let event = PublishEvent(
 						true,
@@ -999,9 +1003,9 @@ public final class Context {
 
 		if let assignment = assignmentCache[experimentName] {
 			if let override = overrides[experimentName] {
-				let coverageMatches =
-					experiment.map { holdoutSetMatches($0, assignment) } ?? (assignment.holdouts == nil)
-				if assignment.overridden && assignment.variant == override && coverageMatches {
+				if assignment.overridden && assignment.variant == override
+					&& (experiment == nil || holdoutSetMatches(experiment!, assignment))
+				{
 					// override up-to-date
 					return assignment
 				}
