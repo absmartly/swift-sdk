@@ -228,8 +228,8 @@ final class ExprEvaluator {
 		}
 	}
 
-	// Arrays and objects compare equal like Foundation collections: numbers and booleans by numeric
-	// value, strings by UTF-16 code units.
+	// Arrays and objects compare equal like 1.5.0's Foundation collections: numbers exactly by value,
+	// booleans with booleans (and, on Apple platforms only, with 0/1), strings by UTF-16 code units.
 	static func deepEquals(_ lhs: JSONValue, _ rhs: JSONValue) -> Bool {
 		switch (lhs, rhs) {
 		case (.array(let l), .array(let r)):
@@ -242,9 +242,17 @@ final class ExprEvaluator {
 			return true
 		case (.bool(let l), .bool(let r)):
 			return l == r
-		case (.bool, _), (_, .bool):
-			// Parsed JSON booleans never equal numbers inside Foundation collections (1.5.0).
-			return false
+		case (.bool(let b), let other), (let other, .bool(let b)):
+			// As JSONSerialization-parsed Foundation collections compared in 1.5.0 on each platform:
+			// Apple Foundation equates a boolean with 0/1, Linux Foundation never equates it with a
+			// number (measured in the macOS CI lanes and on Linux).
+			#if canImport(Darwin)
+				guard let n = scalarNumber(other) else { return false }
+				return NSArray(object: NSNumber(value: b)).isEqual(to: [n])
+			#else
+				_ = (b, other)
+				return false
+			#endif
 		default:
 			guard let l = scalarNumber(lhs), let r = scalarNumber(rhs) else { return false }
 			return NSArray(object: l).isEqual(to: [r])
