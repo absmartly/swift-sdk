@@ -5,31 +5,26 @@
 #if canImport(SwiftUI)
 	import SwiftUI
 
-	/// Holds the context a view hierarchy reads, and re-renders its readers when the context becomes
-	/// ready, refreshes or closes.
+	/// Re-renders readers when the currently supplied context becomes ready, refreshes or closes.
 	@MainActor
 	final class ContextObserver: ObservableObject {
-		let context: Context?
 		@Published private(set) var revision = 0
-		private var task: Task<Void, Never>?
 
-		init(context: Context?) {
-			self.context = context
-			guard let context else { return }
-			task = Task { [weak self] in
-				for await event in context.events {
-					switch event {
-					case .ready, .refresh, .close:
-						self?.revision += 1
-					default:
-						break
-					}
+		func observe(_ context: Context?) async {
+			guard let context, !Task.isCancelled else { return }
+			let events = context.events
+			// Re-read after subscribing: readiness may have changed since the view last rendered.
+			revision += 1
+			for await event in events {
+				// A replaced context may still have buffered events when its task is cancelled.
+				guard !Task.isCancelled else { return }
+				switch event {
+				case .ready, .refresh, .close:
+					revision += 1
+				default:
+					break
 				}
 			}
-		}
-
-		deinit {
-			task?.cancel()
 		}
 	}
 
@@ -46,16 +41,17 @@
 	}
 
 	private struct ContextModifier: ViewModifier {
-		@StateObject private var observer: ContextObserver
-
-		init(context: Context?) {
-			_observer = StateObject(wrappedValue: ContextObserver(context: context))
-		}
+		let context: Context?
+		@StateObject private var observer = ContextObserver()
 
 		func body(content: Content) -> some View {
 			content
-				.environment(\.absmartlyContext, observer.context)
+				.environment(\.absmartlyContext, context)
 				.environment(\.absmartlyRevision, observer.revision)
+				// Restart only the subscription, not the identity (and state) of the descendants.
+				.task(id: context.map(ObjectIdentifier.init)) {
+					await observer.observe(context)
+				}
 		}
 	}
 
