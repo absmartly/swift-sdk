@@ -1044,3 +1044,23 @@ extension ContextSwitchbackLifecycleTest {
 			[exposure(custom, SB.anchor, custom: true)], publishExposures(context))
 	}
 }
+
+extension ContextSwitchbackLifecycleTest {
+	// Before the anchor a switchback's slot is the bare experiment name. Refreshed into a unit
+	// experiment, the name must not serve that silent control: the unit draw is resolved and exposed.
+	func testPreAnchorSlotIsNotReusedByAUnitExperiment() {
+		var preAnchor = SB.switchback(arms: 2, periodMs: SB.hour)
+		preAnchor["switchbackStartAt"] = SB.anchor + 10 * SB.hour
+		let context = createContext(SB.data([preAnchor]))
+		clock.now = SB.anchor + 10
+		XCTAssertEqual(0, context.getTreatment("exp_sb"))
+		XCTAssertEqual(0, context.getPendingCount())
+
+		var toUnit = SB.switchback(arms: 2, periodMs: SB.hour)
+		toUnit["randomizationType"] = "unit"
+		toUnit["split"] = [0.0, 1.0]
+		refresh(context, SB.data([toUnit]))
+		XCTAssertEqual(1, context.getTreatment("exp_sb"))
+		XCTAssertEqual([exposure(1, SB.anchor + 10)], publishExposures(context))
+	}
+}
