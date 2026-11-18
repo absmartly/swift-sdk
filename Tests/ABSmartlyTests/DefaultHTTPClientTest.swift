@@ -120,9 +120,15 @@ final class DefaultHTTPClientTest: XCTestCase {
 		_ = httpClient.close()
 	}
 
-	func testCloseInvalidatesSession() throws {
+	// As in v1.4.0, close() resolves without invalidating the session: a later request still works.
+	func testCloseKeepsTheSessionUsable() throws {
 		let config = DefaultHTTPClientConfig()
+		config.retries = 0
 		let httpClient = DefaultHTTPClient(config: config)
+		let server = try LocalHTTPServer()
+		server.getResponseBody = "ok"
+		try server.start()
+		defer { server.stop() }
 
 		let closePromise = httpClient.close()
 
@@ -134,15 +140,16 @@ final class DefaultHTTPClientTest: XCTestCase {
 
 		wait(for: [expectation], timeout: 5.0)
 
-		let requestExpectation = XCTestExpectation(description: "Request after close fails")
+		let requestExpectation = XCTestExpectation(description: "Request after close succeeds")
 
-		_ = httpClient.get(url: "https://example.test/200", query: nil, headers: nil)
-			.done { _ in
-				XCTFail("Request should fail after close")
+		_ = httpClient.get(url: "http://127.0.0.1:\(server.port)/context", query: nil, headers: nil)
+			.done { response in
+				XCTAssertEqual(200, response.status)
+				XCTAssertEqual("ok", String(data: response.content, encoding: .utf8))
 				requestExpectation.fulfill()
 			}
 			.catch { error in
-				XCTAssertNotNil(error)
+				XCTFail("request after close failed: \(error)")
 				requestExpectation.fulfill()
 			}
 

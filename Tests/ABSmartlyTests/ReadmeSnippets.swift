@@ -211,7 +211,7 @@ func readmeSnippet15(sdk: ABSmartlySDK, context: Context, config: ContextConfig,
 }
 
 // README block 16
-#if canImport(UIKit)
+#if canImport(UIKit) && !os(watchOS)
 @available(iOS 13, macOS 10.15, tvOS 13, watchOS 6, *)
 func readmeSnippet16(sdk: ABSmartlySDK, context: Context, config: ContextConfig, contextData: ContextData) async throws {
 	context.setAttribute(name: "device", value: UIDevice.current.model)
@@ -299,10 +299,10 @@ func readmeSnippet21(sdk: ABSmartlySDK, context: Context, config: ContextConfig,
 }
 
 // README block 22
-#if canImport(SwiftUI) && canImport(UIKit)
+#if canImport(SwiftUI) && canImport(UIKit) && !os(watchOS)
 // ABSmartlyService.swift
 
-@available(iOS 13, *)
+@available(iOS 13, tvOS 13, *)
 class ABSmartlyService: ObservableObject {
     static let shared = ABSmartlyService()
 
@@ -330,7 +330,7 @@ class ABSmartlyService: ObservableObject {
 
 // ContentView.swift
 
-@available(iOS 15, *)
+@available(iOS 15, tvOS 15, *)
 struct ContentView: View {
     @StateObject private var absmartly = ABSmartlyService.shared
     @State private var context: Context?
@@ -363,7 +363,7 @@ struct ContentView: View {
 #endif
 
 // README block 23
-#if canImport(UIKit)
+#if canImport(UIKit) && !os(watchOS)
 // ExperimentViewController.swift
 
 class ExperimentViewController: UIViewController {
@@ -472,7 +472,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
 // README block 25
 
-@available(iOS 13, macOS 10.15, *)
+@available(iOS 13, macOS 10.15, tvOS 13, watchOS 6, *)
 class ExperimentManager {
     private var sdk: ABSmartlySDK!
     private var loadTask: Task<Void, Never>?

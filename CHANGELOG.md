@@ -63,7 +63,7 @@ security fixes, from the `release/1.x` branch) for 12 months after 2.0 ships.
   that experiment's assignment (and log a new exposure) when the audience result flips.
 - A variable key shared by several experiments resolves like the JavaScript SDK: experiments are walked
   in ascending id order, each one visited is exposed, and the value comes from the first experiment that
-  is assigned or overridden and whose variant defines the key. `getVariableValue` also exposes an
+  is assigned, overridden or selected by an assignment rule and whose variant defines the key. `getVariableValue` also exposes an
   experiment whose strict audience mismatch yields the control variant, as `getTreatment` does.
 - The `X-Agent` header is `absmartly-swift-sdk/<version>` (was `absmartly-swift-sdk`).
 - The context GET carries the same headers as the publish PUT (`X-API-Key`, `X-Agent`, `X-Application`,
@@ -87,12 +87,17 @@ security fixes, from the `release/1.x` branch) for 12 months after 2.0 ships.
 - `ABSmartlyConfig.contextEventLogger` is used for every context whose `ContextConfig.eventLogger` is
   unset, as documented in 1.4.0's README; 1.4.0 stored it but never used it.
 - `DefaultScheduler` runs its callbacks on a private utility queue instead of the main queue, so
-  timers no longer block or wait for the main thread (the SDK's logger events still arrive on main).
+  timers no longer block or wait for the main thread.
+- A context whose first load failed recovers when a later `refresh()` succeeds; 1.4.0 installed the
+  refreshed data but kept the context failed and silently discarded every exposure and goal.
 - No exposures after close; `refresh()` joins an in-flight refresh; `close()` waits for in-flight
   publishes; a pending automatic publish keeps the context alive until it is sent.
 - Work no longer runs on the main queue (timers, HTTP retries, publish recovery); `ready`, `refresh`,
-  `publish`, `close` and `error` events from completed work still reach the `ContextEventLogger` on
-  the main thread on Apple platforms, as in 1.4.0.
+  `publish`, `close` and `error` events from asynchronously completed work still reach the
+  `ContextEventLogger` on the main thread on Apple platforms, as in 1.4.0. As in 1.4.0, events raised
+  synchronously by a call (`exposure`, `goal`, misuse errors, `close` of an idle context, and the
+  events of a context created with data that was already loaded or failed) reach the logger on the
+  calling thread.
 - An audience of `null` or `{}` is treated as no audience without logging an error.
 - `match` gives up after 100ms (returning null) on patterns that backtrack exponentially.
 - A failed automatic refresh reports one `.error` event (it was reported twice on main).

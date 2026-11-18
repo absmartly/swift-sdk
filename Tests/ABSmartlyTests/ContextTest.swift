@@ -2907,16 +2907,16 @@ final class ContextTest: XCTestCase {
 		let context = try createContext(config: getContextConfig(withUnits: true))
 		context.track("goal1", properties: nil)
 		let (publish, resolver) = Promise<Void>.pending()
-		handler.publishEventReturnValue = publish
+		let publishing = XCTestExpectation()
+		handler.publishEventClosure = { _ in
+			publishing.fulfill()
+			return publish
+		}
 
 		let closed = XCTestExpectation()
 		_ = context.close().done { closed.fulfill() }
-		let closing = XCTestExpectation()
-		DispatchQueue.global().async {
-			while !context.isClosing() && !context.isClosed() { usleep(1000) }
-			closing.fulfill()
-		}
-		wait(for: [closing], timeout: 2.0)
+		// The final flush has taken the queued goal and its publish is still pending.
+		wait(for: [publishing], timeout: 2.0)
 		XCTAssertTrue(context.isClosing())
 
 		XCTAssertEqual(0, context.getTreatment("exp_test_ab"))
@@ -3775,6 +3775,24 @@ final class ContextV140BehaviourTest: XCTestCase {
 
 		XCTAssertEqual(1, provider.getContextDataCallsCount)
 		XCTAssertNotNil(context.getContextData())
+	}
+
+	func testSuccessfulRefreshRecoversAFailedContext() throws {
+		let context = makeContext(config(), Promise(error: ABSmartlyError("load failed")))
+		XCTAssertTrue(context.isFailed())
+
+		provider.getContextDataReturnValue = Promise.value(try contextData())
+		let refreshed = XCTestExpectation()
+		_ = context.refresh().done { refreshed.fulfill() }
+		wait(for: [refreshed], timeout: 1.0)
+		XCTAssertFalse(context.isFailed())
+
+		XCTAssertEqual(1, context.getTreatment("exp_test_ab"))
+		handler.publishEventReturnValue = Promise.value(())
+		let published = XCTestExpectation()
+		_ = context.publish().done { published.fulfill() }
+		wait(for: [published], timeout: 1.0)
+		XCTAssertEqual(["exp_test_ab"], handler.publishEventReceivedEvent?.exposures.map { $0.name })
 	}
 
 	func testNegativePublishDelaySchedulesPublishAsBefore() throws {

@@ -464,7 +464,7 @@ The data parameter depends on the type of event. Currently, the SDK logs the fol
 import Foundation
 import ABSmartlyAsync
 
-@available(iOS 13, *)
+@available(iOS 13, tvOS 13, *)
 class ABSmartlyService: ObservableObject {
     static let shared = ABSmartlyService()
 
@@ -494,7 +494,7 @@ class ABSmartlyService: ObservableObject {
 import SwiftUI
 import ABSmartlyAsync
 
-@available(iOS 15, *)
+@available(iOS 15, tvOS 15, *)
 struct ContentView: View {
     @StateObject private var absmartly = ABSmartlyService.shared
     @State private var context: Context?
@@ -658,7 +658,7 @@ check `Task.isCancelled` yourself:
 ```swift
 import ABSmartlyAsync
 
-@available(iOS 13, macOS 10.15, *)
+@available(iOS 13, macOS 10.15, tvOS 13, watchOS 6, *)
 class ExperimentManager {
     private var sdk: ABSmartlySDK!
     private var loadTask: Task<Void, Never>?

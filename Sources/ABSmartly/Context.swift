@@ -623,6 +623,10 @@ public final class Context {
 			// Held strongly until the fetch settles, so the returned promise always settles.
 			self.provider.getContextData().done(on: DispatchQueue.global()) { [self] data in
 				self.setData(data)
+				// A context whose first load failed recovers once a refresh succeeds, so the events
+				// queued from the refreshed data are published instead of discarded. (v1.4.0 kept
+				// it failed and dropped them.)
+				self.failed.store(false, ordering: .releasing)
 				self.refreshing.store(false, ordering: .releasing)
 				self.deliverOnMain { self.logEvent(event: .refresh(data: data)) }
 				seal.fulfill(())
@@ -657,7 +661,8 @@ public final class Context {
 		clearRefreshTimer()
 
 		// Nothing queued or in flight: close now, as v1.4.0 did, so isClosed() is true and `.close`
-		// has been logged when close() returns.
+		// has been logged when close() returns. As in v1.4.0, that `.close` reaches the logger on
+		// the thread that called close().
 		eventLock.lock()
 		let idle = inFlightPublishes.isEmpty && pendingCount.load(ordering: .acquiring) == 0
 		eventLock.unlock()
@@ -1263,10 +1268,11 @@ public final class Context {
 		failedError = error
 	}
 
-	// ready/refresh/publish/close and `.error` events from completed work reach the logger on the
-	// main thread, as in v1.4.0, so loggers may touch UIKit; the work itself stays off the main
-	// thread and never waits for the delivery. Errors from misuse are logged synchronously on the
-	// calling thread, as v1.4.0's preconditions fired there.
+	// ready/refresh/publish/close and `.error` events from asynchronously completed work reach the
+	// logger on the main thread, as in v1.4.0, so loggers may touch UIKit; the work itself stays off
+	// the main thread and never waits for the delivery. Events for data that was already loaded (or
+	// already failed) when the context was created, and errors from misuse, are logged
+	// synchronously on the calling thread, as in v1.4.0.
 	// On Linux, where nothing may service the main queue, events use the completing thread.
 	#if canImport(Darwin)
 	private static var deliversEventsOnMainThreadValue = true

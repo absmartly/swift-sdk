@@ -7,9 +7,10 @@ blocks = re.findall(r"```swift\n(.*?)```", readme, re.S)
 
 def guard(b):
     # The platform frameworks a block needs.
-    if "import SwiftUI" in b: return "canImport(SwiftUI) && canImport(UIKit)"
+    # UIDevice and UIViewController are not on watchOS, where UIKit can still be imported.
+    if "import SwiftUI" in b: return "canImport(SwiftUI) && canImport(UIKit) && !os(watchOS)"
     if "import Cocoa" in b: return "canImport(AppKit)"
-    if "UIKit" in b or "UIDevice" in b: return "canImport(UIKit)"
+    if "UIKit" in b or "UIDevice" in b: return "canImport(UIKit) && !os(watchOS)"
     return None
 
 def declares_types(b):
