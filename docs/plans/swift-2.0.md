@@ -485,10 +485,12 @@ Behaviour parity is proven, not asserted:
 - `numberConvert` of a string uses `Double(_:)`, not JS `parseFloat` (`"5abc"` is null, JS 5).
 - A multi-key JSON expression object evaluates the first key in dictionary order (JS: insertion
   order). The backend only produces single-key objects.
-- Inside arrays and objects, on Apple platforms only, a boolean equals the number 0/1 (`[true]`
-  `eq` `[1]` is true), because 1.5.0 compared Foundation collections and Apple Foundation equates
-  them. On Linux, and in javascript-sdk (`isEqualsDeep`), a boolean never equals a number. Whether
-  2.0 should move to the JS behaviour on every platform is listed under owner decisions.
+- When two arrays or objects are compared (`eq` of `[true]` and `[1]`), on Apple platforms only a
+  boolean element equals the number 0/1, because 1.5.0 compared Foundation collections and Apple
+  Foundation equates them. On Linux, and in javascript-sdk (`isEqualsDeep`), such elements never
+  compare equal. Single-value comparisons and `in` items convert the value to a boolean on every
+  platform, as JS does (`in([true], 1)` is true). Whether 2.0 should move to the JS behaviour for
+  nested comparisons on every platform is listed under owner decisions.
 
 ## Known 2.0 difference from 1.5.0
 
