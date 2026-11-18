@@ -4185,6 +4185,48 @@ final class ContextV140BehaviourTest: XCTestCase {
 		XCTAssertEqual(["goal"], handler.publishEventReceivedEvent?.goals.map { $0.name })
 	}
 
+	// A failed close reopens the context and schedules an automatic publish for the re-queued batch.
+	func testFailedCloseSchedulesARetryOfTheRequeuedEvents() throws {
+		let context = makeContext(config(), Promise.value(try contextData()))
+		context.track("goal", properties: nil)
+		XCTAssertEqual(1, scheduler.scheduleAfterExecuteCallsCount)
+
+		handler.publishEventReturnValue = Promise(error: ABSmartlyError("publish failed"))
+		let failed = expectation(description: "close fails")
+		_ = context.close().catch { _ in failed.fulfill() }
+		wait(for: [failed], timeout: 2)
+		XCTAssertEqual(1, context.getPendingCount())
+		XCTAssertEqual(2, scheduler.scheduleAfterExecuteCallsCount)
+
+		handler.publishEventReturnValue = Promise.value(())
+		let retry = try XCTUnwrap(scheduler.scheduleAfterExecuteReceivedArguments?.execute)
+		retry()
+		let sent = expectation(description: "retried")
+		DispatchQueue.global().async {
+			while context.getPendingCount() > 0 { usleep(1000) }
+			sent.fulfill()
+		}
+		wait(for: [sent], timeout: 2)
+		XCTAssertEqual(["goal"], handler.publishEventReceivedEvent?.goals.map { $0.name })
+	}
+
+	// close() cancels a pending automatic publish; its own final flush sends the queued events.
+	func testCloseCancelsThePendingAutomaticPublish() throws {
+		let handle = ScheduledHandleMock()
+		scheduler.scheduleAfterExecuteReturnValue = handle
+		let context = makeContext(config(), Promise.value(try contextData()))
+		context.track("goal", properties: nil)
+		XCTAssertEqual(1, scheduler.scheduleAfterExecuteCallsCount)
+		XCTAssertEqual(0, handle.cancelCallsCount)
+
+		handler.publishEventReturnValue = Promise.value(())
+		let closed = expectation(description: "closed")
+		_ = context.close().done { closed.fulfill() }
+		XCTAssertGreaterThanOrEqual(handle.cancelCallsCount, 1)
+		wait(for: [closed], timeout: 2)
+		XCTAssertEqual(1, handler.publishEventCallsCount)
+	}
+
 	// An automatic publish that drains the queue while close() is deciding whether the context is
 	// idle: close waits for it, and when it is cancelled (its batch re-queued) close reports failure
 	// and leaves the context open for a retry, instead of reporting success.

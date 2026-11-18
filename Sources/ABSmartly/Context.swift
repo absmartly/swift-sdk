@@ -188,7 +188,11 @@ public final class Context {
 						if wins {
 							self.commitData(prepared)
 							// Ready before delivery so a logger's ready handler can read the context.
+							// Under eventLock, like track()'s "queued while loading" check, so a goal
+							// tracked concurrently is scheduled either by track() or by settleReadiness().
+							self.eventLock.lock()
 							self.state.store(Context.readyState, ordering: .releasing)
+							self.eventLock.unlock()
 						}
 						self.contextLock.unlock()
 						if wins {
@@ -857,6 +861,11 @@ public final class Context {
 			}.catch(on: DispatchQueue.global(), policy: .allErrors) { [self] error in
 				self.closing.store(false, ordering: .releasing)
 				self.setRefreshTimer()
+				// Reopened with the batch re-queued: schedule the usual automatic publish for it, so it
+				// is retried even if the app does not call publish() or close() again.
+				if self.pendingCount.load(ordering: .acquiring) > 0 {
+					self.setTimeout()
+				}
 				seal.reject(error)
 			}
 		}

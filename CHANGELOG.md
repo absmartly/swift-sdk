@@ -83,8 +83,9 @@ security fixes, from the `release/1.x` branch) for 12 months after 2.0 ships.
   is logged. `setOverride(s)`/`setCustomAssignment(s)` are accepted after close, as before.
 - `publish()` and `close()` reject when the collector answers with a non-2xx status; 1.4.0 reported the
   failed publish as success and dropped its events. Failed events are re-queued, and a failed `close()`
-  leaves the context open so `publish()`/`close()` can retry (1.4.0 marked it closed with the events
-  lost). `getContextData()` rejects a non-2xx response with an HTTP error instead of a decoding error.
+  leaves the context open with an automatic publish scheduled for them, and `publish()`/`close()`
+  can retry too (1.4.0 marked it closed with the events lost). `getContextData()` rejects a non-2xx
+  response with an HTTP error instead of a decoding error.
 - MurmurHash3 read past the end of a key with a 3-byte tail (an out-of-bounds read). The SDK only
   hashes 22- and 12-byte keys, so variant assignment is unchanged.
 - `ABSmartlyConfig.contextEventLogger` is used for every context whose `ContextConfig.eventLogger` is
