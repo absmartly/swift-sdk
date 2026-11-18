@@ -646,6 +646,8 @@ final class ContextSwitchbackLifecycleTest: SwitchbackTestCase {
 		clock.now = SB.anchor + 10
 		XCTAssertEqual(0, context.getTreatment("exp_ineligible"))
 		XCTAssertEqual(0, context.getTreatment("exp_absent"))
+		let ineligibleSlot = context.cachedAssignmentIdentity("exp_ineligible")
+		let absentSlot = context.cachedAssignmentIdentity("exp_absent")
 
 		context.setAttribute(name: "x", value: JSON(1))
 		let changedRules = "{\"rules\":[{\"type\":\"assign\",\"environments\":[],\"variant\":1,\"name\":\"changed\"}]}"
@@ -656,6 +658,9 @@ final class ContextSwitchbackLifecycleTest: SwitchbackTestCase {
 		XCTAssertEqual(0, context.getTreatment("exp_ineligible"))
 		XCTAssertEqual(0, context.getTreatment("exp_absent"))
 		XCTAssertEqual(0, context.getPendingCount())
+		// Neither slot consulted its rules, so a rule change does not rebuild it.
+		XCTAssertEqual(ineligibleSlot, context.cachedAssignmentIdentity("exp_ineligible"))
+		XCTAssertEqual(absentSlot, context.cachedAssignmentIdentity("exp_absent"))
 	}
 
 	// A rule-won switchback re-resolved in the same period (an attribute set, a different rule with the
@@ -958,5 +963,37 @@ final class ContextSwitchbackLifecycleTest: SwitchbackTestCase {
 		XCTAssertEqual(
 			[Exposure(1, "exp_sb", SB.unitType, expectedVariant, SB.anchor + SB.hour + 10, true, true, false, false, false, true)],
 			publishExposures(context))
+	}
+}
+
+extension ContextSwitchbackLifecycleTest {
+	// A refresh that moves the anchor (or reorders the cluster map) while `now` stays in period 0 of
+	// both grids re-resolves the slot and exposes again: the period index alone cannot tell them apart.
+	func testSameIndexGridChangesReresolve() {
+		clock.now = SB.anchor + 10
+		let original = SB.switchback(arms: 2, periodMs: 2 * SB.hour)
+		let context = createContext(
+			SB.data([original]), units: [SB.unitType: SB.uid, "device_id": "d-1"])
+		XCTAssertNotNil(context.getTreatment("exp_sb"))
+		XCTAssertEqual(1, context.getPendingCount())
+
+		var moved = SB.switchback(arms: 2, periodMs: 2 * SB.hour)
+		moved["switchbackStartAt"] = SB.anchor - SB.hour
+		refresh(context, SB.data([moved]))
+		_ = context.getTreatment("exp_sb")
+		XCTAssertEqual(2, context.getPendingCount())
+
+		var twoSources = moved
+		twoSources["switchbackClusters"] = SB.OrderedObject([(SB.unitType, SB.clusterPath), ("device_id", SB.clusterPath)])
+		refresh(context, SB.data([twoSources]))
+		_ = context.getTreatment("exp_sb")
+		XCTAssertEqual(3, context.getPendingCount())
+
+		var reordered = moved
+		reordered["switchbackClusters"] = SB.OrderedObject([("device_id", SB.clusterPath), (SB.unitType, SB.clusterPath)])
+		refresh(context, SB.data([reordered]))
+		XCTAssertNotNil(context.getTreatment("exp_sb"))
+		XCTAssertEqual(4, context.getPendingCount())
+		XCTAssertEqual(["store_id", "store_id", "store_id", "device_id"], publishExposures(context).map { $0.unit })
 	}
 }
