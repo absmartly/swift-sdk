@@ -1469,12 +1469,13 @@ final class ContextHoldoutTest: XCTestCase {
 			_ = installed.wait(timeout: .now() + 0.2)
 		}
 		#else
-		let installed = DispatchSemaphore(value: 1)
+		let installed = DispatchSemaphore(value: 0)
 		#endif
 
 		XCTAssertEqual(Self.normalVariant, context.getTreatment("exp_race"))
 		#if !DEBUG
 		context.setData(refreshed)
+		installed.signal()
 		#endif
 		XCTAssertEqual(.success, installed.wait(timeout: .now() + 5))
 		#if DEBUG
