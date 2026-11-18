@@ -124,5 +124,10 @@ security fixes, from the `release/1.x` branch) for 12 months after 2.0 ships.
 - The declared minimum platforms are unchanged (iOS 10, macOS 10.14 for Swift Package Manager / 10.10
   for CocoaPods, tvOS 10, watchOS 3). Current Xcode cannot build for watchOS below 5, so CI builds
   watchOS at 5.0 and iOS/tvOS at the package minimums.
+- CocoaPods: `pod lib lint` / `pod trunk push` currently fail on Xcode 16.3 and 26 while building
+  the SwiftyJSON 5 dependency pod (it declares macOS 10.9, below Xcode's floor), before the SDK is
+  compiled. The SDK itself builds for every Apple platform with Swift Package Manager. Publishing
+  1.5.0 to the CocoaPods trunk needs a maintainer decision (for example raising the podspec's
+  deployment targets, or publishing from an Xcode that still builds macOS 10.9).
 - Toolchains 5.9 and later read `Package@swift-5.9.swift`, which is identical to `Package.swift` except
   that the SwiftyJSON dependency also names Mac Catalyst and visionOS.

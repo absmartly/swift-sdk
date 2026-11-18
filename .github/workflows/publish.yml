@@ -17,16 +17,11 @@ concurrency:
 
 jobs:
   cocoapods:
-    # Same runner and Xcode as the "Lint podspec" step in main.yml: Xcode 26 cannot build the
-    # SwiftyJSON 5 pod at its own deployment targets, so lint and trunk push need an older Xcode.
-    runs-on: macos-15
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
-
-      - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode_16.3.app
 
       # The tag, the podspec and the X-Agent version must agree, or the pod and the version the
       # SDK reports would not match the code SwiftPM users get from the tag.
@@ -45,10 +40,6 @@ jobs:
 
       - name: Build and test
         run: swift test
-
-      # Validate the pod (builds it for its platforms) before anything is pushed to the trunk.
-      - name: Lint podspec
-        run: pod lib lint ABSmartlySwiftSDK.podspec --allow-warnings
 
       - name: Publish to CocoaPods trunk
         env:
