@@ -157,10 +157,10 @@ import Testing
 		harness.transport.enqueue(status: 500)
 		let context = harness.client.makeContext(units: Self.units)
 		let error = try await withTimeout { await sdkError { try await context.ready() } }
-		#expect(error == .httpStatus(code: 500, message: "Internal Server Error"))
-		#expect(context.state == .failed(.httpStatus(code: 500, message: "Internal Server Error")))
+		#expect(error == .httpStatus(code: 500, message: Connection.statusMessage(500)))
+		#expect(context.state == .failed(.httpStatus(code: 500, message: Connection.statusMessage(500))))
 		#expect(context.state.isSettled)
-		#expect(harness.recorder.errors == [.httpStatus(code: 500, message: "Internal Server Error")])
+		#expect(harness.recorder.errors == [.httpStatus(code: 500, message: Connection.statusMessage(500))])
 	}
 
 	@Test func awaitedContextIsReady() async throws {

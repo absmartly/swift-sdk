@@ -181,14 +181,14 @@ import Testing
 		let (connection, transport) = Self.connection()
 		transport.enqueue(status: 500)
 		let error = try await withTimeout { await sdkError { _ = try await connection.fetchContextData() } }
-		#expect(error == .httpStatus(code: 500, message: "Internal Server Error"))
+		#expect(error == .httpStatus(code: 500, message: Connection.statusMessage(500)))
 	}
 
 	@Test func getContextDataRejectsOn404() async throws {
 		let (connection, transport) = Self.connection()
 		transport.enqueue(status: 404)
 		let error = try await withTimeout { await sdkError { _ = try await connection.fetchContextData() } }
-		#expect(error == .httpStatus(code: 404, message: "Not Found"))
+		#expect(error == .httpStatus(code: 404, message: Connection.statusMessage(404)))
 	}
 
 	@Test func getContextDataRejectsOnNetworkError() async throws {
@@ -294,7 +294,7 @@ import Testing
 		let (connection, transport) = Self.connection()
 		transport.enqueue(status: 500)
 		let error = try await withTimeout { await sdkError { try await connection.publish(Self.event) } }
-		#expect(error == .httpStatus(code: 500, message: "Internal Server Error"))
+		#expect(error == .httpStatus(code: 500, message: Connection.statusMessage(500)))
 	}
 
 	@Test func publishRejectsOnNetworkError() async throws {
@@ -311,14 +311,14 @@ import Testing
 		let (connection, transport) = Self.connection()
 		transport.enqueue(status: 400)
 		let error = try await withTimeout { await sdkError { try await connection.publish(Self.event) } }
-		#expect(error == .httpStatus(code: 400, message: "Bad Request"))
+		#expect(error == .httpStatus(code: 400, message: Connection.statusMessage(400)))
 	}
 
 	@Test func publishRejectsOn401() async throws {
 		let (connection, transport) = Self.connection()
 		transport.enqueue(status: 401)
 		let error = try await withTimeout { await sdkError { try await connection.publish(Self.event) } }
-		#expect(error == .httpStatus(code: 401, message: "Unauthorized"))
+		#expect(error == .httpStatus(code: 401, message: Connection.statusMessage(401)))
 	}
 
 	@Test func publishSetsApplicationVersionHeader() async throws {

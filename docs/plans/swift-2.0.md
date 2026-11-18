@@ -440,7 +440,7 @@ behaviour is exactly 1.5.0's. Each will be fixed in both lines at the same time.
     targets iOS 15+.
 - Products: `ABsmartly` (core) and `ABsmartlyUI` (SwiftUI wrappers; compiled only where SwiftUI is
   available).
-- Dependencies: none on Apple platforms. `swift-crypto` (`3.0.0..<4.0.0`) on Linux only, as a
+- Dependencies: none on Apple platforms. `swift-crypto` (`3.0.0..<5.0.0`) on Linux only, as a
   conditional target dependency.
 - CocoaPods: `ABsmartly.podspec`, pod `ABsmartly` 2.0.0, `swift_versions = '6.0'`, same floors.
   See *Remaining owner/release items* about the trunk freeze.
