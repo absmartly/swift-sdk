@@ -1105,3 +1105,33 @@ extension ContextSwitchbackLifecycleTest {
 		XCTAssertEqual([SB.unitType], publishExposures(context).map { $0.unit })
 	}
 }
+
+extension ContextSwitchbackLifecycleTest {
+	// R2: the custom assignment recorded on the slot must survive pinSwitchbackConfig; otherwise every read
+	// re-resolves the slot and queues another exposure.
+	func testCustomAssignedSlotIsReusedWithinThePeriod() {
+		let context = createContext(SB.data([SB.switchback(arms: 3, periodMs: SB.hour)]))
+		let custom = (SB.expected3Arms[0] + 1) % 3
+		context.setCustomAssignment(experimentName: "exp_sb", variant: custom)
+		clock.now = SB.anchor
+		XCTAssertEqual(custom, context.getTreatment("exp_sb"))
+		XCTAssertEqual(custom, context.getTreatment("exp_sb"))
+		XCTAssertEqual(custom, context.getTreatment("exp_sb"))
+		XCTAssertEqual(1, context.getPendingCount())
+		XCTAssertEqual([exposure(custom, SB.anchor, custom: true)], publishExposures(context))
+	}
+
+	// R10: an override resolved with no linked unit records an absent serving, so setUnit re-resolves it
+	// and its exposure goes out under the unit now linked, not the first cluster's fallback.
+	func testUnexposedAbsentOverrideIsReresolvedAfterSetUnit() {
+		let experiment = SB.switchback(
+			arms: 2, periodMs: SB.hour, clusters: [("first_id", "first_key"), (SB.unitType, SB.clusterPath)])
+		let context = createContext(SB.data([experiment]), units: [:])
+		context.setOverride(experimentName: "exp_sb", variant: 1)
+		clock.now = SB.anchor
+		XCTAssertEqual(1, context.peekTreatment("exp_sb"))
+		context.setUnit(unitType: SB.unitType, uid: SB.uid)
+		XCTAssertEqual(1, context.getTreatment("exp_sb"))
+		XCTAssertEqual([SB.unitType], publishExposures(context).map { $0.unit })
+	}
+}

@@ -433,7 +433,7 @@ public final class Context {
 		// resolved before any linked unit was set is re-resolved now that one may be; unless overridden it
 		// published nothing, so it is dropped even if exposed.
 		assignmentCache = assignmentCache.filter { _, assignment in
-			if assignment.switchbackSlot?.serving?.status == .absent {
+			if assignment.switchbackSlot?.serving.status == .absent {
 				return assignment.overridden && assignment.exposed.load(ordering: .acquiring)
 			}
 			return assignment.unitType != unitType || assignment.exposed.load(ordering: .acquiring)
@@ -961,7 +961,7 @@ public final class Context {
 
 			// A switchback without an eligible cluster never consulted its rules, so a rule change cannot
 			// make it stale.
-			if assignment.switchbackSlot.map({ $0.serving?.status == .eligible }) ?? true {
+			if assignment.switchbackSlot.map({ $0.serving.status == .eligible }) ?? true {
 				// An exposed split resolved without its unit keeps resolving as if the unit were still
 				// missing, so a unit set afterwards cannot switch the variant the user already saw.
 				let unitPinnedMissing = assignment.ruleMissingUnit && assignment.exposed.load(ordering: .acquiring)
@@ -1225,10 +1225,9 @@ public final class Context {
 		let cachedServing = cached?.switchbackSlot?.serving
 		if let override = overrides[experimentName] {
 			assignment.id = experiment.data.id
-			pinSwitchbackConfig(assignment, experiment)
-			assignment.switchbackSlot?.customAssignment = cassignments[experimentName]
 			let serving = switchbackServing(experiment, cached: cachedServing, now: now!)
-			assignment.switchbackSlot?.serving = serving
+			let slot = SwitchbackSlot(experiment.data, serving: serving, customAssignment: cassignments[experimentName])
+			assignment.switchbackSlot = slot
 			assignment.unitType = serving.unitType ?? Context.switchbackFallbackUnitType(experiment)
 			assignment.overridden = true
 			assignment.variant = override
@@ -1270,8 +1269,9 @@ public final class Context {
 		periodIndex: Int64?, now: Int64
 	) {
 		let data = experiment.data
-		pinSwitchbackConfig(assignment, experiment)
-		assignment.switchbackSlot?.customAssignment = custom
+		let serving = switchbackServing(experiment, cached: cachedServing, now: now)
+		let slot = SwitchbackSlot(data, serving: serving, customAssignment: custom)
+		assignment.switchbackSlot = slot
 		assignment.ruleKey = data.assignmentRules ?? ""
 		assignment.id = data.id
 		assignment.iteration = data.iteration
@@ -1279,14 +1279,12 @@ public final class Context {
 		assignment.fullOnVariant = data.fullOnVariant
 		assignment.attrsSeq = attrsSeq
 
-		let serving = switchbackServing(experiment, cached: cachedServing, now: now)
-		assignment.switchbackSlot?.serving = serving
 		assignment.variant = 0
 		guard serving.status != .absent, let unitType = serving.unitType else {
 			// No linked unit: the experiment does not apply, like an unset unit type.
 			assignment.unitType = Context.switchbackFallbackUnitType(experiment)
 			assignment.eligible = false
-			assignment.switchbackSlot?.silent = true
+			slot.silent = true
 			return
 		}
 
@@ -1294,7 +1292,7 @@ public final class Context {
 		assignment.assigned = true
 		guard serving.status == .eligible, let clusterKey = serving.clusterKey else {
 			assignment.eligible = false
-			assignment.switchbackSlot?.silent = true
+			slot.silent = true
 			return
 		}
 
@@ -1325,7 +1323,7 @@ public final class Context {
 		guard let periodIndex = periodIndex, let uid = units[unitType] else {
 			// Before the anchor or an unservable schedule: no draw, so control and no exposure.
 			assignment.eligible = false
-			assignment.switchbackSlot?.silent = true
+			slot.silent = true
 			return
 		}
 
@@ -1445,9 +1443,6 @@ public final class Context {
 			&& data.switchbackDesignType == slot.designType
 	}
 
-	private func pinSwitchbackConfig(_ assignment: Assignment, _ experiment: ExperimentVariables) {
-		assignment.switchbackSlot = SwitchbackSlot(experiment.data)
-	}
 
 	// Switchback identity: id, iteration, the ordered cluster map, the allow-list, startAt, periodMs and
 	// design, i.e. every input to the period grid and the cluster key, plus unitType when either side
@@ -1916,14 +1911,16 @@ private final class SwitchbackSlot {
 	let periodMs: Int64?
 	let designType: String?
 	// The serving unit and cluster key read for this slot, once per slot.
-	var serving: SwitchbackServing?
+	let serving: SwitchbackServing
+	// The custom assignment set when it was resolved.
+	let customAssignment: Int?
 	// A resolution the Collector records nothing for: no linked unit, an ineligible cluster, or no draw
 	// (before the anchor or an unservable schedule).
 	var silent = false
-	// The custom assignment set when it was resolved.
-	var customAssignment: Int?
 
-	init(_ experiment: Experiment) {
+	init(_ experiment: Experiment, serving: SwitchbackServing, customAssignment: Int?) {
+		self.serving = serving
+		self.customAssignment = customAssignment
 		clusters = experiment.switchbackClusters
 		clusterValues = experiment.switchbackClusterValues
 		startAt = experiment.switchbackStartAt
