@@ -1,7 +1,5 @@
 @testable import ABsmartly
 
-// Operands are expressions, so each literal is wrapped in `{"value": x}` to evaluate to itself.
-
 /// `{op: {"value": arg}}`, a unary operator applied to a literal.
 func unary(_ op: String, _ arg: JSONValue) -> JSONValue {
 	[op: ["value": arg]]

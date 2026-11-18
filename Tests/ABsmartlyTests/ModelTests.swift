@@ -143,7 +143,6 @@ import Testing
 	}
 
 	@Test func experimentsListIsRequired() {
-		// `experiments` itself is not lenient: it must be present and an array.
 		#expect(throws: DecodingError.self) { try Self.decode("{}") }
 		#expect(throws: DecodingError.self) { try Self.decode(#"{"experiments": null}"#) }
 		#expect(throws: DecodingError.self) { try Self.decode(#"{"experiments": {}}"#) }
@@ -300,7 +299,6 @@ import Testing
 		let exposure = Exposure(
 			id: 0, name: "missing", unit: nil, variant: 0, exposedAt: 5, assigned: false, eligible: true,
 			overridden: false, fullOn: false, custom: false, audienceMismatch: false, ruleOverride: true)
-		// A nil unit is left out (synthesised Encodable).
 		#expect(
 			String(decoding: try encoder.encode(exposure), as: UTF8.self)
 				== #"{"assigned":false,"audienceMismatch":false,"custom":false,"eligible":true,"exposedAt":5,"fullOn":false,"id":0,"name":"missing","overridden":false,"ruleOverride":true,"variant":0}"#

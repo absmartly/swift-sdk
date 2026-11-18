@@ -75,7 +75,6 @@ import Testing
 		#expect(queuedDuringMeasure % 100 == 0)
 	}
 
-	// The peeks are also checked to queue nothing.
 	@Test func variableAccessPerformance() {
 		let context = Harness().context()
 		let variableKeys = ["banner.border", "banner.size", "button.color", "submit.color", "submit.shape"]
@@ -115,7 +114,6 @@ import Testing
 		#expect(context.customAssignments["exp_50"] != nil)
 	}
 
-	// Setting the same UID again is accepted, so the 10 runs leave 100 units.
 	@Test func unitSettingPerformance() throws {
 		let context = Harness().context(units: [:])
 

@@ -157,7 +157,6 @@ extension ContextTests {
 			#expect(env.log.events[i] == .exposure(exposure))
 		}
 
-		// Each exposure is logged once: repeat reads log nothing.
 		env.log.clear()
 		_ = context.variableValue("banner.border")
 		_ = context.variableValue("banner.size")
@@ -409,7 +408,6 @@ extension ContextTests {
 		#expect(context.treatment(for: "not_found") == 0)
 		#expect(context.pendingEventCount == 1 + data.experiments.count)
 
-		// Repeat reads return the same variants; their exposures are already queued.
 		for experiment in data.experiments {
 			if let variant = ContextFixtures.expectedVariants[experiment.name] {
 				#expect(context.treatment(for: experiment.name) == variant)
@@ -490,7 +488,6 @@ extension ContextTests {
 			#expect(env.log.events[i] == .exposure(exposure))
 		}
 
-		// Each exposure is logged once: repeat reads log nothing.
 		env.log.clear()
 		_ = context.treatment(for: "exp_test_ab")
 		_ = context.treatment(for: "not_found")

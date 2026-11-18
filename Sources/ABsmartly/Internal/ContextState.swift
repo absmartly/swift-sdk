@@ -262,7 +262,6 @@ struct ContextState {
 		if let assignment = assignmentCache[experimentName] {
 			if let override = overrides[experimentName] {
 				if assignment.overridden && assignment.variant == override {
-					// Computed with the current override.
 					return assignment
 				}
 			} else if assignment.overridden {
@@ -272,7 +271,6 @@ struct ContextState {
 				let custom = customAssignments[experimentName]
 				if custom == nil || custom == assignment.variant || assignment.ruleOverride {
 					if Self.experimentMatches(entry.data, assignment) && audienceMatches(entry, assignment) {
-						// Nothing the assignment was computed from has changed, so it is still valid.
 						return assignment
 					}
 				}

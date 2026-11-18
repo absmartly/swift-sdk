@@ -194,7 +194,6 @@ import Testing
 	}
 
 	@Test func customTransportServesFetchAndContextCreation() async throws {
-		// A custom Transport serves both the data fetch and context creation.
 		let transport = FakeTransport(contextData: Self.emptyData)
 		var configuration = ABsmartlyClient.Configuration(
 			endpoint: Self.endpoint, apiKey: "test-api-key", application: "website", environment: "production")

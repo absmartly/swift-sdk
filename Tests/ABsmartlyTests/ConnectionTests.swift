@@ -467,7 +467,6 @@ import Testing
 	}
 
 	@Test func retriesTransportErrorsUntilSuccess() async throws {
-		// With 3 retries, two transport failures are followed by success on the third attempt.
 		let (connection, transport) = Self.connection(retries: 3)
 		transport.enqueue { _ in throw URLError(.networkConnectionLost) }
 		transport.enqueue { _ in throw URLError(.networkConnectionLost) }
