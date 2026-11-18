@@ -178,8 +178,8 @@ Once any module in your build imports `ABSmartlyAsync` (your own target or a dep
 the async overloads visible to every file that uses `ABSmartly`, even files that only `import
 ABSmartly`. Inside an `async` function Swift then prefers them, so 1.4 code there such as
 `_ = context.publish()` stops compiling. Fix it with `try await context.publish()`, or keep the
-Promise with an explicit type: `let promise: Promise<Void> = context.publish()`. With a Swift 6
-toolchain you can instead enable the `MemberImportVisibility` upcoming feature
+Promise with an explicit type: `let promise: Promise<Void> = context.publish()`. With Swift 6.1 or
+later you can instead enable the `MemberImportVisibility` upcoming feature
 (`swiftSettings: [.enableUpcomingFeature("MemberImportVisibility")]`), which limits the overloads to
 files that import `ABSmartlyAsync` themselves.
 

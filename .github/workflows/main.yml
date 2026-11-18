@@ -52,9 +52,12 @@ jobs:
           xcodebuild build -scheme ABSmartly -destination "generic/platform=watchOS" -quiet \
             WATCHOS_DEPLOYMENT_TARGET=5.0
 
-      # The CocoaPods spec is otherwise only validated when a v* tag publishes it.
+      # The CocoaPods spec is otherwise only validated when a v* tag publishes it. Lint on the same
+      # Xcode the publish workflow uses: Xcode 26 cannot build the SwiftyJSON 5 pod at its own
+      # macOS 10.9 / iOS 9 deployment targets, so lint (and trunk push) fail there before the SDK
+      # is compiled.
       - name: Lint podspec
-        if: matrix.name == 'latest'
+        if: matrix.name == 'swift-6.1'
         run: pod lib lint ABSmartlySwiftSDK.podspec --allow-warnings
 
       # The Example app references this checkout as a local package and has its own lockfile.
