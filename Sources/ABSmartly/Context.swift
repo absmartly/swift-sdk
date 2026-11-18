@@ -188,8 +188,10 @@ public final class Context {
 						if wins {
 							self.commitData(prepared)
 							// Ready before delivery so a logger's ready handler can read the context.
-							// Under eventLock, like track()'s "queued while loading" check, so a goal
-							// tracked concurrently is scheduled either by track() or by settleReadiness().
+							// Under eventLock, like track()'s append and "queued while loading" check: with
+							// only atomics, track()'s state load and settleReadiness()'s pendingCount load
+							// could both see the old values (store-load reordering), and neither would
+							// schedule the goal. No deterministic test can force that reordering.
 							self.eventLock.lock()
 							self.state.store(Context.readyState, ordering: .releasing)
 							self.eventLock.unlock()
@@ -939,8 +941,10 @@ public final class Context {
 				}
 
 				if eventCount > 0 {
+					// Units and attributes are snapshotted under contextLock; the handler is called
+					// after releasing it, so a handler that waits on another thread which reads the
+					// context cannot deadlock (v1.4.0 held no lock there either).
 					contextLock.lock()
-					defer { contextLock.unlock() }
 					localUnits = units.map {
 						let hashBytes = getUnitHash($0.key, $0.value)
 						if let hashString = String(bytes: hashBytes, encoding: .ascii) {
@@ -951,6 +955,7 @@ public final class Context {
 						}
 					}
 					localAttributes = attributes
+					contextLock.unlock()
 
 					let event = PublishEvent(
 						true,

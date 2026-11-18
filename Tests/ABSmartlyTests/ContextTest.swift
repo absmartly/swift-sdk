@@ -4254,6 +4254,33 @@ final class ContextV140BehaviourTest: XCTestCase {
 		XCTAssertEqual(1, context.getPendingCount())
 	}
 
+	// A publish handler that synchronously waits on another thread which reads the context: the
+	// handler is called without contextLock held, so this does not deadlock.
+	func testPublishHandlerThatReadsTheContextFromAnotherThreadDoesNotDeadlock() throws {
+		let context = makeContext(config(), Promise.value(try contextData()))
+		context.track("goal", properties: nil)
+		handler.publishEventClosure = { _ in
+			// A separate thread (DispatchQueue.sync could run the block on this thread, where the
+			// recursive lock would be re-entered rather than contended).
+			let readerDone = DispatchSemaphore(value: 0)
+			Thread {
+				_ = context.getUnit(unitType: "session_id")
+				_ = context.getTreatment("exp_test_ab")
+				context.setAttribute(name: "a", value: 1)
+				readerDone.signal()
+			}.start()
+			XCTAssertEqual(.success, readerDone.wait(timeout: .now() + 2), "reader blocked: handler called under contextLock")
+			return Promise.value(())
+		}
+		let published = expectation(description: "published")
+		DispatchQueue.global().async {
+			_ = context.publish().done { published.fulfill() }
+		}
+		wait(for: [published], timeout: 3)
+		XCTAssertEqual(1, handler.publishEventCallsCount)
+		XCTAssertEqual(JSON(1), context.getAttribute(name: "a"))
+	}
+
 	// A recovery that completes between a read's claim and its enqueue: the stale exposure is
 	// dropped and the next read exposes the rebuilt assignment, attributed.
 	func testExposureClaimedBeforeARecoveryIsDroppedAndReExposed() throws {
