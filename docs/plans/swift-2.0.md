@@ -488,9 +488,11 @@ Behaviour parity is proven, not asserted:
 - When two arrays or objects are compared (`eq` of `[true]` and `[1]`), on Apple platforms only a
   boolean element equals the number 0/1, because 1.5.0 compared Foundation collections and Apple
   Foundation equates them. On Linux, and in javascript-sdk (`isEqualsDeep`), such elements never
-  compare equal. Single-value comparisons and `in` items convert the value to a boolean on every
-  platform, as JS does (`in([true], 1)` is true). Whether 2.0 should move to the JS behaviour for
-  nested comparisons on every platform is listed under owner decisions.
+  compare equal. Single-value comparisons and `in` items convert the right-hand value to the
+  left-hand value's type (booleans to 0/1 against a number, numbers to a boolean against a boolean)
+  on every platform, as JS does (`in([true], 1)` is true, `in([2], true)` is false). Whether 2.0
+  should move to the JS behaviour for nested comparisons on every platform is listed under owner
+  decisions.
 
 ## Known 2.0 difference from 1.5.0
 
