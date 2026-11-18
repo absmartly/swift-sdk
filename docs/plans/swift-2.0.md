@@ -47,6 +47,11 @@ Non-goals:
 
 ### Remaining owner/release items
 
+- **Nested boolean/number equality (behaviour).** 2.0 keeps 1.5.0's per-platform result (see
+  *Known 1.5.0 divergences*): on Apple platforms `[true]` equals `[1]` inside an audience or rule,
+  on Linux and in javascript-sdk it does not. Recommendation: keep 1.5.0 parity in 2.0.0 and change
+  both lines to the JS behaviour together, so no app sees it move on the major upgrade alone.
+
 These are release logistics, not API questions:
 
 - **CocoaPods.** The CocoaPods trunk becomes read-only on **2026-12-02**: no new pods or versions
@@ -480,6 +485,10 @@ Behaviour parity is proven, not asserted:
 - `numberConvert` of a string uses `Double(_:)`, not JS `parseFloat` (`"5abc"` is null, JS 5).
 - A multi-key JSON expression object evaluates the first key in dictionary order (JS: insertion
   order). The backend only produces single-key objects.
+- Inside arrays and objects, on Apple platforms only, a boolean equals the number 0/1 (`[true]`
+  `eq` `[1]` is true), because 1.5.0 compared Foundation collections and Apple Foundation equates
+  them. On Linux, and in javascript-sdk (`isEqualsDeep`), a boolean never equals a number. Whether
+  2.0 should move to the JS behaviour on every platform is listed under owner decisions.
 
 ## Known 2.0 difference from 1.5.0
 
