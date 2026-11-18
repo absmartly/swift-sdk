@@ -724,11 +724,19 @@ public final class Context {
 				let previousState = self.state.load(ordering: .acquiring)
 				let winsInitialLoad = previousState == Context.loading
 				// Assignments read while there was no experiment data (e.g. an override) lack the
-				// experiment's id and variables; rebuild them from the new data. Exposed ones are kept,
-				// so a user who already saw a variant is not exposed again.
+				// experiment's id and variables. Unexposed ones are rebuilt from the new data; exposed
+				// ones are kept (so the user is not exposed again) and given the experiment's identity.
 				if previousState != Context.readyState {
 					self.assignmentCache = self.assignmentCache.filter { _, assignment in
-						assignment.exposed.load(ordering: .acquiring)
+						guard assignment.exposed.load(ordering: .acquiring) else { return false }
+						if let experiment = prepared.index[assignment.name] {
+							assignment.id = experiment.data.id
+							assignment.unitType = experiment.data.unitType
+							if assignment.variant >= 0, assignment.variant < experiment.variables.count {
+								assignment.variables = experiment.variables[assignment.variant]
+							}
+						}
+						return true
 					}
 				}
 				self.commitData(prepared)

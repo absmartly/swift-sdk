@@ -676,4 +676,27 @@ final class DefaultClientTest: XCTestCase {
 		XCTAssertTrue(podspec.contains("spec.version = '\(SDKVersion.version)'"))
 		XCTAssertEqual("absmartly-swift-sdk/\(SDKVersion.version)", SDKVersion.agent)
 	}
+
+	// A request the HTTP client cancels must still reject the client's promise; PromiseKit's default
+	// catch policy would skip the cancellation and leave it pending forever.
+	func testCancelledRequestsRejectGetContextDataAndPublish() throws {
+		let http = HTTPClientMock()
+		http.getUrlQueryHeadersReturnValue = Promise(error: PMKError.cancelled)
+		http.putUrlQueryHeadersBodyReturnValue = Promise(error: PMKError.cancelled)
+		let client = try DefaultClient(
+			config: ClientConfig(apiKey: "k", application: "a", endpoint: "https://e.test", environment: "p"),
+			httpClient: http)
+
+		let fetchRejected = expectation(description: "getContextData rejects")
+		client.getContextData().catch(policy: .allErrors) { error in
+			XCTAssertTrue(error.isCancelled)
+			fetchRejected.fulfill()
+		}
+		let publishRejected = expectation(description: "publish rejects")
+		client.publish(event: PublishEvent()).catch(policy: .allErrors) { error in
+			XCTAssertTrue(error.isCancelled)
+			publishRejected.fulfill()
+		}
+		wait(for: [fetchRejected, publishRejected], timeout: 2)
+	}
 }

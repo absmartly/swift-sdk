@@ -4069,6 +4069,8 @@ final class ContextV140BehaviourTest: XCTestCase {
 
 		XCTAssertEqual(1, context.getTreatment("exp_test_ab"))
 		XCTAssertEqual(1, context.getPendingCount())
+		// The kept override now carries the experiment's variables.
+		XCTAssertEqual(JSON("large"), context.peekVariableValue("banner.size"))
 	}
 
 	func testFailedCloseRestartsRefreshTimer() throws {
