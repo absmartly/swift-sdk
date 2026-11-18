@@ -8,7 +8,21 @@ import Foundation
 //   j         = min(i, floor(u32(stepHash) / 0xffffffff * (i + 1)))
 //   variant   = permutation[floorMod(periodIndex, armCount)], cycle = floorDiv(periodIndex, armCount)
 // Any change here breaks parity with the platform golden vectors and the analysis-side schedule.
-enum SwitchbackAssigner {
+/// The switchback schedule draw the Collector and analysis use. A context serves switchbacks on its
+/// own; these functions are public for conformance tooling.
+public enum SwitchbackAssigner {
+	/// The variant of `clusterUnit` (a raw cluster key, never hashed) in period `periodIndex`, with
+	/// `seed = (seedHi << 32) | (seedLo & 0xffffffff)`; nil when `armCount` is less than 2.
+	public static func variant(clusterUnit: String, periodIndex: Int64, seed: Int64, armCount: Int) -> Int? {
+		return armCount >= 2 ? assign(clusterUnit, periodIndex: periodIndex, seed: seed, armCount: armCount) : nil
+	}
+
+	/// The permutation of `0..<armCount` served over cycle `cycleIndex`; nil when `armCount` is less than 2.
+	public static func permutation(clusterUnit: String, cycleIndex: Int64, seed: Int64, armCount: Int) -> [Int]? {
+		guard armCount >= 2 else { return nil }
+		return fisherYatesPermutation(armCount, baseHash: baseHash(clusterUnit, cycleIndex: cycleIndex, seed: seed))
+	}
+
 	private static let normalizer: Double = 1.0 / 0xFFFF_FFFF
 	private static let separator = "\u{1F}"
 

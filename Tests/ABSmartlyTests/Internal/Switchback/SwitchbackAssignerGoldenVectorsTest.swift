@@ -121,3 +121,26 @@ final class SwitchbackAssignerGoldenVectorsTest: XCTestCase {
 		XCTAssertNotEqual(schedule, hashed)
 	}
 }
+
+extension SwitchbackAssignerGoldenVectorsTest {
+	func testPublicEntryPointsMatchAndRejectFewerThanTwoArms() throws {
+		let vectors = try Self.loadVectors()
+		for c in (vectors["assignSwitchback"] as! [[String: Any]]).prefix(50) {
+			XCTAssertEqual(
+				c["expectedVariant"] as? Int,
+				SwitchbackAssigner.variant(
+					clusterUnit: Self.clusterUnit(c["clusterUnit"]!), periodIndex: Self.exactInt64(c["periodIndex"]),
+					seed: Self.exactInt64(c["seed"]), armCount: c["armCount"] as! Int))
+		}
+		for c in (vectors["fisherYatesPermutation"] as! [[String: Any]]).prefix(50) {
+			XCTAssertEqual(
+				c["expectedPermutation"] as? [Int],
+				SwitchbackAssigner.permutation(
+					clusterUnit: Self.clusterUnit(c["clusterUnit"]!), cycleIndex: Self.exactInt64(c["cycleIndex"]),
+					seed: Self.exactInt64(c["seed"]), armCount: c["armCount"] as! Int))
+		}
+		XCTAssertNil(SwitchbackAssigner.variant(clusterUnit: "u", periodIndex: 0, seed: 0, armCount: 1))
+		XCTAssertNil(SwitchbackAssigner.variant(clusterUnit: "u", periodIndex: 0, seed: 0, armCount: -3))
+		XCTAssertNil(SwitchbackAssigner.permutation(clusterUnit: "u", cycleIndex: 0, seed: 0, armCount: 0))
+	}
+}
