@@ -217,8 +217,9 @@ public final class Context {
 						let wins = self.state.load(ordering: .acquiring) == Context.loading
 						if wins {
 							self.applyDataFailed(error)
-							// Under eventLock too, so a flush deciding under eventLock whether to drain
-							// or discard sees the context either before or after it failed, not between.
+							// Under eventLock too (defensive): a failed-state exposure is only queued, under
+							// eventLock, by a thread that already sees the context failed, so the flush's
+							// re-check under eventLock sees it failed either way.
 							self.eventLock.lock()
 							self.state.store(Context.failedState, ordering: .releasing)
 							self.eventLock.unlock()
