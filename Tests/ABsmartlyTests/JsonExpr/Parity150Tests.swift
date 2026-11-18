@@ -82,8 +82,15 @@ import Testing
 		// document, so the experiment has no rules; 2.0 parses with the same JSONSerialization and
 		// does the same (JSONDecoder, which 2.0 used before, rejected it as well).
 		("1e400", .unparseable),
-		("-1e400", .unparseable),
+		("-1e400", negativeOverflowOutcome),
 	]
+
+	#if canImport(Darwin)
+		// Apple Foundation accepts -1e400 as -Infinity; the non-finite variant is skipped.
+		static let negativeOverflowOutcome: Outcome = .skipped
+	#else
+		static let negativeOverflowOutcome: Outcome = .unparseable
+	#endif
 
 	@Test(arguments: table)
 	func parse(_ literal: String, _ outcome: Outcome) {
@@ -228,9 +235,16 @@ import Testing
 		("1e18", "1000000000000000000", false, false, true, false),
 		("1e19", "10000000000000000000", false, false, true, false),
 		("123456789012345678", "123456789012345678", false, false, true, false),
-		("9007199254740993", "9007199254740993", false, false, true, false),
+		("9007199254740993", largeIntegerText, false, false, true, false),
 		("9223372036854775807", "9223372036854775807", false, false, true, false),
 	] + linuxOnlyRows
+
+	#if canImport(Darwin)
+		// Measured in the macOS CI lanes: Apple NumberFormatter rounds this NSNumber through Double.
+		static let largeIntegerText = "9007199254740992"
+	#else
+		static let largeIntegerText = "9007199254740993"
+	#endif
 
 	// Int64.min and below: measured with 1.5.0 on Linux only, where JSONSerialization returns a
 	// decimal for them. Apple Foundation may return an integer instead (not measured). 2.0 uses the
