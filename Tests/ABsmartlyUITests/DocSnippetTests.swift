@@ -105,10 +105,11 @@ private enum CheckoutVariant: Int {
 		// README: Overrides
 		let overridden = client.context(
 			units: [.deviceID: deviceID], overrides: ["exp_checkout": 1, "exp_banner": 2], data: ContextData())
-		overridden.overrides["exp_checkout"] = 2
+		overridden.setOverride(2, for: "exp_checkout")
 		overridden.setOverrides(["exp_banner": 1, "exp_search": 2])
-		overridden.overrides["exp_banner"] = nil
-		overridden.customAssignments["exp_search"] = 1
+		overridden.setOverride(nil, for: "exp_banner")
+		overridden.setCustomAssignment(1, for: "exp_search")
+		let current = overridden.overrides
 
 		// README: Attributes and units
 		context.setAttribute("plan", to: "pro")
@@ -125,7 +126,7 @@ private enum CheckoutVariant: Int {
 
 		#expect(variant == 1 && peeked == 1 && style == .single)
 		#expect(color == "red" && limit == 10 && config.steps == 3 && raw == nil)
-		#expect(overridden.overrides == ["exp_checkout": 2, "exp_search": 2])
+		#expect(current == ["exp_checkout": 2, "exp_search": 2])
 	}
 
 	@Test func stateAndEvents() async throws {

@@ -211,10 +211,11 @@ context.setAttribute("plan", to: "pro")            // any JSONValueConvertible: 
 context.setAttributes(["plan": "pro", "age": 42])
 context.attributes                                 // [String: JSONValue], latest value per name
 
-context.overrides["exp_checkout"] = 1              // one override
+context.setOverride(1, for: "exp_checkout")         // one override, atomic
 context.setOverrides(["exp_banner": 1, "exp_search": 2])   // several at once, atomically
-context.overrides["exp_banner"] = nil              // remove one
-context.customAssignments["exp_checkout"] = 2
+context.setOverride(nil, for: "exp_banner")         // remove one
+context.setCustomAssignment(2, for: "exp_checkout")
+context.overrides                                  // [String: Int] snapshot; assignable (last writer wins)
 context.setCustomAssignments(["exp_banner": 1])
 ```
 

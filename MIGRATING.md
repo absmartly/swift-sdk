@@ -155,9 +155,9 @@ let variant = context.treatment(for: "exp_checkout")
 | `setAttribute(name:value:)` | `setAttribute(_:to:)` (any `JSONValueConvertible`) |
 | `setAttributes(_:)` | `setAttributes(_:)` |
 | `getAttribute(name:)`, `getAttributes()` | `attribute(_:)`, `attributes` |
-| `setOverride(experimentName:variant:)`, `getOverride(experimentName:)` | `overrides[name] = variant`, `overrides[name]` |
+| `setOverride(experimentName:variant:)`, `getOverride(experimentName:)` | `setOverride(variant, for: name)` (atomic), `overrides[name]` |
 | `setOverrides(_:)` | `setOverrides(_:)` |
-| `setCustomAssignment(experimentName:variant:)`, `getCustomAssignment(experimentName:)` | `customAssignments[name] = variant`, `customAssignments[name]` |
+| `setCustomAssignment(experimentName:variant:)`, `getCustomAssignment(experimentName:)` | `setCustomAssignment(variant, for: name)` (atomic), `customAssignments[name]` |
 | `setCustomAssignments(_:)` | `setCustomAssignments(_:)` |
 | `track(_:properties: [String: JSON]?)` | `track(_:properties: [String: JSONValue]?)` |
 

@@ -593,7 +593,11 @@ public final class Context: Sendable {
 	}
 
 	/// The variant to serve for each experiment, regardless of its assignment. An override is never
-	/// counted as assigned. Set one with `overrides["exp"] = 1`, remove it with `overrides["exp"] = nil`.
+	/// counted as assigned.
+	///
+	/// Reading returns a snapshot. Assigning (including `overrides["exp"] = 1`) replaces the whole
+	/// dictionary, so concurrent writers can overwrite each other: from several threads, use
+	/// `setOverride(_:for:)` and `setOverrides(_:)`, which update atomically.
 	public var overrides: [String: Int] {
 		get { storage.withLock { $0.overrides } }
 		// A plain setter, not `_modify`: the caller's expression (which may read this context, e.g.
@@ -601,18 +605,32 @@ public final class Context: Sendable {
 		set { storage.withLock { $0.overrides = newValue } }
 	}
 
-	/// Sets several overrides at once.
+	/// Sets (or, with `nil`, removes) the override of one experiment, atomically.
+	public func setOverride(_ variant: Int?, for experiment: String) {
+		storage.withLock { $0.overrides[experiment] = variant }
+	}
+
+	/// Sets several overrides at once, atomically; existing overrides of other experiments are kept.
 	public func setOverrides(_ overrides: [String: Int]) {
 		storage.withLock { $0.overrides.merge(overrides) { _, new in new } }
 	}
 
 	/// The variant to assign for each experiment when the unit is eligible, instead of the hashed one.
+	///
+	/// Reading returns a snapshot. Assigning replaces the whole dictionary, so concurrent writers can
+	/// overwrite each other: from several threads, use `setCustomAssignment(_:for:)` and
+	/// `setCustomAssignments(_:)`, which update atomically.
 	public var customAssignments: [String: Int] {
 		get { storage.withLock { $0.customAssignments } }
 		set { storage.withLock { $0.customAssignments = newValue } }
 	}
 
-	/// Sets several custom assignments at once.
+	/// Sets (or, with `nil`, removes) the custom assignment of one experiment, atomically.
+	public func setCustomAssignment(_ variant: Int?, for experiment: String) {
+		storage.withLock { $0.customAssignments[experiment] = variant }
+	}
+
+	/// Sets several custom assignments at once, atomically.
 	public func setCustomAssignments(_ assignments: [String: Int]) {
 		storage.withLock { $0.customAssignments.merge(assignments) { _, new in new } }
 	}

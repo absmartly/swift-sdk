@@ -213,11 +213,16 @@ at once:
 ```swift
 let context = client.context(
     units: [.deviceID: deviceID], overrides: ["exp_checkout": 1, "exp_banner": 2], data: contextData)
-context.overrides["exp_checkout"] = 2
+context.setOverride(2, for: "exp_checkout")
 context.setOverrides(["exp_banner": 1, "exp_search": 2])
-context.overrides["exp_banner"] = nil
-context.customAssignments["exp_search"] = 1
+context.setOverride(nil, for: "exp_banner")
+context.setCustomAssignment(1, for: "exp_search")
+let current = context.overrides   // ["exp_checkout": 2, "exp_search": 2]
 ```
+
+`setOverride(_:for:)` and `setOverrides(_:)` update atomically, so they are safe from any thread.
+Assigning the `overrides` property (`context.overrides["x"] = 1`) also works, but replaces the whole
+dictionary: two threads doing it at the same time can overwrite each other.
 
 ### Attributes and units
 

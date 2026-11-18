@@ -29,7 +29,7 @@ output); the `X-Agent` header is `absmartly-swift-sdk/2.0.0`. See [MIGRATING.md]
 - Swift 6 language mode with complete strict concurrency; every public type is `Sendable`.
 - `ABsmartlyUI`, a separate product with SwiftUI property wrappers (`@Treatment`, `@Variable`) and `.absmartlyContext(_:)`.
 - Typed variables (`variable(_:default:)` for any `Decodable & Sendable`), `treatment(for:as:)` for `Int`-backed enums, `isInTreatment(_:)`.
-- `setOverrides(_:)`/`setCustomAssignments(_:)` and `overrides`/`customAssignments` dictionary properties; overrides and custom assignments at context creation.
+- Atomic `setOverride(_:for:)`/`setOverrides(_:)` and `setCustomAssignment(_:for:)`/`setCustomAssignments(_:)`; `overrides`/`customAssignments` dictionary properties (a snapshot on read; assigning replaces the whole dictionary); overrides and custom assignments at context creation.
 - `Context.State` and `context.state`.
 - `EventLogger.osLog`.
 

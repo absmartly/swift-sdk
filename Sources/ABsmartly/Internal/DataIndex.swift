@@ -109,7 +109,10 @@ struct DataIndex: Sendable {
 				if type.hasPrefix("json") {
 					do {
 						let parsed = try JSONValue(parsing: text)
-						value = parsed.isNull ? nil : parsed
+						// Not a ternary: `nil` there would become `JSONValue.null` (ExpressibleByNilLiteral).
+						if !parsed.isNull {
+							value = parsed
+						}
 					} catch {
 						let truncated = text.count > 100 ? "\(text.prefix(100))..." : text
 						Log.error(
