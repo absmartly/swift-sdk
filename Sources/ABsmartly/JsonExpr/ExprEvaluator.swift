@@ -242,15 +242,15 @@ final class ExprEvaluator {
 			return true
 		default:
 			guard let l = scalarNumber(lhs), let r = scalarNumber(rhs) else { return false }
-			return l == r
+			return NSArray(object: l).isEqual(to: [r])
 		}
 	}
 
-	private static func scalarNumber(_ x: JSONValue) -> Double? {
+	private static func scalarNumber(_ x: JSONValue) -> NSNumber? {
 		switch x {
-		case .bool(let value): return value ? 1 : 0
-		case .int(let value): return Double(value)
-		case .double(let value): return value
+		case .bool(let value): return NSNumber(value: value)
+		case .int(let value): return NSNumber(value: value)
+		case .double(let value): return NSNumber(value: value)
 		default: return nil
 		}
 	}
