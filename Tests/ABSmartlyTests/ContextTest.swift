@@ -3677,6 +3677,16 @@ final class ContextTest: XCTestCase {
 		XCTAssertEqual(1, context.getTreatment("exp_test_ab"))
 	}
 
+	// An empty application name is treated the same as unconfigured: the key is left out.
+	func testEmptyApplicationConfigLeavesKeyOut() throws {
+		let data = try strictAudienceContextData(filter: "[{\"null\":{\"var\":\"application\"}}]")
+		let context = try createSystemContext(
+			config: getContextConfig(withUnits: true), data: Promise<ContextData>.value(data),
+			application: "")
+
+		XCTAssertEqual(1, context.getTreatment("exp_test_ab"))
+	}
+
 	// Nothing extra is published: the serialized payload carries no `application`/`environment`/
 	// `app_version` attribute beyond the user-set ones.
 	func testSystemAttributesAreNotPublished() throws {
@@ -4361,15 +4371,15 @@ final class ContextV140BehaviourTest: XCTestCase {
 		XCTAssertEqual(0, scheduler.scheduleAfterExecuteCallsCount)
 
 		let (publish, publishSeal) = Promise<Void>.pending()
-		handler.publishEventReturnValue = publish
+		let drained = expectation(description: "final publish started")
+		handler.publishEventClosure = { _ in
+			drained.fulfill()
+			return publish
+		}
 		let failed = expectation(description: "close fails")
 		_ = context.close().catch { _ in failed.fulfill() }
-		let drained = expectation(description: "final publish started")
-		DispatchQueue.global().async {
-			while self.handler.publishEventCallsCount == 0 { usleep(1000) }
-			drained.fulfill()
-		}
 		wait(for: [drained], timeout: 2)
+		handler.publishEventClosure = nil
 
 		loadSeal.reject(ABSmartlyError("load failed"))
 		let settled = expectation(description: "load failed")
