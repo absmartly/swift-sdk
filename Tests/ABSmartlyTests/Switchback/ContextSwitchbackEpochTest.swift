@@ -101,3 +101,27 @@ final class ContextSwitchbackEpochTest: SwitchbackTestCase {
 		XCTAssertEqual(afterResolve, matcher.evaluations)
 	}
 }
+
+extension ContextSwitchbackEpochTest {
+	// java-sdk SWITCHBACK.md "Refresh and epochs": seed and split edits do not invalidate an already
+	// cached assignment (as for unit experiments, which also keep their variant across such edits); the
+	// next period draws with them.
+	func testSeedAndSplitEditsKeepTheCachedPeriodAndApplyFromTheNextPeriod() {
+		let context = createContext(SB.data([SB.switchback(arms: 3, periodMs: SB.hour)]))
+		clock.now = SB.anchor + 10
+		XCTAssertEqual(SB.expected3Arms[0], context.getTreatment("exp_sb"))
+
+		var reseeded = SB.switchback(arms: 3, periodMs: SB.hour)
+		reseeded["seedHi"] = 7
+		reseeded["seedLo"] = 11
+		reseeded["split"] = [0.5, 0.25, 0.25]
+		refresh(context, SB.data([reseeded]))
+		XCTAssertEqual(SB.expected3Arms[0], context.getTreatment("exp_sb"))
+		XCTAssertEqual(1, context.getPendingCount())
+
+		clock.now = SB.anchor + SB.hour
+		let newSeed: Int64 = (Int64(7) << 32) | 11
+		XCTAssertEqual(SB.draw(SB.clusterKey, 1, arms: 3, seed: newSeed), context.getTreatment("exp_sb"))
+		XCTAssertEqual(2, context.getPendingCount())
+	}
+}

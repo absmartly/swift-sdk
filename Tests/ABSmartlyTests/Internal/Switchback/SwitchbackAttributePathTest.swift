@@ -84,6 +84,13 @@ final class SwitchbackAttributePathTest: XCTestCase {
 		XCTAssertEqual(7, SwitchbackAttributePath.tryParseInt("007"))
 		XCTAssertEqual(2_147_483_647, SwitchbackAttributePath.tryParseInt("2147483647"))
 		XCTAssertEqual(-2_147_483_648, SwitchbackAttributePath.tryParseInt("-2147483648"))
+		// An arbitrarily long digit run is not an int (Guava returns null), so it reads as an object key,
+		// and parsing it never overflows.
+		let long = String(repeating: "9", count: 10_000)
+		XCTAssertNil(SwitchbackAttributePath.tryParseInt(long))
+		XCTAssertNil(SwitchbackAttributePath.tryParseInt("-" + long))
+		XCTAssertEqual(
+			"deep", SwitchbackAttributePath.parseSupported("items/\(long)/city")?.resolve(["items": JSON([long: ["city": "deep"]])])?.string)
 		for s in ["", "-", "+1", "1a", " 1", "2147483648", "-2147483649", "99999999999999999999", "\u{0660}", "1.0"] {
 			XCTAssertNil(SwitchbackAttributePath.tryParseInt(s), s)
 		}
