@@ -189,6 +189,14 @@ final class ContextAssignmentRulesTest: XCTestCase {
 					"{\"type\":\"assign\",\"variant\":1,\"environments\":[\"production\"]}",
 					"{\"type\":\"assign\",\"variant\":2,\"environments\":[]}")))
 		XCTAssertEqual(2, createContext(none, environment: nil).getTreatment("exp"))
+
+		// An empty environment name counts as none, so a rule scoped to "" does not match it.
+		let empty = try contextData(
+			experimentJSON(
+				rules: rules(
+					"{\"type\":\"assign\",\"variant\":1,\"environments\":[\"\"]}",
+					"{\"type\":\"assign\",\"variant\":2,\"environments\":[]}")))
+		XCTAssertEqual(2, createContext(empty, environment: "").getTreatment("exp"))
 	}
 
 	func testConditionsSeeSystemAttributesAndSemver() throws {
