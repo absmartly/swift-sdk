@@ -1,0 +1,103 @@
+import Foundation
+import XCTest
+
+@testable import ABSmartly
+
+// Epoch identity across A-B-A refreshes, one clock reading per call, and no audience re-evaluation
+// on cached slots.
+final class ContextSwitchbackEpochTest: SwitchbackTestCase {
+	// An allow-list change is a switchback identity change, so an A-B-A refresh through a
+	// different allow-list starts a new epoch and the next read exposes again (java-sdk
+	// sameSwitchbackIdentity compares switchbackClusterValues).
+	func testAllowListChangeWithoutAnInterveningLookupStillReresolves() {
+		let context = createContext(SB.data([SB.switchback(arms: 2, periodMs: SB.hour)]))
+		clock.now = SB.anchor + 10
+		_ = context.getTreatment("exp_sb")
+		XCTAssertEqual(1, context.getPendingCount())
+
+		var allowList = SB.switchback(arms: 2, periodMs: SB.hour)
+		allowList["switchbackClusterValues"] = [SB.clusterKey]
+		refresh(context, SB.data([allowList]))
+		refresh(context, SB.data([SB.switchback(arms: 2, periodMs: SB.hour)]))
+		XCTAssertEqual(SB.expected2Arms[0], context.getTreatment("exp_sb"))
+		XCTAssertEqual(2, context.getPendingCount())
+	}
+
+	// One getVariableValue call takes one clock reading (SWITCHBACK.md "Serving"; java-sdk
+	// reads `now` once per call), so every switchback visited on a shared key resolves in the same period.
+	func testSharedVariableKeyWalkUsesOneClockReading() {
+		var first = SB.switchback(1, "exp_sb", arms: 2, periodMs: SB.hour)
+		first["audience"] = "{\"filter\":[{\"eq\":[{\"var\":\"tier\"},{\"value\":\"gold\"}]}]}"
+		first["audienceStrict"] = true
+		let second = SB.switchback(2, "exp_sb2", arms: 2, periodMs: SB.hour)
+		let context = createContext(SB.data([first, second]))
+		clock.now = SB.anchor + SB.hour + 5
+		clock.nextRead = SB.anchor + SB.hour - 1
+		XCTAssertEqual(SB.expected2Arms[0], context.getVariableValue("sb.arm", defaultValue: JSON(-1))?.int)
+		XCTAssertEqual(
+			[SB.anchor + SB.hour - 1, SB.anchor + SB.hour - 1], publishExposures(context).map { $0.exposedAt })
+	}
+
+	// A unit definition in between breaks the switchback chain every time, not only the
+	// first (SWITCHBACK.md "Refresh and epochs"; java-sdk sameSwitchbackIdentity requires a switchback
+	// previous). Two switchback -> unit -> switchback round trips each re-expose.
+	func testEveryUnitInterludeStartsANewEpoch() {
+		let context = createContext(SB.data([SB.switchback(arms: 2, periodMs: SB.hour)]))
+		clock.now = SB.anchor + 10
+		_ = context.getTreatment("exp_sb")
+		XCTAssertEqual(1, context.getPendingCount())
+		var toUnit = SB.switchback(arms: 2, periodMs: SB.hour)
+		toUnit["randomizationType"] = "unit"
+		for round in 2...3 {
+			refresh(context, SB.data([toUnit]))
+			refresh(context, SB.data([SB.switchback(arms: 2, periodMs: SB.hour)]))
+			XCTAssertEqual(SB.expected2Arms[0], context.getTreatment("exp_sb"))
+			XCTAssertEqual(round, Int(context.getPendingCount()))
+		}
+	}
+
+	// Each identity field changed and restored with no lookup in between
+	// starts a new epoch, so the next read exposes again.
+	func testEveryIdentityFieldAbaStartsANewEpoch() {
+		let edits: [(String, Any)] = [
+			("switchbackStartAt", SB.anchor - SB.hour), ("switchbackPeriodMs", 2 * SB.hour), ("iteration", 2),
+			("switchbackClusterValues", [SB.clusterKey]),
+		]
+		for (field, value) in edits {
+			setUp()
+			let context = createContext(SB.data([SB.switchback(arms: 2, periodMs: SB.hour)]))
+			clock.now = SB.anchor + 10
+			_ = context.getTreatment("exp_sb")
+			var edited = SB.switchback(arms: 2, periodMs: SB.hour)
+			edited[field] = value
+			refresh(context, SB.data([edited]))
+			refresh(context, SB.data([SB.switchback(arms: 2, periodMs: SB.hour)]))
+			_ = context.getTreatment("exp_sb")
+			XCTAssertEqual(2, context.getPendingCount(), field)
+		}
+	}
+
+	// A cached switchback slot with an audience is not re-evaluated on reads
+	// after its resolution.
+	final class CountingMatcher: AudienceMatcher {
+		var evaluations = 0
+		override func evaluate(_ audience: String, _ attributes: [String: JSON]) -> Bool? {
+			evaluations += 1
+			return super.evaluate(audience, attributes)
+		}
+	}
+
+	func testCachedSwitchbackSlotDoesNotReevaluateItsAudience() {
+		var sb = SB.switchback(arms: 2, periodMs: SB.hour)
+		sb["audience"] = "{\"filter\":[{\"value\":true}]}"
+		let matcher = CountingMatcher()
+		let context = createContext(SB.data([sb]), matcher: matcher)
+		clock.now = SB.anchor + 10
+		_ = context.getTreatment("exp_sb")
+		let afterResolve = matcher.evaluations
+		for _ in 0..<3 {
+			_ = context.getTreatment("exp_sb")
+		}
+		XCTAssertEqual(afterResolve, matcher.evaluations)
+	}
+}

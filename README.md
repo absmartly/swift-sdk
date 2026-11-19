@@ -337,6 +337,8 @@ let variant = context.getTreatment("exp_store_layout")
   (`'a/b'`) is a literal key and an integer segment indexes an array. A path with a `.` is invalid.
 - A cluster value is a non-empty string, or an integer, read as its decimal text. A floating-point
   number (including `3.0`), a boolean, an object, an array, an empty string or `null` is no value.
+  Set integer cluster values as Swift integers (`JSON(3)`), not `Double`s: `JSON(3.0)` is no value
+  here, but is published as `3`, which the Collector would read as the cluster `"3"`.
 - Units that disagree, a value outside `switchbackClusterValues`, or no value at all give the control
   variant (`0`) and publish nothing. So does a time before `switchbackStartAt`, or a schedule that
   cannot be served.
