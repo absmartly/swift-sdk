@@ -77,6 +77,10 @@ security fixes, from the `release/1.x` branch) for 12 months after 2.0 ships.
 - Every exposure in the publish payload carries `ruleOverride` (`false` when no assignment rule matched).
 
 ### Fixed
+- A `json` custom field holding valid non-object JSON (array, number, string, boolean) is returned as
+  `JSON` by `getCustomFieldValue`; 1.4.0 returned `nil` because the `VariableParser` only accepts objects.
+  Objects still go through the configured `VariableParser`; `null` and invalid JSON still return `nil`.
+  A `boolean` custom field keeps 1.4.0's coercion (`Bool(value)`: only `"true"`/`"false"`).
 - `Context` methods no longer crash the app on misuse (reading before ready, writing after close, a
   blank or changed unit): 1.4.0 hit a `precondition`. Reads return a default (`0`, `nil`, the
   `defaultValue`, empty collections), writes are ignored, and an `.error` event with the 1.4.0 message

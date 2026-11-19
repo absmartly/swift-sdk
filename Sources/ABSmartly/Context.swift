@@ -1476,7 +1476,22 @@ public final class Context {
 
 					if let customValue = customFieldValue.value {
 						if fieldType.starts(with: "json") {
-							value.value = parser.parse(experimentName: experiment.name, config: customValue)
+							// An object goes through the configured VariableParser, as in v1.4.0. Other valid
+							// JSON (array, number, string, boolean) is kept as `JSON` (bug fix: v1.4.0 returned
+							// nil because the parser only returns objects). `null` is nil without logging;
+							// invalid JSON goes through the parser, which logs and returns nil, as in v1.4.0.
+							if let parsed = try? JSON(data: Data(customValue.utf8), options: .fragmentsAllowed) {
+								switch parsed.type {
+								case .dictionary:
+									value.value = parser.parse(experimentName: experiment.name, config: customValue)
+								case .array, .number, .string, .bool:
+									value.value = parsed
+								default:
+									value.value = nil
+								}
+							} else {
+								value.value = parser.parse(experimentName: experiment.name, config: customValue)
+							}
 						} else if fieldType.starts(with: "boolean") {
 							value.value = Bool(customValue)
 						} else if fieldType.starts(with: "number") {

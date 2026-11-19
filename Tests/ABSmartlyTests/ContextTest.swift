@@ -4459,13 +4459,18 @@ final class ContextV140BehaviourTest: XCTestCase {
 		XCTAssertEqual(-1, scheduler.scheduleAfterExecuteReceivedArguments?.after)
 	}
 
-	func testCustomFieldValuesKeepV140Coercion() throws {
+	func testCustomFieldValuesCoercion() throws {
 		let json = """
 			{"experiments": [{"id": 1, "name": "exp", "customFieldValues": [
 				{"name": "upper", "type": "boolean", "value": "TRUE"},
 				{"name": "no", "type": "boolean", "value": "false"},
 				{"name": "array", "type": "json", "value": "[1, 2]"},
-				{"name": "scalar", "type": "json", "value": "5"}
+				{"name": "scalar", "type": "json", "value": "5"},
+				{"name": "string", "type": "json", "value": "\\"hi\\""},
+				{"name": "flag", "type": "json", "value": "true"},
+				{"name": "null", "type": "json", "value": "null"},
+				{"name": "invalid", "type": "json", "value": "{not json"},
+				{"name": "nestedArray", "type": "json", "value": " [{\\"a\\": [1]}] "}
 			]}]}
 			"""
 		let data = try JSONDecoder().decode(ContextData.self, from: Data(json.utf8))
@@ -4473,8 +4478,15 @@ final class ContextV140BehaviourTest: XCTestCase {
 
 		XCTAssertNil(context.getCustomFieldValue(experimentName: "exp", key: "upper"))
 		XCTAssertEqual(false, context.getCustomFieldValue(experimentName: "exp", key: "no") as? Bool)
-		XCTAssertNil(context.getCustomFieldValue(experimentName: "exp", key: "array"))
-		XCTAssertNil(context.getCustomFieldValue(experimentName: "exp", key: "scalar"))
+		// Valid non-object JSON is kept (v1.4.0 dropped it to nil; bug fix): arrays and scalars come
+		// back as `JSON`, while objects still go through the VariableParser.
+		XCTAssertEqual(JSON([1, 2]), context.getCustomFieldValue(experimentName: "exp", key: "array") as? JSON)
+		XCTAssertEqual(JSON(5), context.getCustomFieldValue(experimentName: "exp", key: "scalar") as? JSON)
+		XCTAssertEqual(JSON("hi"), context.getCustomFieldValue(experimentName: "exp", key: "string") as? JSON)
+		XCTAssertEqual(JSON(true), context.getCustomFieldValue(experimentName: "exp", key: "flag") as? JSON)
+		XCTAssertNil(context.getCustomFieldValue(experimentName: "exp", key: "null"))
+		XCTAssertNil(context.getCustomFieldValue(experimentName: "exp", key: "invalid"))
+		XCTAssertEqual(JSON([["a": [1]]]), context.getCustomFieldValue(experimentName: "exp", key: "nestedArray") as? JSON)
 		XCTAssertEqual("json", context.getCustomFieldValueType(experimentName: "exp", key: "array"))
 	}
 
