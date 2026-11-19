@@ -164,7 +164,9 @@ package product (Swift Package Manager only). Import it instead of (or as well a
 ```swift
 import ABSmartlyAsync
 
-let context = sdk.createContext(config: config)
+let contextConfig = ContextConfig()
+contextConfig.setUnit(unitType: "device_id", uid: "device-123")
+let context = sdk.createContext(config: contextConfig)
 try await context.waitUntilReady()
 try await context.publish()
 try await context.close()

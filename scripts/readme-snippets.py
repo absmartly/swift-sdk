@@ -49,7 +49,7 @@ for i, b in enumerate(blocks):
         g = guard(b)
         if g: out.append(f"#if {g}")
         out.append("@available(iOS 13, macOS 10.15, tvOS 13, watchOS 6, *)")
-        out.append(f"func readmeSnippet{i}(sdk: ABSmartlySDK, context: Context, config: ContextConfig, contextData: ContextData) async throws {{")
+        out.append(f"func readmeSnippet{i}(sdk: ABSmartlySDK, context: Context, contextData: ContextData) async throws {{")
         out.append(indent(body(b)))
         # README examples bind values they do not use; reference them so the build stays warning-free.
         names = re.findall(r"^let (\w+)", body(b), re.M)

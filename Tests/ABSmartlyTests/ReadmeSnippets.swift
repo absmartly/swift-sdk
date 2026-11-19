@@ -17,7 +17,7 @@ import Cocoa
 
 // README block 1
 @available(iOS 13, macOS 10.15, tvOS 13, watchOS 6, *)
-func readmeSnippet1(sdk: ABSmartlySDK, context: Context, config: ContextConfig, contextData: ContextData) async throws {
+func readmeSnippet1(sdk: ABSmartlySDK, context: Context, contextData: ContextData) async throws {
 	let sdk: ABSmartlySDK
 	do {
 	    sdk = try ABSmartlySDK(
@@ -35,7 +35,7 @@ func readmeSnippet1(sdk: ABSmartlySDK, context: Context, config: ContextConfig, 
 
 // README block 2
 @available(iOS 13, macOS 10.15, tvOS 13, watchOS 6, *)
-func readmeSnippet2(sdk: ABSmartlySDK, context: Context, config: ContextConfig, contextData: ContextData) async throws {
+func readmeSnippet2(sdk: ABSmartlySDK, context: Context, contextData: ContextData) async throws {
 	let sdk = try ABSmartlySDK(
 	    endpoint: "https://your-company.absmartly.io/v1",
 	    apiKey: "YOUR-API-KEY",
@@ -50,7 +50,7 @@ func readmeSnippet2(sdk: ABSmartlySDK, context: Context, config: ContextConfig, 
 
 // README block 3
 @available(iOS 13, macOS 10.15, tvOS 13, watchOS 6, *)
-func readmeSnippet3(sdk: ABSmartlySDK, context: Context, config: ContextConfig, contextData: ContextData) async throws {
+func readmeSnippet3(sdk: ABSmartlySDK, context: Context, contextData: ContextData) async throws {
 	let clientConfig = ClientConfig(
 	    apiKey: "YOUR-API-KEY",
 	    application: "website",
@@ -69,7 +69,7 @@ func readmeSnippet3(sdk: ABSmartlySDK, context: Context, config: ContextConfig, 
 
 // README block 4
 @available(iOS 13, macOS 10.15, tvOS 13, watchOS 6, *)
-func readmeSnippet4(sdk: ABSmartlySDK, context: Context, config: ContextConfig, contextData: ContextData) async throws {
+func readmeSnippet4(sdk: ABSmartlySDK, context: Context, contextData: ContextData) async throws {
 	let contextConfig = ContextConfig()
 	contextConfig.setUnit(unitType: "session_id", uid: "5ebf06d8cb5d8137290c4abb64155584fbdb64d8")
 
@@ -83,12 +83,15 @@ func readmeSnippet4(sdk: ABSmartlySDK, context: Context, config: ContextConfig, 
 
 // README block 5
 @available(iOS 13, macOS 10.15, tvOS 13, watchOS 6, *)
-func readmeSnippet5(sdk: ABSmartlySDK, context: Context, config: ContextConfig, contextData: ContextData) async throws {
+func readmeSnippet5(sdk: ABSmartlySDK, context: Context, contextData: ContextData) async throws {
 
-	let context = sdk.createContext(config: config)
+	let contextConfig = ContextConfig()
+	contextConfig.setUnit(unitType: "device_id", uid: "device-123")
+	let context = sdk.createContext(config: contextConfig)
 	try await context.waitUntilReady()
 	try await context.publish()
 	try await context.close()
+	_ = contextConfig
 	_ = context
 }
 
@@ -123,7 +126,7 @@ final class ExperimentsModel {
 
 // README block 7
 @available(iOS 13, macOS 10.15, tvOS 13, watchOS 6, *)
-func readmeSnippet7(sdk: ABSmartlySDK, context: Context, config: ContextConfig, contextData: ContextData) async throws {
+func readmeSnippet7(sdk: ABSmartlySDK, context: Context, contextData: ContextData) async throws {
 	let contextConfig = ContextConfig()
 	contextConfig.setUnit(unitType: "session_id", uid: "5ebf06d8cb5d8137290c4abb64155584fbdb64d8")
 
@@ -135,7 +138,7 @@ func readmeSnippet7(sdk: ABSmartlySDK, context: Context, config: ContextConfig, 
 
 // README block 8
 @available(iOS 13, macOS 10.15, tvOS 13, watchOS 6, *)
-func readmeSnippet8(sdk: ABSmartlySDK, context: Context, config: ContextConfig, contextData: ContextData) async throws {
+func readmeSnippet8(sdk: ABSmartlySDK, context: Context, contextData: ContextData) async throws {
 	let contextConfig = ContextConfig()
 	contextConfig.setUnit(unitType: "session_id", uid: "5ebf06d8cb5d8137290c4abb64155584fbdb64d8")
 	contextConfig.refreshInterval = 4 * 3600 // every 4 hours (in seconds)
@@ -144,7 +147,7 @@ func readmeSnippet8(sdk: ABSmartlySDK, context: Context, config: ContextConfig, 
 
 // README block 9
 @available(iOS 13, macOS 10.15, tvOS 13, watchOS 6, *)
-func readmeSnippet9(sdk: ABSmartlySDK, context: Context, config: ContextConfig, contextData: ContextData) async throws {
+func readmeSnippet9(sdk: ABSmartlySDK, context: Context, contextData: ContextData) async throws {
 	context.refresh().done {
 	    print("Context refreshed with latest experiment data")
 	}.catch { error in
@@ -157,7 +160,7 @@ func readmeSnippet9(sdk: ABSmartlySDK, context: Context, config: ContextConfig, 
 
 // README block 10
 @available(iOS 13, macOS 10.15, tvOS 13, watchOS 6, *)
-func readmeSnippet10(sdk: ABSmartlySDK, context: Context, config: ContextConfig, contextData: ContextData) async throws {
+func readmeSnippet10(sdk: ABSmartlySDK, context: Context, contextData: ContextData) async throws {
 	context.setUnit(unitType: "db_user_id", uid: "1000013")
 	context.setUnits([
 	    "db_user_id": "1000013"
@@ -166,7 +169,7 @@ func readmeSnippet10(sdk: ABSmartlySDK, context: Context, config: ContextConfig,
 
 // README block 11
 @available(iOS 13, macOS 10.15, tvOS 13, watchOS 6, *)
-func readmeSnippet11(sdk: ABSmartlySDK, context: Context, config: ContextConfig, contextData: ContextData) async throws {
+func readmeSnippet11(sdk: ABSmartlySDK, context: Context, contextData: ContextData) async throws {
 	let treatment = context.getTreatment("exp_test_experiment")
 	if treatment == 0 {
 	    // user is in control group (variant 0)
@@ -178,7 +181,7 @@ func readmeSnippet11(sdk: ABSmartlySDK, context: Context, config: ContextConfig,
 
 // README block 12
 @available(iOS 13, macOS 10.15, tvOS 13, watchOS 6, *)
-func readmeSnippet12(sdk: ABSmartlySDK, context: Context, config: ContextConfig, contextData: ContextData) async throws {
+func readmeSnippet12(sdk: ABSmartlySDK, context: Context, contextData: ContextData) async throws {
 	let defaultButtonColor: JSON = "red"
 	let buttonColor = context.getVariableValue("button.color", defaultValue: defaultButtonColor)?.stringValue
 	_ = defaultButtonColor
@@ -187,7 +190,7 @@ func readmeSnippet12(sdk: ABSmartlySDK, context: Context, config: ContextConfig,
 
 // README block 13
 @available(iOS 13, macOS 10.15, tvOS 13, watchOS 6, *)
-func readmeSnippet13(sdk: ABSmartlySDK, context: Context, config: ContextConfig, contextData: ContextData) async throws {
+func readmeSnippet13(sdk: ABSmartlySDK, context: Context, contextData: ContextData) async throws {
 	let treatment = context.peekTreatment("exp_test_experiment")
 	if treatment == 0 {
 	    // user is in control group (variant 0)
@@ -199,14 +202,14 @@ func readmeSnippet13(sdk: ABSmartlySDK, context: Context, config: ContextConfig,
 
 // README block 14
 @available(iOS 13, macOS 10.15, tvOS 13, watchOS 6, *)
-func readmeSnippet14(sdk: ABSmartlySDK, context: Context, config: ContextConfig, contextData: ContextData) async throws {
+func readmeSnippet14(sdk: ABSmartlySDK, context: Context, contextData: ContextData) async throws {
 	let color = context.peekVariableValue("colorGComponent", defaultValue: 255)
 	_ = color
 }
 
 // README block 15
 @available(iOS 13, macOS 10.15, tvOS 13, watchOS 6, *)
-func readmeSnippet15(sdk: ABSmartlySDK, context: Context, config: ContextConfig, contextData: ContextData) async throws {
+func readmeSnippet15(sdk: ABSmartlySDK, context: Context, contextData: ContextData) async throws {
 	context.setOverride(experimentName: "exp_test_experiment", variant: 1)  // force variant 1 of treatment
 	context.setOverrides(["exp_test_experiment": 1, "exp_another_experiment": 0])
 }
@@ -214,7 +217,7 @@ func readmeSnippet15(sdk: ABSmartlySDK, context: Context, config: ContextConfig,
 // README block 16
 #if canImport(UIKit) && !os(watchOS)
 @available(iOS 13, macOS 10.15, tvOS 13, watchOS 6, *)
-func readmeSnippet16(sdk: ABSmartlySDK, context: Context, config: ContextConfig, contextData: ContextData) async throws {
+func readmeSnippet16(sdk: ABSmartlySDK, context: Context, contextData: ContextData) async throws {
 	context.setAttribute(name: "device", value: UIDevice.current.model)
 	context.setAttributes([
 	    "customer_age": "new_customer",
@@ -225,7 +228,7 @@ func readmeSnippet16(sdk: ABSmartlySDK, context: Context, config: ContextConfig,
 
 // README block 17
 @available(iOS 13, macOS 10.15, tvOS 13, watchOS 6, *)
-func readmeSnippet17(sdk: ABSmartlySDK, context: Context, config: ContextConfig, contextData: ContextData) async throws {
+func readmeSnippet17(sdk: ABSmartlySDK, context: Context, contextData: ContextData) async throws {
 	context.track("payment", properties: [
 	    "item_count": 1,
 	    "total_amount": 1999.99
@@ -234,7 +237,7 @@ func readmeSnippet17(sdk: ABSmartlySDK, context: Context, config: ContextConfig,
 
 // README block 18
 @available(iOS 13, macOS 10.15, tvOS 13, watchOS 6, *)
-func readmeSnippet18(sdk: ABSmartlySDK, context: Context, config: ContextConfig, contextData: ContextData) async throws {
+func readmeSnippet18(sdk: ABSmartlySDK, context: Context, contextData: ContextData) async throws {
 	context.publish().done {
 	    print("All pending events published")
 	}.catch { error in
@@ -247,7 +250,7 @@ func readmeSnippet18(sdk: ABSmartlySDK, context: Context, config: ContextConfig,
 
 // README block 19
 @available(iOS 13, macOS 10.15, tvOS 13, watchOS 6, *)
-func readmeSnippet19(sdk: ABSmartlySDK, context: Context, config: ContextConfig, contextData: ContextData) async throws {
+func readmeSnippet19(sdk: ABSmartlySDK, context: Context, contextData: ContextData) async throws {
 	context.close().done {
 	    print("Context closed")
 	}.catch { error in
@@ -282,7 +285,7 @@ public class CustomEventLogger: ContextEventLogger {
 
 // README block 21
 @available(iOS 13, macOS 10.15, tvOS 13, watchOS 6, *)
-func readmeSnippet21(sdk: ABSmartlySDK, context: Context, config: ContextConfig, contextData: ContextData) async throws {
+func readmeSnippet21(sdk: ABSmartlySDK, context: Context, contextData: ContextData) async throws {
 	// For all contexts, during SDK initialization
 	let sdk = try ABSmartlySDK(
 	    endpoint: "https://your-company.absmartly.io/v1",
@@ -525,7 +528,7 @@ class ExperimentManager {
 
 // README block 26
 @available(iOS 13, macOS 10.15, tvOS 13, watchOS 6, *)
-func readmeSnippet26(sdk: ABSmartlySDK, context: Context, config: ContextConfig, contextData: ContextData) async throws {
+func readmeSnippet26(sdk: ABSmartlySDK, context: Context, contextData: ContextData) async throws {
 	let manager = ExperimentManager(sdk: sdk)
 	manager.loadExperiment(deviceId: "device-123")
 	// later, e.g. when the screen goes away:
@@ -535,7 +538,7 @@ func readmeSnippet26(sdk: ABSmartlySDK, context: Context, config: ContextConfig,
 
 // README block 27
 @available(iOS 13, macOS 10.15, tvOS 13, watchOS 6, *)
-func readmeSnippet27(sdk: ABSmartlySDK, context: Context, config: ContextConfig, contextData: ContextData) async throws {
+func readmeSnippet27(sdk: ABSmartlySDK, context: Context, contextData: ContextData) async throws {
 	let sdk = try ABSmartlySDK(
 	    endpoint: "https://your-company.absmartly.io/v1",
 	    apiKey: "YOUR-API-KEY",
@@ -548,7 +551,7 @@ func readmeSnippet27(sdk: ABSmartlySDK, context: Context, config: ContextConfig,
 
 // README block 28
 @available(iOS 13, macOS 10.15, tvOS 13, watchOS 6, *)
-func readmeSnippet28(sdk: ABSmartlySDK, context: Context, config: ContextConfig, contextData: ContextData) async throws {
+func readmeSnippet28(sdk: ABSmartlySDK, context: Context, contextData: ContextData) async throws {
 	let httpClientConfig = DefaultHTTPClientConfig()
 	httpClientConfig.connectionResourceTimeout = 10.0
 	httpClientConfig.connectionRequestTimeout = 10.0
