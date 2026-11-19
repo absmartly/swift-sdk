@@ -79,9 +79,10 @@ security fixes, from the `release/1.x` branch) for 12 months after 2.0 ships.
 ### Fixed
 - A `json` custom field holding valid non-object JSON (array, number, string, boolean) is returned as
   `JSON` by `getCustomFieldValue`; 1.4.0 returned `nil` because the `VariableParser` only accepts objects.
-  Objects still go through the configured `VariableParser`; `null` and invalid JSON still return `nil`.
-  A custom `VariableParser` is no longer called for non-object or `null` JSON custom fields (it is
-  still called for objects and for invalid JSON).
+  `null` returns `nil`. Objects and invalid JSON still go through the configured `VariableParser`, and
+  the field gets whatever it returns (the default parser returns `nil` for invalid JSON, which is now
+  also logged with the field and experiment name). A custom `VariableParser` is no longer called for
+  non-object or `null` JSON custom fields.
   A `boolean` custom field keeps 1.4.0's coercion (`Bool(value)`: only `"true"`/`"false"`).
 - `Context` methods no longer crash the app on misuse (reading before ready, writing after close, a
   blank or changed unit): 1.4.0 hit a `precondition`. Reads return a default (`0`, `nil`, the
