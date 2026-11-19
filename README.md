@@ -222,10 +222,11 @@ final class ExperimentsModel {
         config.setUnit(unitType: "device_id", uid: deviceID)
 
         let context = sdk.createContext(config: config)
-        do {
-            try await context.waitUntilReady()
-        } catch {
-            print("Context failed to initialize: \(error.localizedDescription)")
+        // waitUntilReady() does not throw when the data fails to load; the context is then ready
+        // and failed, and every treatment is the control variant.
+        _ = try? await context.waitUntilReady()
+        if context.isFailed() {
+            print("Context failed to load: \(context.readyError()?.localizedDescription ?? "unknown error")")
         }
         showNewCheckout = context.getTreatment("exp_new_checkout") == 1
         self.context = context

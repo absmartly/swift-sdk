@@ -21,8 +21,7 @@ public class DefaultHTTPResponse: Response {
 
 public class DefaultHTTPClient: HTTPClient {
 	private var config: DefaultHTTPClientConfig = DefaultHTTPClientConfig()
-	private var session: URLSession?
-	private let sessionLock = NSLock()
+	private let session: URLSession
 
 	public init(config: DefaultHTTPClientConfig) {
 		self.config = config
@@ -33,17 +32,10 @@ public class DefaultHTTPClient: HTTPClient {
 	}
 
 	deinit {
-		sessionLock.lock()
-		let s = session
-		session = nil
-		sessionLock.unlock()
-		#if canImport(FoundationNetworking)
-		// Skip URLSession invalidation on Linux: swift-corelibs-foundation has a known bug
-		// where invalidateAndCancel/finishTasksAndInvalidate during deinit causes a crash
-		// in the dispatch queue teardown. The session will be cleaned up by ARC.
-		_ = s
-		#else
-		s?.invalidateAndCancel()
+		#if !canImport(FoundationNetworking)
+		// Not on Linux: swift-corelibs-foundation crashes in dispatch queue teardown when a session
+		// is invalidated during deinit; ARC releases it there instead.
+		session.invalidateAndCancel()
 		#endif
 	}
 
@@ -71,14 +63,6 @@ public class DefaultHTTPClient: HTTPClient {
 			// drops the client mid-request still gets its Promise settled.
 			body: { [self] attempt in
 				return Promise<Response> { seal in
-
-					self.sessionLock.lock()
-					let capturedSession = self.session
-					self.sessionLock.unlock()
-					guard let session = capturedSession else {
-						seal.reject(URLError(.cancelled))
-						return
-					}
 
 					guard var components = URLComponents(string: url) else {
 						seal.reject(URLError(.badURL))
@@ -108,7 +92,7 @@ public class DefaultHTTPClient: HTTPClient {
 						request.httpBody = body
 					}
 
-					session.dataTask(
+					self.session.dataTask(
 						with: request,
 						completionHandler: { data, rsp, error in
 							if let data = data, let rsp = rsp as? HTTPURLResponse {
