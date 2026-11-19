@@ -4474,7 +4474,6 @@ final class ContextV140BehaviourTest: XCTestCase {
 
 		XCTAssertNil(context.getCustomFieldValue(experimentName: "exp", key: "upper"))
 		XCTAssertEqual(false, context.getCustomFieldValue(experimentName: "exp", key: "no") as? Bool)
-		// Bug fix: v1.4.0 returned nil for valid non-object JSON.
 		XCTAssertEqual(JSON([1, 2]), context.getCustomFieldValue(experimentName: "exp", key: "array") as? JSON)
 		XCTAssertEqual(JSON(5), context.getCustomFieldValue(experimentName: "exp", key: "scalar") as? JSON)
 		XCTAssertEqual(JSON("hi"), context.getCustomFieldValue(experimentName: "exp", key: "string") as? JSON)

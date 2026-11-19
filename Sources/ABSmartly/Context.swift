@@ -1475,8 +1475,8 @@ public final class Context {
 
 					if let customValue = customFieldValue.value {
 						if fieldType.starts(with: "json") {
-							// Objects and invalid JSON go through the configured VariableParser, as in v1.4.0;
-							// other valid JSON is kept as `JSON` (v1.4.0 returned nil); `null` is nil.
+							// Objects and invalid JSON go through the configured VariableParser; other valid JSON is
+							// kept as `JSON`; `null` is nil.
 							let parsed = try? JSON(data: Data(customValue.utf8), options: .fragmentsAllowed)
 							switch parsed?.type {
 							case .array?, .number?, .string?, .bool?:
