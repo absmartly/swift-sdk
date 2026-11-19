@@ -114,7 +114,7 @@ final class ExperimentsModel {
         // and failed, and every treatment is the control variant.
         _ = try? await context.waitUntilReady()
         if context.isFailed() {
-            print("Context failed to load: \(context.readyError()?.localizedDescription ?? "unknown error")")
+            print("Context failed to load: \(context.readyError().map { String(describing: $0) } ?? "unknown error")")
         }
         showNewCheckout = context.getTreatment("exp_new_checkout") == 1
         self.context = context
