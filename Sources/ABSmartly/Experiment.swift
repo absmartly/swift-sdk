@@ -24,6 +24,23 @@ public struct Experiment: Codable {
 	/// The holdout's type (`"full"`, `"all_full_on"`) on a `ContextData.holdouts` entry. Informational:
 	/// the SDK derives a holdout's arms from its `split`.
 	public let holdoutType: String?
+	/// `"switchback"` for a switchback experiment, `"unit"` or nil for a unit experiment.
+	public let randomizationType: String?
+	/// A switchback's linked unit types and the attribute path holding each one's cluster value, in the
+	/// order served: the first unit, in this order, with a value serves the experiment. Nil when the
+	/// payload has none, or when it has several and their order is not known (see `ContextData.decode(from:)`).
+	public let switchbackClusters: [SwitchbackCluster]?
+	/// Allowed cluster values; nil or empty allows every value.
+	public let switchbackClusterValues: [String]?
+	/// The switchback grid's start, epoch milliseconds.
+	public let switchbackStartAt: Int64?
+	public let switchbackPeriodMs: Int64?
+	/// Analysis-only windows; the SDK does not use them.
+	public let switchbackCarryoverDurationMs: Int64?
+	public let switchbackBurnInDurationMs: Int64?
+	public let switchbackBurnOutDurationMs: Int64?
+	public let switchbackDesignType: String?
+	public let switchbackEstimand: String?
 
 	// Every field except `name` decodes leniently: a missing or wrong-typed
 	// field falls back to its default instead of failing the whole context.
@@ -62,6 +79,80 @@ public struct Experiment: Codable {
 		holdoutIds = (try? container.decodeIfPresent([LenientElement<Int>].self, forKey: .holdoutIds))?
 			.flatMap { $0.compactMap { $0.value } }
 		holdoutType = try? container.decodeIfPresent(String.self, forKey: .holdoutType)
+
+		randomizationType = try? container.decodeIfPresent(String.self, forKey: .randomizationType)
+		switchbackStartAt = try? container.decodeIfPresent(Int64.self, forKey: .switchbackStartAt)
+		switchbackPeriodMs = try? container.decodeIfPresent(Int64.self, forKey: .switchbackPeriodMs)
+		switchbackCarryoverDurationMs = try? container.decodeIfPresent(Int64.self, forKey: .switchbackCarryoverDurationMs)
+		switchbackBurnInDurationMs = try? container.decodeIfPresent(Int64.self, forKey: .switchbackBurnInDurationMs)
+		switchbackBurnOutDurationMs = try? container.decodeIfPresent(Int64.self, forKey: .switchbackBurnOutDurationMs)
+		switchbackDesignType = try? container.decodeIfPresent(String.self, forKey: .switchbackDesignType)
+		switchbackEstimand = try? container.decodeIfPresent(String.self, forKey: .switchbackEstimand)
+
+		// An allow-list that is not an array of strings cannot be applied, so the cluster map is dropped
+		// with it: the switchback then serves only an ineligible control, never every value.
+		var clusterValues: [String]? = nil
+		var clusterValuesReadable = true
+		if container.contains(.switchbackClusterValues), (try? container.decodeNil(forKey: .switchbackClusterValues)) == false {
+			clusterValues = try? container.decode([String].self, forKey: .switchbackClusterValues)
+			clusterValuesReadable = clusterValues != nil
+		}
+		switchbackClusterValues = clusterValues
+		if clusterValuesReadable {
+			switchbackClusters = Experiment.decodeSwitchbackClusters(
+				container, .switchbackClusters, decoder: decoder, name: name)
+		} else {
+			Logger.error("Ignoring switchbackClusters for experiment '\(name)': switchbackClusterValues is not an array of strings.")
+			switchbackClusters = nil
+		}
+	}
+
+	// The wire form is an object read in its JSON key order; `encode(to:)` writes an array of
+	// `SwitchbackCluster`s, which keeps the order through any encoder. Nil when the field is absent or
+	// null, or not one of those shapes.
+	private static func decodeSwitchbackClusters<Key: CodingKey>(
+		_ container: KeyedDecodingContainer<Key>, _ key: Key, decoder: Decoder, name: String
+	) -> [SwitchbackCluster]? {
+		guard container.contains(key), (try? container.decodeNil(forKey: key)) == false else {
+			return nil
+		}
+		if let clusters = try? container.decode([SwitchbackCluster].self, forKey: key) {
+			var unique: [SwitchbackCluster] = []
+			for cluster in clusters where !unique.contains(where: { $0.unitType == cluster.unitType }) {
+				unique.append(cluster)
+			}
+			return unique
+		}
+		guard let object = try? container.nestedContainer(keyedBy: DynamicKey.self, forKey: key) else {
+			return nil
+		}
+		let paths = Dictionary(
+			object.allKeys.map { ($0.stringValue, try? object.decode(String.self, forKey: $0)) },
+			uniquingKeysWith: { first, _ in first })
+		if paths.count < 2 {
+			return paths.map { SwitchbackCluster(unitType: $0.key, attributePath: $0.value) }
+		}
+		let order = (decoder.userInfo[SwitchbackClusterOrder.userInfoKey] as? SwitchbackClusterOrder)?
+			.keys(at: decoder.codingPath)
+		guard let keys = order, Set(keys) == Set(paths.keys), keys.count == paths.count else {
+			Logger.error(
+				"Ignoring switchbackClusters for experiment '\(name)': the order of its entries is not known. Decode the context data with ContextData.decode(from:).")
+			return nil
+		}
+		return keys.map { SwitchbackCluster(unitType: $0, attributePath: paths[$0] ?? nil) }
+	}
+}
+
+private struct DynamicKey: CodingKey {
+	let stringValue: String
+	let intValue: Int? = nil
+
+	init?(stringValue: String) {
+		self.stringValue = stringValue
+	}
+
+	init?(intValue: Int) {
+		return nil
 	}
 }
 
@@ -74,6 +165,13 @@ extension Experiment: Equatable {
 			&& lhs.fullOnVariant == rhs.fullOnVariant && lhs.applications == rhs.applications
 			&& lhs.variants == rhs.variants && lhs.customFieldValues == rhs.customFieldValues
 			&& lhs.assignmentRules == rhs.assignmentRules && lhs.holdoutIds == rhs.holdoutIds
-			&& lhs.holdoutType == rhs.holdoutType
+			&& lhs.holdoutType == rhs.holdoutType && lhs.randomizationType == rhs.randomizationType
+			&& lhs.switchbackClusters == rhs.switchbackClusters
+			&& lhs.switchbackClusterValues == rhs.switchbackClusterValues
+			&& lhs.switchbackStartAt == rhs.switchbackStartAt && lhs.switchbackPeriodMs == rhs.switchbackPeriodMs
+			&& lhs.switchbackCarryoverDurationMs == rhs.switchbackCarryoverDurationMs
+			&& lhs.switchbackBurnInDurationMs == rhs.switchbackBurnInDurationMs
+			&& lhs.switchbackBurnOutDurationMs == rhs.switchbackBurnOutDurationMs
+			&& lhs.switchbackDesignType == rhs.switchbackDesignType && lhs.switchbackEstimand == rhs.switchbackEstimand
 	}
 }

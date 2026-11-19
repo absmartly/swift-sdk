@@ -316,6 +316,42 @@ on its own.
 let variant = context.getTreatment("exp_test_ab")
 ```
 
+### Switchback Experiments
+
+Switchback experiments are set up in the A/B Smartly dashboard and need no code beyond the context
+attributes that hold the cluster. Each experiment names, in `switchbackClusters`, the unit types it is
+linked to and the attribute path holding each one's cluster value (for example `store_id` →
+`store/region`). Units in the same cluster get the same variant, and the variant changes on a fixed
+time grid (`switchbackStartAt`, `switchbackPeriodMs`).
+
+```swift
+contextConfig.setUnit(unitType: "store_id", uid: "store-42")
+context.setAttribute(name: "store", value: JSON(["region": "north"]))
+
+// The "north" cluster's variant for the current period; one exposure per period.
+let variant = context.getTreatment("exp_store_layout")
+```
+
+- The first linked unit, in `switchbackClusters` order, whose path gives a value serves the
+  experiment, and its exposure is published under that unit. A path is `/`-separated; a quoted segment
+  (`'a/b'`) is a literal key and an integer segment indexes an array. A path with a `.` is invalid.
+- A cluster value is a non-empty string, or an integer, read as its decimal text. A floating-point
+  number (including `3.0`), a boolean, an object, an array, an empty string or `null` is no value.
+  Set integer cluster values as Swift integers (`JSON(3)`), not `Double`s: `JSON(3.0)` is no value
+  here, but is published as `3`, which the Collector would read as the cluster `"3"`.
+- Units that disagree, a value outside `switchbackClusterValues`, or no value at all give the control
+  variant (`0`) and publish nothing. So does a time before `switchbackStartAt`, or a schedule that
+  cannot be served.
+- `setOverride`, assignment rules, a strict audience, full-on, traffic and custom assignments apply as
+  for other experiments. Holdouts never apply to a switchback.
+- The cluster is read once per period: a `setAttribute` later in the same period does not move the
+  unit to another cluster.
+
+Context data fetched by the SDK keeps the order of `switchbackClusters`. When you decode context data
+yourself (for example data passed from a server), use `ContextData.decode(from:)`:
+`JSONDecoder().decode(ContextData.self, from:)` cannot see the order, so a switchback with more than
+one linked unit type decoded that way serves only the control variant.
+
 ### Tracking Goals
 
 Goals are created in the A/B Smartly web console.

@@ -8,12 +8,13 @@ enum TestResources {
         return testsDir + "/Resources"
     }()
 
-    static func path(forResource name: String, ofType ext: String) -> String {
-        return resourcesDir + "/" + name + "." + ext
+    static func path(forResource name: String, ofType ext: String, subdirectory: String? = nil) -> String {
+        return resourcesDir + "/" + (subdirectory.map { $0 + "/" } ?? "") + name + "." + ext
     }
     #else
-    static func path(forResource name: String, ofType ext: String) -> String {
-        return Bundle.module.path(forResource: name, ofType: ext, inDirectory: "Resources")!
+    static func path(forResource name: String, ofType ext: String, subdirectory: String? = nil) -> String {
+        let directory = "Resources" + (subdirectory.map { "/" + $0 } ?? "")
+        return Bundle.module.path(forResource: name, ofType: ext, inDirectory: directory)!
     }
     #endif
 }
