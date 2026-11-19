@@ -4490,6 +4490,35 @@ final class ContextV140BehaviourTest: XCTestCase {
 		XCTAssertEqual("json", context.getCustomFieldValueType(experimentName: "exp", key: "array"))
 	}
 
+	// Only JSON objects and invalid JSON reach the VariableParser: a valid non-object value is kept as
+	// `JSON` and `null` is nil, neither calling the parser (so neither is logged as an invalid config).
+	func testJsonCustomFieldsCallTheParserOnlyForObjectsAndInvalidJSON() throws {
+		final class RecordingParser: VariableParser {
+			var configs: [String] = []
+			func parse(experimentName: String, config: String) -> [String: JSON]? {
+				configs.append(config)
+				return DefaultVariableParser().parse(experimentName: experimentName, config: config)
+			}
+		}
+		let json = """
+			{"experiments": [{"id": 1, "name": "exp", "customFieldValues": [
+				{"name": "object", "type": "json", "value": "{\\"a\\": 1}"},
+				{"name": "array", "type": "json", "value": "[1]"},
+				{"name": "null", "type": "json", "value": "null"},
+				{"name": "invalid", "type": "json", "value": "{not json"}
+			]}]}
+			"""
+		let data = try JSONDecoder().decode(ContextData.self, from: Data(json.utf8))
+		let recording = RecordingParser()
+		let context = Context(
+			config: config(), clock: clock, scheduler: scheduler, handler: handler, provider: provider, logger: logger,
+			parser: recording, matcher: AudienceMatcher(), promise: Promise.value(data))
+
+		XCTAssertEqual(["{\"a\": 1}", "{not json"], recording.configs.sorted())
+		XCTAssertEqual(["a": JSON(1)], context.getCustomFieldValue(experimentName: "exp", key: "object") as? [String: JSON])
+		XCTAssertNil(context.getCustomFieldValue(experimentName: "exp", key: "null"))
+	}
+
 	func testCustomFieldReadsAfterCloseLogNoError() throws {
 		let context = makeContext(config(), Promise.value(try contextData()))
 		let closed = XCTestExpectation()
