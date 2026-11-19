@@ -177,4 +177,25 @@ final class DefaultHTTPClientTest: XCTestCase {
 
 		wait(for: [expectation], timeout: 5.0)
 	}
+
+	#if !canImport(FoundationNetworking)
+	// Apple platforms: releasing the client invalidates its session, so its delegate queue and
+	// connections are torn down rather than left to linger. (Linux skips this; see deinit.)
+	func testReleasingTheClientInvalidatesItsSession() throws {
+		weak var session: URLSession?
+		do {
+			let client = DefaultHTTPClient(config: DefaultHTTPClientConfig())
+			session = Mirror(reflecting: client).descendant("session") as? URLSession
+			XCTAssertNotNil(session)
+		}
+		// An invalidated session refuses new tasks with an exception, so check it indirectly:
+		// a URLSession is retained by its own delegate machinery until invalidated, and released after.
+		let released = XCTestExpectation(description: "session released")
+		DispatchQueue.global().async {
+			for _ in 0..<200 where session != nil { usleep(10_000) }
+			if session == nil { released.fulfill() }
+		}
+		wait(for: [released], timeout: 3)
+	}
+	#endif
 }
