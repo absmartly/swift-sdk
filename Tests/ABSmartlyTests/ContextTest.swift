@@ -4351,6 +4351,59 @@ final class ContextV140BehaviourTest: XCTestCase {
         XCTAssertEqual(2, scheduler.scheduleWithFixedDelayAfterRepeatingExecuteCallsCount)
     }
 
+	// A goal tracked while loading, drained by close() and re-queued when the final publish fails
+	// after the load failed: no automatic retry is scheduled (it would discard the goal on the failed
+	// context); a recovering refresh schedules it and it is published.
+	func testFailedCloseOfAFailedContextKeepsThePreReadyGoalForRecovery() throws {
+		let (load, loadSeal) = Promise<ContextData>.pending()
+		let context = makeContext(config(), load)
+		context.track("goal", properties: nil)
+		XCTAssertEqual(0, scheduler.scheduleAfterExecuteCallsCount)
+
+		let (publish, publishSeal) = Promise<Void>.pending()
+		handler.publishEventReturnValue = publish
+		let failed = expectation(description: "close fails")
+		_ = context.close().catch { _ in failed.fulfill() }
+		let drained = expectation(description: "final publish started")
+		DispatchQueue.global().async {
+			while self.handler.publishEventCallsCount == 0 { usleep(1000) }
+			drained.fulfill()
+		}
+		wait(for: [drained], timeout: 2)
+
+		loadSeal.reject(ABSmartlyError("load failed"))
+		let settled = expectation(description: "load failed")
+		DispatchQueue.global().async {
+			while !context.isFailed() { usleep(1000) }
+			settled.fulfill()
+		}
+		wait(for: [settled], timeout: 2)
+		publishSeal.reject(ABSmartlyError("publish failed"))
+		wait(for: [failed], timeout: 2)
+
+		XCTAssertEqual(1, context.getPendingCount())
+		XCTAssertEqual(0, scheduler.scheduleAfterExecuteCallsCount)
+
+		provider.getContextDataReturnValue = Promise.value(try contextData())
+		let refreshed = expectation(description: "refreshed")
+		_ = context.refresh().done { refreshed.fulfill() }
+		wait(for: [refreshed], timeout: 2)
+		XCTAssertEqual(1, context.getPendingCount())
+		XCTAssertEqual(1, scheduler.scheduleAfterExecuteCallsCount)
+
+		handler.publishEventReturnValue = Promise.value(())
+		let retry = try XCTUnwrap(scheduler.scheduleAfterExecuteReceivedArguments?.execute)
+		retry()
+		let sent = expectation(description: "published")
+		DispatchQueue.global().async {
+			while context.getPendingCount() > 0 { usleep(1000) }
+			sent.fulfill()
+		}
+		wait(for: [sent], timeout: 2)
+		XCTAssertEqual(2, handler.publishEventCallsCount)
+		XCTAssertEqual(["goal"], handler.publishEventReceivedEvent?.goals.map { $0.name })
+	}
+
 	func testRefreshOnFailedContextFetchesAgain() throws {
 		let context = makeContext(config(), Promise(error: ABSmartlyError("load failed")))
 		XCTAssertTrue(context.isFailed())

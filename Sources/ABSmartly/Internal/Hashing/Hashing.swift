@@ -19,7 +19,6 @@ public class Hashing {
 			return hash
 		}
 		#else
-		// Linux: the SDK's own MD5 (MD5.swift)
 		let md5 = MD5.digest(Array(string.utf8))
 		#endif
 

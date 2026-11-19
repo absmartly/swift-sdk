@@ -251,6 +251,7 @@ final class AsyncAPITest: XCTestCase {
 		XCTAssertEqual(try contextData(), fromClient)
 		await XCTAssertThrowsAsync(try await client.publish(event: self.publishEvent()), "rejected")
 		try await client.close()
+		XCTAssertEqual(1, client.closeCallsCount)
 
 		let fromProvider = try await DefaultContextDataProvider(client: client).getContextData()
 		XCTAssertEqual(try contextData(), fromProvider)

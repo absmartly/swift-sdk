@@ -147,7 +147,7 @@ public final class Context {
 					setTimeout()
 				}
 			} else if let error = promise.error {
-				// As in v1.4.0: the context is failed (and ready) when the `.error` event is delivered.
+				// The context is failed (and ready) by the time the `.error` event is delivered.
 				applyDataFailed(error)
 				state.store(Context.failedState, ordering: .releasing)
 				logError(error: error)
@@ -157,94 +157,90 @@ public final class Context {
 			// and clear it before this assignment would otherwise happen.
 			promiseLock.lock()
 			defer { promiseLock.unlock() }
-			readyPromise = Promise<Void> { [weak self] seal in
-				// Whichever of the initial load and a refresh makes the context ready first takes this
-				// resolver and settles it, after scheduling queued goals. Set before any completion runs.
-				self?.readyResolver = seal
-				guard let self = self else {
-					seal.fulfill(())
+			// Whichever of the initial load and a refresh makes the context ready first takes this
+			// resolver and settles it, after scheduling queued goals. Set before any completion runs.
+			let (ready, resolver) = Promise<Void>.pending()
+			readyPromise = ready
+			readyResolver = resolver
+			let owner = ContextOwner(self)
+			initialLoadOwner = owner
+
+			// The completion handlers hold the context until the provider's promise settles, so a
+			// caller that keeps only waitUntilReady()'s promise still gets it settled.
+			promise.done(on: DispatchQueue.global()) { data in
+				guard let self = owner.take() else {
+					// Superseded by a refresh, which already made the context ready.
+					#if DEBUG
+					Context.runTestHook(.initialLoadSettled)
+					#endif
 					return
 				}
-				let owner = ContextOwner(self)
-				self.initialLoadOwner = owner
-
-					// The completion handlers hold the context until the provider's promise settles, so a
-					// caller that keeps only waitUntilReady()'s promise still gets it settled.
-					promise.done(on: DispatchQueue.global()) { data in
-						guard let self = owner.take() else {
-							// Superseded by a refresh, which already made the context ready.
-							#if DEBUG
-							Context.runTestHook(.initialLoadSettled)
-							#endif
-							return
-						}
-						#if DEBUG
-						Context.runTestHook(.initialLoadTookContext)
-						#endif
-						// Outside every lock: a VariableParser that calls back into the context must not deadlock.
-						let prepared = self.prepareData(data)
-						self.contextLock.lock()
-						let wins = self.state.load(ordering: .acquiring) == Context.loading
-						if wins {
-							self.commitData(prepared)
-							// Ready before delivery so a logger's ready handler can read the context.
-							// Under eventLock, like track()'s append and "queued while loading" check: with
-							// only atomics, track()'s state load and settleReadiness()'s pendingCount load
-							// could both see the old values (store-load reordering), and neither would
-							// schedule the goal. No deterministic test can force that reordering.
-							self.eventLock.lock()
-							self.state.store(Context.readyState, ordering: .releasing)
-							self.eventLock.unlock()
-						}
-						self.contextLock.unlock()
-						if wins {
-							self.setRefreshTimer()
-							self.deliverOnMain { self.logEvent(event: .ready(data: data)) }
-							self.settleReadiness()
-						}
-						#if DEBUG
-						Context.runTestHook(.initialLoadSettled)
-						#endif
-					}.catch(on: DispatchQueue.global(), policy: .allErrors) { error in
-						// `.allErrors`: PromiseKit's default policy skips cancellation, which would leave
-						// `owner` holding the context and readiness waiters pending forever.
-						guard let self = owner.take() else {
-							// Superseded by a refresh, which already made the context ready.
-							#if DEBUG
-							Context.runTestHook(.initialLoadSettled)
-							#endif
-							return
-						}
-						#if DEBUG
-						Context.runTestHook(.initialLoadTookContext)
-						#endif
-						// As in v1.4.0: the context is failed (and ready) when the `.error` event is delivered.
-						self.contextLock.lock()
-						let wins = self.state.load(ordering: .acquiring) == Context.loading
-						if wins {
-							self.applyDataFailed(error)
-							// Under eventLock too (defensive): a failed-state exposure is only queued, under
-							// eventLock, by a thread that already sees the context failed, so the flush's
-							// re-check under eventLock sees it failed either way.
-							self.eventLock.lock()
-							self.state.store(Context.failedState, ordering: .releasing)
-							self.eventLock.unlock()
-						}
-						self.contextLock.unlock()
-						Logger.error("Context initialization failed: \(error.safeLocalizedDescription)")
-						if wins {
-							self.deliverOnMain { self.logError(error: error) }
-							// No publish is scheduled for the goals queued while loading: a flush of a failed
-							// context discards its queue, so they wait for a successful refresh. (A later
-							// event on the still-failed context schedules a flush that discards everything,
-							// as in v1.4.0.)
-							self.settleReadiness(scheduleQueuedEvents: false)
-						}
-						#if DEBUG
-						Context.runTestHook(.initialLoadSettled)
-						#endif
-					}
+				#if DEBUG
+				Context.runTestHook(.initialLoadTookContext)
+				#endif
+				// Outside every lock: a VariableParser that calls back into the context must not deadlock.
+				let prepared = self.prepareData(data)
+				self.contextLock.lock()
+				let wins = self.state.load(ordering: .acquiring) == Context.loading
+				if wins {
+					self.commitData(prepared)
+					// Ready before delivery so a logger's ready handler can read the context.
+					// Under eventLock, like track()'s append and "queued while loading" check: with
+					// only atomics, track()'s state load and settleReadiness()'s pendingCount load
+					// could both see the old values (store-load reordering), and neither would
+					// schedule the goal. No deterministic test can force that reordering.
+					self.eventLock.lock()
+					self.state.store(Context.readyState, ordering: .releasing)
+					self.eventLock.unlock()
 				}
+				self.contextLock.unlock()
+				if wins {
+					self.setRefreshTimer()
+					self.deliverOnMain { self.logEvent(event: .ready(data: data)) }
+					self.settleReadiness()
+				}
+				#if DEBUG
+				Context.runTestHook(.initialLoadSettled)
+				#endif
+			}.catch(on: DispatchQueue.global(), policy: .allErrors) { error in
+				// `.allErrors`: PromiseKit's default policy skips cancellation, which would leave
+				// `owner` holding the context and readiness waiters pending forever.
+				guard let self = owner.take() else {
+					// Superseded by a refresh, which already made the context ready.
+					#if DEBUG
+					Context.runTestHook(.initialLoadSettled)
+					#endif
+					return
+				}
+				#if DEBUG
+				Context.runTestHook(.initialLoadTookContext)
+				#endif
+				// The context is failed (and ready) by the time the `.error` event is delivered.
+				self.contextLock.lock()
+				let wins = self.state.load(ordering: .acquiring) == Context.loading
+				if wins {
+					self.applyDataFailed(error)
+					// Under eventLock too (defensive): a failed-state exposure is only queued, under
+					// eventLock, by a thread that already sees the context failed, so the flush's
+					// re-check under eventLock sees it failed either way.
+					self.eventLock.lock()
+					self.state.store(Context.failedState, ordering: .releasing)
+					self.eventLock.unlock()
+				}
+				self.contextLock.unlock()
+				Logger.error("Context initialization failed: \(error.safeLocalizedDescription)")
+				if wins {
+					self.deliverOnMain { self.logError(error: error) }
+					// No publish is scheduled for the goals queued while loading: a flush of a failed
+					// context discards its queue, so they wait for a successful refresh. (A later
+					// event on the still-failed context schedules a flush that discards everything,
+					// as in v1.4.0.)
+					self.settleReadiness(scheduleQueuedEvents: false)
+				}
+				#if DEBUG
+				Context.runTestHook(.initialLoadSettled)
+				#endif
+			}
 			}
 		}
 
@@ -863,8 +859,12 @@ public final class Context {
 				self.closing.store(false, ordering: .releasing)
 				self.setRefreshTimer()
 				// Reopened with the batch re-queued: schedule the usual automatic publish for it, so it
-				// is retried even if the app does not call publish() or close() again.
-				if self.pendingCount.load(ordering: .acquiring) > 0 {
+				// is retried even if the app does not call publish() or close() again. Only when ready, as
+				// in track(): a loading context schedules it once settled, and a failed one keeps it for a
+				// recovering refresh (an automatic flush of a failed context would discard it).
+				if self.state.load(ordering: .acquiring) == Context.readyState
+					&& self.pendingCount.load(ordering: .acquiring) > 0
+				{
 					self.setTimeout()
 				}
 				seal.reject(error)
