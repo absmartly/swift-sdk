@@ -75,7 +75,12 @@ jobs:
         # The oldest toolchain the README promises for Linux, and the one macOS CI also covers.
         swift: ["5.10", "6.1"]
     runs-on: ubuntu-latest
-    container: swift:${{ matrix.swift }}
+    container:
+      image: swift:${{ matrix.swift }}
+      # ThreadSanitizer re-executes itself with ASLR disabled via personality(2), which the default
+      # container seccomp profile blocks on current runner images ("CHECK failed:
+      # tsan_platform_linux.cpp ... personality"), aborting before any test runs.
+      options: --security-opt seccomp=unconfined
     permissions:
       contents: read
     steps:
