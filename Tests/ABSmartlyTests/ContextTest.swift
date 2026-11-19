@@ -4490,14 +4490,13 @@ final class ContextV140BehaviourTest: XCTestCase {
 		XCTAssertEqual("json", context.getCustomFieldValueType(experimentName: "exp", key: "array"))
 	}
 
-	// Only JSON objects and invalid JSON reach the VariableParser: a valid non-object value is kept as
-	// `JSON` and `null` is nil, neither calling the parser (so neither is logged as an invalid config).
 	// A malformed JSON custom field is logged by field and experiment, not only as a variant config.
 	func testInvalidJsonCustomFieldIsLoggedByName() throws {
 		let json = """
 			{"experiments": [{"id": 1, "name": "exp", "customFieldValues": [
 				{"name": "broken", "type": "json", "value": "{not json"},
-				{"name": "empty", "type": "json", "value": "null"}
+				{"name": "empty", "type": "json", "value": "null"},
+				{"name": "valid", "type": "json", "value": "{\\"a\\": 1}"}
 			]}]}
 			"""
 		let data = try JSONDecoder().decode(ContextData.self, from: Data(json.utf8))
@@ -4508,9 +4507,11 @@ final class ContextV140BehaviourTest: XCTestCase {
 		_ = makeContext(config(), Promise.value(data))
 
 		XCTAssertTrue(errors.contains("Invalid JSON in custom field 'broken' of experiment 'exp'."), "\(errors)")
-		XCTAssertFalse(errors.contains { $0.contains("'empty'") })
+		XCTAssertFalse(errors.contains { $0.contains("'empty'") || $0.contains("'valid'") })
 	}
 
+	// Only JSON objects and invalid JSON reach the VariableParser: a valid non-object value is kept as
+	// `JSON` and `null` is nil, neither calling the parser (so neither is logged as an invalid config).
 	func testJsonCustomFieldsCallTheParserOnlyForObjectsAndInvalidJSON() throws {
 		final class RecordingParser: VariableParser {
 			var configs: [String] = []
