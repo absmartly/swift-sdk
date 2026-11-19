@@ -181,7 +181,7 @@ public final class Context {
 						#if DEBUG
 						Context.runTestHook(.initialLoadTookContext)
 						#endif
-						// The configured VariableParser runs here, outside every lock.
+						// Outside every lock: a VariableParser that calls back into the context must not deadlock.
 						let prepared = self.prepareData(data)
 						self.contextLock.lock()
 						let wins = self.state.load(ordering: .acquiring) == Context.loading
@@ -741,7 +741,7 @@ public final class Context {
 
 			// Held strongly until the fetch settles, so the returned promise always settles.
 			self.provider.getContextData().done(on: DispatchQueue.global()) { [self] data in
-				// The configured VariableParser runs here, outside every lock.
+				// Outside every lock: a VariableParser that calls back into the context must not deadlock.
 				let prepared = self.prepareData(data)
 				// A context whose first load failed (or is still loading) becomes ready once a refresh
 				// succeeds, so events queued from the refreshed data are published instead of
@@ -776,7 +776,6 @@ public final class Context {
 					self.initialLoadOwner = nil
 					self.promiseLock.unlock()
 					owner?.release()
-					// `.ready` is logged here, once.
 					self.deliverOnMain { self.logEvent(event: .ready(data: data)) }
 					self.settleReadiness()
 				} else if self.pendingCount.load(ordering: .acquiring) > 0 {
@@ -815,7 +814,7 @@ public final class Context {
 		promiseLock.unlock()
 
 		clearRefreshTimer()
-		// The final flush below replaces a pending automatic one.
+		// The final flush below sends what a pending automatic publish would have.
 		clearTimeout()
 
 		// Nothing queued or in flight: close now, as v1.4.0 did, so isClosed() is true and `.close`
@@ -1589,7 +1588,6 @@ public final class Context {
 	}
 }
 
-// An exposure a read claimed, and the data generation it was made from.
 private struct ClaimedExposure {
 	let exposure: Exposure
 	let generation: Int

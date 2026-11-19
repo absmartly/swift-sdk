@@ -5,8 +5,6 @@ import XCTest
 @testable import ABSmartly
 import ABSmartlyAsync
 
-// The async overloads await the existing Promise-returning methods; these tests check each one
-// returns or throws exactly what its Promise settles with.
 @available(iOS 13, macOS 10.15, tvOS 13, watchOS 6, *)
 final class AsyncAPITest: XCTestCase {
 	var provider = ContextDataProviderMock()
@@ -51,7 +49,6 @@ final class AsyncAPITest: XCTestCase {
 	}
 
 	func testWaitUntilReadyDoesNotThrowForAFailedContext() async throws {
-		// Same as the Promise: a load failure makes the context ready and failed, not an error.
 		let (promise, resolver) = Promise<ContextData>.pending()
 		let context = makeContext(promise)
 		resolver.reject(ABSmartlyError("load failed"))
@@ -101,7 +98,6 @@ final class AsyncAPITest: XCTestCase {
 		XCTAssertEqual(0, provider.getContextDataCallsCount)
 	}
 
-	// Each overload returns only once the Promise it wraps has settled.
 	func testOverloadsWaitForTheirPromise() async throws {
 		let context = makeContext(Promise.value(try contextData()))
 		let settled = ManagedFlag()
@@ -186,7 +182,6 @@ final class AsyncAPITest: XCTestCase {
 		task.cancel()
 		DispatchQueue.global().asyncAfter(deadline: .now() + 0.05) { publishResolver.fulfill(()) }
 
-		// The call still waits for the publish and returns its result.
 		try await task.value
 		XCTAssertEqual(1, handler.publishEventCallsCount)
 		XCTAssertEqual(0, context.getPendingCount())
@@ -208,7 +203,6 @@ final class AsyncAPITest: XCTestCase {
 	}
 
 	func testPromiseOverloadsStillResolveInAsyncCode() async throws {
-		// Code written against v1.4.0 that uses the returned Promise keeps doing so.
 		let context = makeContext(Promise.value(try contextData()))
 		let promise: Promise<Context> = context.waitUntilReady()
 		let ready = try await withCheckedThrowingContinuation { continuation in

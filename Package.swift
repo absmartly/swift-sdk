@@ -12,7 +12,6 @@ let package = Package(
     products: [
         .library(
             name: "ABSmartly",
-            // ABSmartlyAsync adds async/await overloads; apps opt in with `import ABSmartlyAsync`.
             targets: ["ABSmartly", "ABSmartlyAsync"])
     ],
     dependencies: [

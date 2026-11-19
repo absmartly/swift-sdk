@@ -2931,7 +2931,6 @@ final class ContextTest: XCTestCase {
 
 		let closed = XCTestExpectation()
 		_ = context.close().done { closed.fulfill() }
-		// The final flush has taken the queued goal and its publish is still pending.
 		wait(for: [publishing], timeout: 2.0)
 		XCTAssertTrue(context.isClosing())
 
@@ -3815,7 +3814,6 @@ final class ContextV140BehaviourTest: XCTestCase {
 	}
 
 	#if DEBUG
-	// Waits for the initial load's completion handler, instead of sleeping.
 	private func settleInitialLoad(_ settle: () -> Void) {
 		let settled = XCTestExpectation(description: "initial load handled")
 		Context.setTestHook(.initialLoadSettled) { settled.fulfill() }
@@ -4185,7 +4183,6 @@ final class ContextV140BehaviourTest: XCTestCase {
 		XCTAssertEqual(["goal"], handler.publishEventReceivedEvent?.goals.map { $0.name })
 	}
 
-	// A failed close reopens the context and schedules an automatic publish for the re-queued batch.
 	func testFailedCloseSchedulesARetryOfTheRequeuedEvents() throws {
 		let context = makeContext(config(), Promise.value(try contextData()))
 		context.track("goal", properties: nil)
@@ -4210,7 +4207,6 @@ final class ContextV140BehaviourTest: XCTestCase {
 		XCTAssertEqual(["goal"], handler.publishEventReceivedEvent?.goals.map { $0.name })
 	}
 
-	// close() cancels a pending automatic publish; its own final flush sends the queued events.
 	func testCloseCancelsThePendingAutomaticPublish() throws {
 		let handle = ScheduledHandleMock()
 		scheduler.scheduleAfterExecuteReturnValue = handle
@@ -4478,8 +4474,7 @@ final class ContextV140BehaviourTest: XCTestCase {
 
 		XCTAssertNil(context.getCustomFieldValue(experimentName: "exp", key: "upper"))
 		XCTAssertEqual(false, context.getCustomFieldValue(experimentName: "exp", key: "no") as? Bool)
-		// Valid non-object JSON is kept (v1.4.0 dropped it to nil; bug fix): arrays and scalars come
-		// back as `JSON`, while objects still go through the VariableParser.
+		// Bug fix: v1.4.0 returned nil for valid non-object JSON.
 		XCTAssertEqual(JSON([1, 2]), context.getCustomFieldValue(experimentName: "exp", key: "array") as? JSON)
 		XCTAssertEqual(JSON(5), context.getCustomFieldValue(experimentName: "exp", key: "scalar") as? JSON)
 		XCTAssertEqual(JSON("hi"), context.getCustomFieldValue(experimentName: "exp", key: "string") as? JSON)
@@ -4490,7 +4485,6 @@ final class ContextV140BehaviourTest: XCTestCase {
 		XCTAssertEqual("json", context.getCustomFieldValueType(experimentName: "exp", key: "array"))
 	}
 
-	// A malformed JSON custom field is logged by field and experiment, not only as a variant config.
 	func testInvalidJsonCustomFieldIsLoggedByName() throws {
 		let json = """
 			{"experiments": [{"id": 1, "name": "exp", "customFieldValues": [
@@ -4510,8 +4504,6 @@ final class ContextV140BehaviourTest: XCTestCase {
 		XCTAssertFalse(errors.contains { $0.contains("'empty'") || $0.contains("'valid'") })
 	}
 
-	// Only JSON objects and invalid JSON reach the VariableParser: a valid non-object value is kept as
-	// `JSON` and `null` is nil, neither calling the parser (so neither is logged as an invalid config).
 	func testJsonCustomFieldsCallTheParserOnlyForObjectsAndInvalidJSON() throws {
 		final class RecordingParser: VariableParser {
 			var configs: [String] = []

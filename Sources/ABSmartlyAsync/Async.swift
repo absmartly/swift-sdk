@@ -7,9 +7,6 @@
 import Foundation
 import PromiseKit
 
-// async/await versions of the SDK's Promise-returning methods. Each one awaits the Promise the
-// existing method returns, so it behaves exactly like it: same work, same result, same error.
-//
 // Cancelling the calling Task does not cancel the underlying work (a fetch, publish or close
 // keeps going, as with the Promise), and the call still waits for it to settle and returns its
 // result; check `Task.isCancelled` afterwards if needed.
