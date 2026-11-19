@@ -77,10 +77,10 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: swift:${{ matrix.swift }}
-      # ThreadSanitizer re-executes itself with ASLR disabled via personality(2), which the default
-      # container seccomp profile blocks on current runner images ("CHECK failed:
-      # tsan_platform_linux.cpp ... personality"), aborting before any test runs.
-      options: --security-opt seccomp=unconfined
+      # Only the 6.1 job runs ThreadSanitizer, which re-executes itself with ASLR disabled via
+      # personality(2); the default container seccomp profile blocks that on current runner images
+      # ("CHECK failed: tsan_platform_linux.cpp ... personality"), aborting before any test runs.
+      options: ${{ matrix.swift == '6.1' && '--security-opt seccomp=unconfined' || '' }}
     permissions:
       contents: read
     steps:
