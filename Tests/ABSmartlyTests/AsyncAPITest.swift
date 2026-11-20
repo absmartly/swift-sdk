@@ -228,7 +228,10 @@ final class AsyncAPITest: XCTestCase {
 	func testSDKCloseAwaitsPendingClientRejectionAndPreservesItsIdentity() async throws {
 		let client = ClientMock()
 		let (promise, resolver) = Promise<Void>.pending()
-		let sentinel = NSError(domain: "customer-close", code: 77)
+		// A class, so identity is checkable on every platform (Apple bridges NSError, so its
+		// identity is not preserved through `Error`).
+		final class CloseError: Error {}
+		let sentinel = CloseError()
 		client.closeClosure = {
 			XCTAssertTrue(promise.isPending)
 			DispatchQueue.global().asyncAfter(deadline: .now() + 0.02) {
@@ -242,7 +245,7 @@ final class AsyncAPITest: XCTestCase {
 			try await sdk.close()
 			XCTFail("SDK.close returned without the client's pending rejection")
 		} catch {
-			XCTAssertTrue(error as NSError === sentinel)
+			XCTAssertTrue((error as? CloseError) === sentinel)
 		}
 		XCTAssertEqual(1, client.closeCallsCount)
 	}
