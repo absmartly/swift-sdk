@@ -373,7 +373,9 @@ which SwiftUI `body` cannot do, and would hop executors on the hottest path. So:
   iOS 18 / macOS 15 and `OSAllocatedUnfairLock` iOS 16, both above the floor; they wrap the same
   primitives.
 - No user code runs under the lock: the event logger, the event streams and the transport are all
-  called after the critical section. There is no recursive locking.
+  called after the critical section. There is no recursive locking. A variable shared by several
+  experiments takes one critical section per experiment and delivers each exposure before resolving
+  the next, as 1.5.0 did, so a logger that changes the next experiment (say, overrides it) is seen.
 - Cached assignments are reference types mutated in place under the lock, as in 1.5.0, so a cached
   read neither copies nor writes back. Measured on Linux, release build, 200k cached reads (no rules,
   no audience, already exposed): `treatment` 209 ns/op (1.5.0: 275), peek 155 (257),
@@ -502,9 +504,13 @@ Behaviour parity is proven, not asserted:
   (a Foundation `NSNumber` formatting bug), on Apple platforms as the unsigned value. Only `match`,
   `in` and string equality see the text; numeric comparisons are unchanged. The backend does not
   produce such literals.
-- An integer literal outside the `Int64` range is stored as a `Double`, so inside arrays and objects
-  two such neighbouring values (e.g. `18446744073709551615` and `18446744073709551614`) compare
-  equal; 1.5.0 kept Foundation's exact `NSNumber`. The backend does not produce such literals.
+- An unsigned integer literal from 2^63 to 2^64−1 is stored as a `Double`, so inside arrays and
+  objects two such neighbouring values (e.g. `18446744073709551615` and `18446744073709551614`)
+  compare equal; 1.5.0 kept Foundation's exact `NSNumber`. The backend does not produce such
+  literals. Numbers Foundation parses as decimals (more digits than a double holds, such as
+  `0.1234567890123456789`, or integers beyond the 64-bit ranges, such as `18446744073709551616`)
+  are kept exact inside audiences and rules, as in 1.5.0: they stay distinct inside arrays and
+  objects, and their truthiness is Foundation's `int64Value` (so 2^64 is false on Linux).
 
 ## Migration
 
