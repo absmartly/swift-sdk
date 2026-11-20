@@ -528,6 +528,25 @@ import Testing
 		#expect(count.withLock { $0 } == 1)
 	}
 
+	@Test func audiencesAreParsedOnceAtInstall() {
+		let count = Locked(0)
+		AudienceMatcher.$audienceParseCount.withValue(count) {
+			let data = Self.contextData(Self.experimentJSON(
+				rules: nil, audience: "{\"filter\":[{\"value\":true}]}"))
+			let context = createContext(data)
+			#expect(count.withLock { $0 } == 1)
+			let variant = context.treatment(for: "exp")
+			for i in 0..<5 {
+				context.setAttribute("unrelated", to: i)
+				#expect(context.treatment(for: "exp") == variant)
+				#expect(context.treatment(for: "exp", exposing: false) == variant)
+				_ = context.variableValue("color")
+			}
+			#expect(context.revalidationCount == 5)
+		}
+		#expect(count.withLock { $0 } == 1)
+	}
+
 	// MARK: - parsing
 
 	@Test func parseSplitPercentages() {

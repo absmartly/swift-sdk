@@ -468,15 +468,15 @@ behaviour is exactly 1.5.0's. Each will be fixed in both lines at the same time.
 Behaviour parity is proven, not asserted:
 
 1. **Recorded 1.5.0 output.** `Tools/ParityRecorder` is a small package that depends on swift-sdk
-   at the pinned 1.5.0 commit. It runs a deterministic probe (fixed clock, fake transport) over the
-   test fixtures: a UID sweep (ASCII, padded, accented, CJK, emoji, numeric, negative, > 2^53,
-   floats) across every fixture experiment, `getTreatment`/`peekTreatment`/variables/custom
-   fields, assignment rules, audiences, overrides, custom assignments, refresh, the event sequence,
-   the GET/PUT headers and the normalised publish body. It writes
-   `Tests/ABsmartlyTests/Resources/parity/*.json`.
-2. **2.0 replays it.** `ParityTests` runs the same probe on 2.0 and compares it with the recording.
-   Any difference fails, apart from the documented intended ones (`X-Agent` version, renamed
-   event/API names).
+   at the pinned 1.5.0 commit. It creates with-data contexts over seven fixtures and 25 string
+   UIDs (including ASCII, padded, accented, CJK, emoji and numeric-looking text), recording
+   treatments/peeks, variables/key maps, custom fields, event sequence and normalized publish
+   content. It writes `Tests/ABsmartlyTests/Resources/parity/*.json`. Timestamps are removed and
+   unit lists sorted; this is not a raw-wire or timestamp comparison. The recorder does not invoke
+   refresh or override/custom-assignment setters, and makes no HTTP requests; separate unit tests
+   cover those contracts and headers.
+2. **2.0 replays it.** `ParityTests` runs the same probe on 2.0 and compares its 175 records with
+   the recording, normalizing renamed event/API names.
 3. **cross-sdk-tests.** The companion PR moves the swift wrapper to the 2.0 API and pins the swift
    lane to `feat/swift-2.0`; every scenario the 1.5.0 lane passes must pass on 2.0.
 4. **Ported unit tests.** The 1.x test suite is ported to swift-testing against the new API.

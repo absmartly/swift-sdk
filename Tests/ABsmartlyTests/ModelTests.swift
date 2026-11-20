@@ -12,6 +12,17 @@ import Testing
 		try #require(try decode(#"{"experiments":[{"name":"exp"\#(fields.isEmpty ? "" : ",")\#(fields)}]}"#).experiments.first)
 	}
 
+	@Test func publishUnitRemainsDecodableInsideCustomerModels() throws {
+		struct CustomerEnvelope: Codable {
+			let unit: PublishEvent.Unit
+		}
+		let data = Data(#"{"unit":{"type":"session_id","uid":"abc"}}"#.utf8)
+		let decoded = try JSONDecoder().decode(CustomerEnvelope.self, from: data)
+		#expect(decoded.unit == PublishEvent.Unit(type: "session_id", uid: "abc"))
+		let encoded = try JSONEncoder().encode(decoded)
+		#expect(try JSONDecoder().decode(CustomerEnvelope.self, from: encoded).unit == decoded.unit)
+	}
+
 	// MARK: - ContextData decoding
 
 	@Test func contextDataDeserialization() throws {

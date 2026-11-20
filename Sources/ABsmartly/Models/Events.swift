@@ -68,7 +68,7 @@ public struct Goal: Sendable, Equatable, Encodable {
 /// the exposures and goals queued since the last publish.
 public struct PublishEvent: Sendable, Equatable, Encodable {
 	/// A unit type with the hash of its UID.
-	public struct Unit: Sendable, Equatable, Encodable {
+	public struct Unit: Sendable, Equatable, Codable {
 		public var type: String
 		public var uid: String
 
