@@ -2917,7 +2917,7 @@ final class ContextTest: XCTestCase {
 	}
 
 	// The public entry point rejects a closing context (ensureReady); the closed/closing check in
-	// getAssignmentClaimingExposure only covers a close() that starts between that check and the
+	// getAssignmentExposing only covers a close() that starts between that check and the
 	// claim, which a single-threaded test cannot interleave.
 	func testGetTreatmentWhileClosingDoesNotEnqueueExposure() throws {
 		let context = try createContext(config: getContextConfig(withUnits: true))
@@ -4285,6 +4285,18 @@ final class ContextV140BehaviourTest: XCTestCase {
 		wait(for: [published], timeout: 3)
 		XCTAssertEqual(1, handler.publishEventCallsCount)
 		XCTAssertEqual(JSON(1), context.getAttribute(name: "a"))
+	}
+
+	// A variable read exposes only an assignment whose variant has variables: an override to a
+	// variant without them is not exposed by getVariableValue, but is by getTreatment.
+	func testVariableReadDoesNotExposeAnAssignmentWithoutVariables() throws {
+		let context = makeContext(config(), Promise.value(try contextData()))
+		context.setOverride(experimentName: "exp_test_ab", variant: 7)
+
+		XCTAssertNil(context.getVariableValue("banner.size"))
+		XCTAssertEqual(0, context.getPendingCount())
+		XCTAssertEqual(7, context.getTreatment("exp_test_ab"))
+		XCTAssertEqual(1, context.getPendingCount())
 	}
 
 	// A recovery that completes between a read's claim and its enqueue: the stale exposure is

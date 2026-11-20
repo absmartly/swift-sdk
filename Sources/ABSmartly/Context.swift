@@ -605,10 +605,10 @@ public final class Context {
 		// refresh; the generation lets the queue drop it if a recovery happened in between.
 		let exposure = claimed ? ClaimedExposure(exposure: makeExposure(assignment), generation: dataGeneration) : nil
 		contextLock.unlock()
+		#if DEBUG
+		Context.runTestHook(.exposureClaimed)
+		#endif
 		if let exposure = exposure {
-			#if DEBUG
-			Context.runTestHook(.exposureClaimed)
-			#endif
 			queueExposure(exposure, for: assignment)
 		}
 		return assignment
