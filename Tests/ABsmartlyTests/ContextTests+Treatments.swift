@@ -261,6 +261,34 @@ extension ContextTests {
 			])
 	}
 
+	// Each experiment's exposure reaches the logger before the next experiment is resolved, as in
+	// 1.5.0, so a logger that overrides the next experiment changes the value and its exposure.
+	@Test func getVariableValueSharedKeyResolvesNextExperimentAfterTheExposureCallback() {
+		let env = ContextEnv()
+		let context = Self.sharedKeyContext(
+			env,
+			[
+				Self.sharedKeyExperiment(
+					id: 1, name: "exp_one", unitType: "device_id", fullOnVariant: 0,
+					configs: ["{\"icon\":\"zero\"}", "{\"icon\":\"one\"}"]),
+				Self.sharedKeyExperiment(
+					id: 2, name: "exp_two", configs: [nil, "{\"icon\":\"original\"}", "{\"icon\":\"updated\"}"]),
+			])
+		env.log.setHook { context, event in
+			if case .exposure(let exposure) = event, exposure.name == "exp_one" {
+				context.overrides["exp_two"] = 2
+			}
+		}
+
+		#expect(context.variable("icon", default: "default") == "updated")
+		#expect(
+			env.log.exposures == [
+				exposure(1, "exp_one", "device_id", 0, false, true, false, false, false, false),
+				exposure(2, "exp_two", "session_id", 2, false, true, true, false, false, false),
+			])
+		#expect(context.treatment(for: "exp_two", exposing: false) == 2)
+	}
+
 	@Test func peekVariableValueSharedKeyMatchesGetAndQueuesNothing() {
 		let scenarios: [([String], String?, String)] = [
 			(Self.sharedKeyBothAssigned(lowestFirst: true), nil, "one"),

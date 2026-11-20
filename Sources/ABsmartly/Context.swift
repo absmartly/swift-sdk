@@ -429,22 +429,32 @@ public final class Context: Sendable {
 	/// experiment defines it. With `exposing` (the default) the experiments read are exposed.
 	public func variableValue(_ key: String, exposing: Bool = true) -> JSONValue? {
 		let clock = clock
-		let result: Result<(JSONValue?, [Exposure]), ABsmartlyError> = storage.withLock { state in
+		let listed: Result<[DataIndex.Entry], ABsmartlyError> = storage.withLock { state in
 			if let error = state.checkReady(expectNotClosed: true) {
 				return .failure(error)
 			}
-			return .success(state.variableValue(key, peek: !exposing, now: clock.millis))
+			return .success(state.variableExperiments(key))
 		}
-		switch result {
-		case .failure(let error):
-			reportError(error)
+		guard case .success(let experiments) = listed else {
+			if case .failure(let error) = listed {
+				reportError(error)
+			}
 			return nil
-		case .success((let value, let exposures)):
-			for exposure in exposures {
+		}
+		// One critical section per experiment, its exposure delivered before the next is resolved, so
+		// a logger that changes the next experiment (say, overrides it) is seen, as in 1.5.0.
+		for experiment in experiments {
+			let (value, exposure) = storage.withLock {
+				$0.variableValue(key, of: experiment.data.name, peek: !exposing, now: clock.millis)
+			}
+			if let exposure {
 				didQueue(.exposure(exposure))
 			}
-			return value
+			if let value {
+				return value
+			}
 		}
+		return nil
 	}
 
 	/// The value of a variable decoded as `T`, or `defaultValue` when no running experiment defines it

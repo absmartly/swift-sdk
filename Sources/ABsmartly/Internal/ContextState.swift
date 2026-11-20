@@ -379,27 +379,27 @@ struct ContextState {
 
 	// Experiments sharing a key are walked in ascending id order, like the JavaScript SDK: each one
 	// visited is exposed (unless peeking), and the first that is assigned, overridden or won by an
-	// assignment rule and whose variant defines the key provides the value.
-	mutating func variableValue(_ key: String, peek: Bool, now: () -> Int64) -> (JSONValue?, [Exposure]) {
-		var queued: [Exposure] = []
-		for entry in index.variableExperiments[key] ?? [] {
-			let assignment: Assignment
-			if peek {
-				assignment = lookup(entry.data.name)
-			} else {
-				let (exposing, exposure) = lookupExposing(entry.data.name, requireVariables: true, now: now)
-				assignment = exposing
-				if let exposure {
-					queued.append(exposure)
-				}
-			}
-			if let variables = assignment.variables, let value = variables[key],
-				assignment.assigned || assignment.overridden || assignment.ruleOverride
-			{
-				return (value, queued)
-			}
+	// assignment rule and whose variant defines the key provides the value. The caller walks them
+	// one at a time, delivering each exposure before resolving the next, as 1.5.0 did.
+
+	/// The experiments defining `key`, by ascending id.
+	func variableExperiments(_ key: String) -> [DataIndex.Entry] {
+		index.variableExperiments[key] ?? []
+	}
+
+	/// The value `experimentName` provides for `key`, if any, and the exposure queued for it unless
+	/// peeking.
+	mutating func variableValue(
+		_ key: String, of experimentName: String, peek: Bool, now: () -> Int64
+	) -> (JSONValue?, Exposure?) {
+		let (assignment, exposure) =
+			peek ? (lookup(experimentName), nil) : lookupExposing(experimentName, requireVariables: true, now: now)
+		if let variables = assignment.variables, let value = variables[key],
+			assignment.assigned || assignment.overridden || assignment.ruleOverride
+		{
+			return (value, exposure)
 		}
-		return (nil, queued)
+		return (nil, exposure)
 	}
 
 	// MARK: Publishing
