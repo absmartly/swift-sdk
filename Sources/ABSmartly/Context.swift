@@ -185,10 +185,10 @@ public final class Context {
 				if wins {
 					self.commitData(prepared)
 					// Ready before delivery so a logger's ready handler can read the context.
-					// Under eventLock, like track()'s append and "queued while loading" check: with
-					// only atomics, track()'s state load and settleReadiness()'s pendingCount load
-					// could both see the old values (store-load reordering), and neither would
-					// schedule the goal. No deterministic test can force that reordering.
+					// Under eventLock, like track()'s append: with only atomics, track()'s state load
+					// (in setTimeout()) and settleReadiness()'s pendingCount load could both see the
+					// old values (store-load reordering), and neither would schedule the goal. No
+					// deterministic test can force that reordering.
 					self.eventLock.lock()
 					self.state.store(Context.readyState, ordering: .releasing)
 					self.eventLock.unlock()
@@ -231,9 +231,9 @@ public final class Context {
 				Logger.error("Context initialization failed: \(error.safeLocalizedDescription)")
 				if wins {
 					self.deliverOnMain { self.logError(error: error) }
-					// No publish is scheduled for the goals queued while loading: a flush of a failed
-					// context discards its queue, so they wait for a successful refresh.
-					self.settleReadiness(scheduleQueuedEvents: false)
+					// Goals queued while loading wait for a successful refresh (setTimeout() schedules
+					// nothing on a failed context).
+					self.settleReadiness()
 				}
 				#if DEBUG
 				Context.runTestHook(.initialLoadSettled)
@@ -243,9 +243,9 @@ public final class Context {
 		}
 
 	// Called once, by whichever completion made the context ready (or failed): schedules goals that
-	// were queued while loading (unless the load failed), then settles waitUntilReady() callers.
-	private func settleReadiness(scheduleQueuedEvents: Bool = true) {
-		if scheduleQueuedEvents && pendingCount.load(ordering: .acquiring) > 0 {
+	// were queued while loading, then settles waitUntilReady() callers.
+	private func settleReadiness() {
+		if pendingCount.load(ordering: .acquiring) > 0 {
 			setTimeout()
 		}
 		promiseLock.lock()
@@ -686,17 +686,11 @@ public final class Context {
 		}
 		achievements.append(achievement)
 		pendingCount.wrappingIncrement(by: 1, ordering: .releasing)
-		// Queued while loading: whichever completion makes the context ready schedules it, and a
-		// failed load leaves it queued for a recovering refresh. Not scheduling here also covers a
-		// load that fails during the logger callback below (a failed flush would discard it).
-		let queuedWhileLoading = state.load(ordering: .acquiring) == Context.loading
 		eventLock.unlock()
 
 		logEvent(event: .goal(goal: achievement))
 
-		if !queuedWhileLoading {
-			setTimeout()
-		}
+		setTimeout()
 	}
 
 	public func getPendingCount() -> UInt {
