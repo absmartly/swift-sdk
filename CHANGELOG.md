@@ -103,8 +103,10 @@ security fixes, from the `release/1.x` branch) for 12 months after 2.0 ships.
   `readyError()` nil); 1.4.0 installed the refreshed data but kept the context failed and silently
   discarded every exposure and goal. Exposures made while it was failed (without experiment data)
   are dropped on recovery and the next read exposes the user's actual variant once, so a logger can
-  see an `.exposure` event that is never published. Goals still queued at recovery are kept; as in
-  1.4.0, any event on the failed context starts a publish that discards the queue.
+  see an `.exposure` event that is never published. Goals tracked or re-queued while it is failed
+  are kept for recovery: no automatic publish is scheduled for a failed context (in 1.4.0 any event
+  on it started one that discarded the queue). An explicit `publish()` or `close()` of a failed
+  context still discards the queue, as in 1.4.0.
   A refresh that completes while the initial load is still pending makes the context ready,
   settling `waitUntilReady()` and logging `.ready` once.
   Swift-specific: the JavaScript SDK does not refresh a failed context at all.

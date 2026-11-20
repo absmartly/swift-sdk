@@ -4362,9 +4362,10 @@ final class ContextV140BehaviourTest: XCTestCase {
     }
 
 	// A goal tracked while loading, drained by close() and re-queued when the final publish fails
-	// after the load failed: no automatic retry is scheduled (it would discard the goal on the failed
-	// context); a recovering refresh schedules it and it is published.
-	func testFailedCloseOfAFailedContextKeepsThePreReadyGoalForRecovery() throws {
+	// after the load failed: neither the failed close nor a goal tracked afterwards schedules an
+	// automatic publish (it would discard the queue on the failed context); a recovering refresh
+	// schedules one and both goals are published.
+	func testFailedCloseOfAFailedContextKeepsItsGoalsForRecovery() throws {
 		let (load, loadSeal) = Promise<ContextData>.pending()
 		let context = makeContext(config(), load)
 		context.track("goal", properties: nil)
@@ -4394,11 +4395,16 @@ final class ContextV140BehaviourTest: XCTestCase {
 		XCTAssertEqual(1, context.getPendingCount())
 		XCTAssertEqual(0, scheduler.scheduleAfterExecuteCallsCount)
 
+		// Tracking on the failed context schedules nothing either.
+		context.track("goal2", properties: nil)
+		XCTAssertEqual(2, context.getPendingCount())
+		XCTAssertEqual(0, scheduler.scheduleAfterExecuteCallsCount)
+
 		provider.getContextDataReturnValue = Promise.value(try contextData())
 		let refreshed = expectation(description: "refreshed")
 		_ = context.refresh().done { refreshed.fulfill() }
 		wait(for: [refreshed], timeout: 2)
-		XCTAssertEqual(1, context.getPendingCount())
+		XCTAssertEqual(2, context.getPendingCount())
 		XCTAssertEqual(1, scheduler.scheduleAfterExecuteCallsCount)
 
 		handler.publishEventReturnValue = Promise.value(())
@@ -4411,7 +4417,38 @@ final class ContextV140BehaviourTest: XCTestCase {
 		}
 		wait(for: [sent], timeout: 2)
 		XCTAssertEqual(2, handler.publishEventCallsCount)
-		XCTAssertEqual(["goal"], handler.publishEventReceivedEvent?.goals.map { $0.name })
+		XCTAssertEqual(["goal", "goal2"], handler.publishEventReceivedEvent?.goals.map { $0.name })
+	}
+
+	// Goals tracked on a failed context schedule no automatic publish (its flush would discard the
+	// queue): both the goal re-queued by a failed close and a later goal survive until a refresh
+	// recovers the context, which schedules their publish.
+	func testGoalTrackedOnAFailedContextKeepsTheQueueForRecovery() throws {
+		let context = makeContext(config(), Promise(error: ABSmartlyError("load failed")))
+		XCTAssertTrue(context.isFailed())
+
+		context.track("goal1", properties: nil)
+		context.track("goal2", properties: nil)
+		XCTAssertEqual(2, context.getPendingCount())
+		XCTAssertEqual(0, scheduler.scheduleAfterExecuteCallsCount)
+
+		provider.getContextDataReturnValue = Promise.value(try contextData())
+		let refreshed = expectation(description: "refreshed")
+		_ = context.refresh().done { refreshed.fulfill() }
+		wait(for: [refreshed], timeout: 2)
+		XCTAssertEqual(2, context.getPendingCount())
+		XCTAssertEqual(1, scheduler.scheduleAfterExecuteCallsCount)
+
+		handler.publishEventReturnValue = Promise.value(())
+		let publish = try XCTUnwrap(scheduler.scheduleAfterExecuteReceivedArguments?.execute)
+		publish()
+		let sent = expectation(description: "published")
+		DispatchQueue.global().async {
+			while context.getPendingCount() > 0 { usleep(1000) }
+			sent.fulfill()
+		}
+		wait(for: [sent], timeout: 2)
+		XCTAssertEqual(["goal1", "goal2"], handler.publishEventReceivedEvent?.goals.map { $0.name })
 	}
 
 	func testRefreshOnFailedContextFetchesAgain() throws {

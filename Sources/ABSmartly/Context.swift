@@ -232,9 +232,7 @@ public final class Context {
 				if wins {
 					self.deliverOnMain { self.logError(error: error) }
 					// No publish is scheduled for the goals queued while loading: a flush of a failed
-					// context discards its queue, so they wait for a successful refresh. (A later
-					// event on the still-failed context schedules a flush that discards everything,
-					// as in v1.4.0.)
+					// context discards its queue, so they wait for a successful refresh.
 					self.settleReadiness(scheduleQueuedEvents: false)
 				}
 				#if DEBUG
@@ -859,12 +857,8 @@ public final class Context {
 				self.closing.store(false, ordering: .releasing)
 				self.setRefreshTimer()
 				// Reopened with the batch re-queued: schedule the usual automatic publish for it, so it
-				// is retried even if the app does not call publish() or close() again. Only when ready, as
-				// in track(): a loading context schedules it once settled, and a failed one keeps it for a
-				// recovering refresh (an automatic flush of a failed context would discard it).
-				if self.state.load(ordering: .acquiring) == Context.readyState
-					&& self.pendingCount.load(ordering: .acquiring) > 0
-				{
+				// is retried even if the app does not call publish() or close() again.
+				if self.pendingCount.load(ordering: .acquiring) > 0 {
 					self.setTimeout()
 				}
 				seal.reject(error)
@@ -1362,8 +1356,10 @@ public final class Context {
 		return variantAssigner
 	}
 
+	// Only while ready: a loading context schedules its queue once settled, and a failed one keeps it
+	// for a recovering refresh (an automatic flush of a failed context would discard it).
 	private func setTimeout() {
-		guard isReady() else { return }
+		guard state.load(ordering: .acquiring) == Context.readyState else { return }
 
 		timeoutLock.lock()
 		defer { timeoutLock.unlock() }
