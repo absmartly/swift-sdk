@@ -849,8 +849,8 @@ public final class Context {
 			self.flush().done(on: DispatchQueue.global()) { [self] in
 				self.finishClose(seal)
 			}.catch(on: DispatchQueue.global(), policy: .allErrors) { [self] error in
-				// The refresh timer stays cleared (cross-SDK contract): an app that closed the context
-				// during an outage must not keep it polling for data.
+				// Failed close does not itself re-arm refresh (cross-SDK contract). A successful
+				// refresh completing after this rejection can still restart the timer.
 				self.closing.store(false, ordering: .releasing)
 				// Reopened with the batch re-queued: schedule the usual automatic publish for it, so it
 				// is retried even if the app does not call publish() or close() again.

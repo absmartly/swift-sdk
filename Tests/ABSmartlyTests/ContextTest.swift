@@ -4347,8 +4347,7 @@ final class ContextV140BehaviourTest: XCTestCase {
 		XCTAssertEqual([1], ids)
 	}
 
-	// Cross-SDK contract: a failed close() keeps the context open but does not re-arm the refresh
-	// timer, so a context closed during an outage stops polling for data.
+	// Failed close does not itself restart refresh; no refresh is in flight in this scenario.
 	func testFailedCloseDoesNotRestartRefreshTimer() throws {
 		let cfg = config()
 		cfg.refreshInterval = 10

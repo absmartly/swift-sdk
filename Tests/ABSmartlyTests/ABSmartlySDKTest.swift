@@ -114,7 +114,6 @@ final class ABsmartlySDKTest: XCTestCase {
 		XCTAssertEqual(0, otherAppContext.peekTreatment("exp_test_ab"))
 	}
 
-	// createContext (fetched data) forwards the client's application/environment too.
 	func testCreateContextFromFetchedDataForwardsClientApplicationAndEnvironment() throws {
 		setUpSDK()
 
