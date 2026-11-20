@@ -155,9 +155,13 @@ import Testing
 			#expect(evaluator.stringConvert(try ExprValue(parsing: "18446744073709551616")) == "18446744073709552000")
 		#endif
 		#expect(high.jsonValue == .double(double))
-		#expect(high.jsonValue == (try JSONValue(parsing: Self.high)))
-		#expect(high == (try ExprValue(parsing: Self.high)))
-		#expect(high != (try ExprValue(parsing: Self.low)))
+		// Parsed first: Swift 6.0's #expect cannot take `try` on the right-hand side of `==`.
+		let highJSON = try JSONValue(parsing: Self.high)
+		let highAgain = try ExprValue(parsing: Self.high)
+		let low = try ExprValue(parsing: Self.low)
+		#expect(high.jsonValue == highJSON)
+		#expect(high == highAgain)
+		#expect(high != low)
 		#expect(high != .double(double))
 	}
 }
