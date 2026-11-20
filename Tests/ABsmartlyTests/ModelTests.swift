@@ -223,6 +223,23 @@ import Testing
 		#expect(experiment.customFieldValues == [CustomFieldValue(name: "owner", type: "text", value: "me")])
 	}
 
+	// Through the public factory: an unknown root array (and nested future fields) leave a fetched
+	// context ready, with every experiment still assigning.
+	@Test func unknownRootArrayKeepsFetchedContextReady() async throws {
+		let env = ContextEnv()
+		var json = String(decoding: Fixtures.data("context"), as: UTF8.self)
+		let brace = try #require(json.firstIndex(of: "{"))
+		json.insert(contentsOf: #""future":[1,{"nested":true}],"futureObject":{"list":[]},"#, at: json.index(after: brace))
+		env.transport.enqueue(status: 200, body: Data(json.utf8))
+		let context = try await env.client.context(units: Fixtures.units)
+
+		#expect(context.state == .ready)
+		#expect(env.log.errors == [])
+		#expect(context.treatment(for: "exp_test_ab", exposing: false) == ContextFixtures.expectedVariants["exp_test_ab"])
+		#expect(context.treatment(for: "exp_test_abc", exposing: false) == ContextFixtures.expectedVariants["exp_test_abc"])
+		#expect(context.treatment(for: "exp_test_abc", exposing: false) != 0)
+	}
+
 	@Test func nestedModelsHaveOptionalFields() throws {
 		let experiment = try Self.experiment(
 			#""applications":[{}],"variants":[{}],"customFieldValues":[{"name":null,"type":null,"value":null}]"#)
