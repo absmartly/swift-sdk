@@ -588,23 +588,7 @@ public final class Context {
 	private func getAssignmentExposing(
 		_ experimentName: String, requireVariables: Bool = false
 	) -> Assignment {
-		contextLock.lock()
-
-		let assignment = lookupAssignment(experimentName)
-		guard !assignment.exposed.load(ordering: .acquiring),
-			!requireVariables || assignment.variables != nil,
-			!closed.load(ordering: .acquiring), !closing.load(ordering: .acquiring)
-		else {
-			contextLock.unlock()
-			return assignment
-		}
-		let claimed = assignment.exposed.compareExchange(
-			expected: false, desired: true, ordering: .acquiringAndReleasing
-		).0
-		// Built while contextLock is held, so it reads the assignment's fields consistently with any
-		// refresh; the generation lets the queue drop it if a recovery happened in between.
-		let exposure = claimed ? ClaimedExposure(exposure: makeExposure(assignment), generation: dataGeneration) : nil
-		contextLock.unlock()
+		let (assignment, exposure) = claimExposure(experimentName, requireVariables: requireVariables)
 		#if DEBUG
 		Context.runTestHook(.exposureClaimed)
 		#endif
@@ -612,6 +596,26 @@ public final class Context {
 			queueExposure(exposure, for: assignment)
 		}
 		return assignment
+	}
+
+	// The lookup, the claim and the exposure's construction all happen in this one contextLock
+	// section, so the exposure reads the assignment's fields consistently with any refresh; the
+	// generation lets the queue drop it if a recovery happened in between.
+	private func claimExposure(
+		_ experimentName: String, requireVariables: Bool
+	) -> (Assignment, ClaimedExposure?) {
+		contextLock.lock()
+		defer { contextLock.unlock() }
+
+		let assignment = lookupAssignment(experimentName)
+		guard !assignment.exposed.load(ordering: .acquiring),
+			!requireVariables || assignment.variables != nil,
+			!closed.load(ordering: .acquiring), !closing.load(ordering: .acquiring),
+			assignment.exposed.compareExchange(expected: false, desired: true, ordering: .acquiringAndReleasing).0
+		else {
+			return (assignment, nil)
+		}
+		return (assignment, ClaimedExposure(exposure: makeExposure(assignment), generation: dataGeneration))
 	}
 
 	private func makeExposure(_ assignment: Assignment) -> Exposure {

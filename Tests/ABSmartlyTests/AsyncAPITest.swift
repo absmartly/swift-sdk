@@ -225,27 +225,19 @@ final class AsyncAPITest: XCTestCase {
 		XCTAssertEqual(1, client.closeCallsCount)
 	}
 
-	func testSDKCloseAwaitsPendingClientRejectionAndPreservesItsIdentity() async throws {
-		let client = ClientMock()
-		let (promise, resolver) = Promise<Void>.pending()
-		// A class, so identity is checkable on every platform (Apple bridges NSError, so its
-		// identity is not preserved through `Error`).
-		final class CloseError: Error {}
+	func testSDKCloseAwaitsPendingClientRejectionAndPreservesIt() async throws {
+		struct CloseError: Error, Equatable { let id = UUID() }
 		let sentinel = CloseError()
-		client.closeClosure = {
-			XCTAssertTrue(promise.isPending)
-			DispatchQueue.global().asyncAfter(deadline: .now() + 0.02) {
-				resolver.reject(sentinel)
-			}
-			return promise
-		}
+		let client = ClientMock()
+		// Still pending when close() returns it, so an overload that does not await would return early.
+		client.closeClosure = { after(seconds: 0.02).then { Promise<Void>(error: sentinel) } }
 		let sdk = try ABSmartlySDK(config: ABSmartlyConfig(client: client))
 
 		do {
 			try await sdk.close()
 			XCTFail("SDK.close returned without the client's pending rejection")
 		} catch {
-			XCTAssertTrue((error as? CloseError) === sentinel)
+			XCTAssertEqual(sentinel, error as? CloseError)
 		}
 		XCTAssertEqual(1, client.closeCallsCount)
 	}
