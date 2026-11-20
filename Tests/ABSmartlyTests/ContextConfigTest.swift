@@ -73,4 +73,15 @@ final class ContextConfigTest: XCTestCase {
 
 		XCTAssertEqual(config.publishDelay, 999)
 	}
+
+	// An untyped reference compiled against 1.4.0 (String only) and must still resolve to the
+	// String overload; the numeric overloads are disfavoured. A regression fails to compile.
+	func testUntypedSetUnitReferenceResolvesToTheStringOverload() {
+		let config = ContextConfig()
+		let setUnit = config.setUnit(unitType:uid:)
+		setUnit("session_id", "123")
+		XCTAssertEqual("123", config.unitValues["session_id"]?.string)
+		config.setUnit(unitType: "n", uid: 5)
+		XCTAssertEqual(JSON(5), config.unitValues["n"])
+	}
 }

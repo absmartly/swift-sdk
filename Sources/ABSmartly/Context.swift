@@ -437,10 +437,12 @@ public final class Context {
 	}
 
 	/// Sets a unit whose UID is a number; see `ContextConfig.setUnit(unitType:uid:)`.
+	@_disfavoredOverload
 	public func setUnit(unitType: String, uid: Int) {
 		setUnit(unitType: unitType, value: JSON(uid))
 	}
 
+	@_disfavoredOverload
 	public func setUnit(unitType: String, uid: Double) {
 		setUnit(unitType: unitType, value: JSON(uid))
 	}
@@ -847,8 +849,9 @@ public final class Context {
 			self.flush().done(on: DispatchQueue.global()) { [self] in
 				self.finishClose(seal)
 			}.catch(on: DispatchQueue.global(), policy: .allErrors) { [self] error in
+				// The refresh timer stays cleared (cross-SDK contract): an app that closed the context
+				// during an outage must not keep it polling for data.
 				self.closing.store(false, ordering: .releasing)
-				self.setRefreshTimer()
 				// Reopened with the batch re-queued: schedule the usual automatic publish for it, so it
 				// is retried even if the app does not call publish() or close() again.
 				if self.pendingCount.load(ordering: .acquiring) > 0 {

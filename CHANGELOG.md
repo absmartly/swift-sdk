@@ -3,10 +3,7 @@
 ## 1.5.0
 
 1.5.0 is source compatible with 1.4.0: code written against 1.4.0 compiles unchanged, with the same
-PromiseKit and SwiftyJSON types, minimum platforms and Swift tools-version (5.3). One exception,
-from the `Int`/`Double` `setUnit` overloads that were added after 1.4.0: an untyped method reference
-such as `let set = config.setUnit(unitType:uid:)` (on `ContextConfig` or `Context`) is now
-ambiguous and needs a type, e.g. `let set: (String, String) -> Void = config.setUnit(unitType:uid:)`. It is the last 1.x
+PromiseKit and SwiftyJSON types, minimum platforms and Swift tools-version (5.3). It is the last 1.x
 feature release. A 2.0 SDK with a new, async-first API is planned; 1.x will be maintained (bug and
 security fixes, from the `release/1.x` branch) for 12 months after 2.0 ships.
 
@@ -94,8 +91,9 @@ security fixes, from the `release/1.x` branch) for 12 months after 2.0 ships.
 - `publish()` and `close()` reject when the collector answers with a non-2xx status; 1.4.0 reported the
   failed publish as success and dropped its events. Failed events are re-queued, and a failed `close()`
   leaves the context open with one automatic publish scheduled for them (a single attempt; after
-  that `publish()`, `close()` or the next event retries) (1.4.0 marked it closed with the events lost). `getContextData()` rejects a non-2xx
-  response with an HTTP error instead of a decoding error.
+  that `publish()`, `close()` or the next event retries) (1.4.0 marked it closed with the events
+  lost). The refresh timer stays stopped after a failed `close()`, as in 1.4.0.
+  `getContextData()` rejects a non-2xx response with an HTTP error instead of a decoding error.
 - MurmurHash3 read past the end of a key with a 3-byte tail (an out-of-bounds read). The SDK only
   hashes 22- and 12-byte keys, so variant assignment is unchanged.
 - `ABSmartlyConfig.contextEventLogger` is used for every context whose `ContextConfig.eventLogger` is
@@ -110,9 +108,7 @@ security fixes, from the `release/1.x` branch) for 12 months after 2.0 ships.
   are kept for recovery: no automatic publish is scheduled for a failed context (in 1.4.0 any event
   on it started one that discarded the queue). An explicit `publish()` or `close()` of a failed
   context still discards the queue, as in 1.4.0. Until the context recovers or the queue is
-  discarded, those events stay in memory and are counted by `getPendingCount()`. A failed context is
-  usually only refreshed by the app; with a positive `refreshInterval`, a rejected `close()` restarts
-  the periodic refresh, which can recover it.
+  discarded, those events stay in memory and are counted by `getPendingCount()`.
   A refresh that completes while the initial load is still pending makes the context ready,
   settling `waitUntilReady()` and logging `.ready` once.
   Swift-specific: the JavaScript SDK does not refresh a failed context at all.

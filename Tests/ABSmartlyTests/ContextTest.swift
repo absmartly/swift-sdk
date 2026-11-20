@@ -4347,7 +4347,9 @@ final class ContextV140BehaviourTest: XCTestCase {
 		XCTAssertEqual([1], ids)
 	}
 
-	func testFailedCloseRestartsRefreshTimer() throws {
+	// Cross-SDK contract: a failed close() keeps the context open but does not re-arm the refresh
+	// timer, so a context closed during an outage stops polling for data.
+	func testFailedCloseDoesNotRestartRefreshTimer() throws {
         let cfg = config()
         cfg.refreshInterval = 10
         let context = makeContext(cfg, Promise.value(try contextData()))
@@ -4358,7 +4360,7 @@ final class ContextV140BehaviourTest: XCTestCase {
         _ = context.close().catch { _ in failed.fulfill() }
         wait(for: [failed], timeout: 2)
         XCTAssertFalse(context.isClosed())
-        XCTAssertEqual(2, scheduler.scheduleWithFixedDelayAfterRepeatingExecuteCallsCount)
+        XCTAssertEqual(1, scheduler.scheduleWithFixedDelayAfterRepeatingExecuteCallsCount)
     }
 
 	// A goal tracked while loading, drained by close() and re-queued when the final publish fails

@@ -20,11 +20,14 @@ public class ContextConfig {
 	}
 
 	/// Sets a unit whose UID is a number. Like the JavaScript SDK, the number is kept as a
-	/// number and hashed as its value rounded to an integer (`toFixed(0)`).
+	/// number and hashed as its value rounded to an integer (`toFixed(0)`). The numeric overloads
+	/// are disfavoured so an untyped `setUnit(unitType:uid:)` reference still means the String one.
+	@_disfavoredOverload
 	public func setUnit(unitType: String, uid: Int) {
 		unitValues[unitType] = JSON(uid)
 	}
 
+	@_disfavoredOverload
 	public func setUnit(unitType: String, uid: Double) {
 		unitValues[unitType] = JSON(uid)
 	}

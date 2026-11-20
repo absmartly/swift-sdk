@@ -114,6 +114,25 @@ final class ABsmartlySDKTest: XCTestCase {
 		XCTAssertEqual(0, otherAppContext.peekTreatment("exp_test_ab"))
 	}
 
+	// createContext (fetched data) forwards the client's application/environment too.
+	func testCreateContextFromFetchedDataForwardsClientApplicationAndEnvironment() throws {
+		setUpSDK()
+
+		guard let sdk = sdk, let client = client else { return }
+
+		client.getApplicationReturnValue = "website"
+		client.getEnvironmentReturnValue = "production"
+		let filter =
+			"[{\"eq\":[{\"var\":\"application\"},{\"value\":\"website\"}]},{\"eq\":[{\"var\":\"environment\"},{\"value\":\"production\"}]}]"
+		client.getContextDataReturnValue = Promise.value(try strictAudienceContextData(filter: filter))
+
+		let context = sdk.createContext(config: contextConfig)
+		let ready = expectation(description: "ready")
+		_ = context.waitUntilReady().done { _ in ready.fulfill() }
+		wait(for: [ready], timeout: 2)
+		XCTAssertEqual(1, context.peekTreatment("exp_test_ab"))
+	}
+
 	// A client configured with an application version does not inject it as `app_version`.
 	func testCreateContextDoesNotEvaluateApplicationVersion() throws {
 		let sdk = try ABsmartlySDK(
