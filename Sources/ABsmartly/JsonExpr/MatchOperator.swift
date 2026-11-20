@@ -6,7 +6,7 @@ enum MatchOperator {
 	// Matching gives up after this long, e.g. on exponential backtracking from `^(a|aa)+$`.
 	private static let matchTimeout: TimeInterval = 0.1
 
-	static func match(_ evaluator: ExprEvaluator, _ lhs: JSONValue, _ rhs: JSONValue) -> JSONValue {
+	static func match(_ evaluator: ExprEvaluator, _ lhs: ExprValue, _ rhs: ExprValue) -> ExprValue {
 		guard let text = evaluator.stringConvert(lhs), let pattern = evaluator.stringConvert(rhs) else {
 			return .null
 		}
@@ -38,7 +38,7 @@ enum MatchOperator {
 
 	/// Like `firstMatch(in:range:)`, but returns null once matching runs past `matchTimeout`.
 	/// `.reportProgress` makes the regex engine call back periodically while it backtracks.
-	private static func firstMatch(_ regex: NSRegularExpression, in string: String, pattern: String) -> JSONValue {
+	private static func firstMatch(_ regex: NSRegularExpression, in string: String, pattern: String) -> ExprValue {
 		let deadline = ProcessInfo.processInfo.systemUptime + matchTimeout
 		var matched = false
 		var timedOut = false

@@ -8,35 +8,35 @@ import Testing
 	static let Kate: [String: JSONValue] = ["age": 50, "language": "es-ES", "returning": false]
 	static let Maria: [String: JSONValue] = ["age": 52, "language": "pt-PT", "returning": true]
 
-	static func unaryOp(_ op: String, _ arg: JSONValue) -> JSONValue {
+	static func unaryOp(_ op: String, _ arg: ExprValue) -> ExprValue {
 		[op: arg]
 	}
 
-	static func binaryOp(_ op: String, _ lhs: JSONValue, _ rhs: JSONValue) -> JSONValue {
+	static func binaryOp(_ op: String, _ lhs: ExprValue, _ rhs: ExprValue) -> ExprValue {
 		[op: [lhs, rhs]]
 	}
 
-	static func varFor(_ path: String) -> JSONValue {
+	static func varFor(_ path: String) -> ExprValue {
 		["var": ["path": .string(path)]]
 	}
 
-	static func valueFor(_ value: JSONValue) -> JSONValue {
+	static func valueFor(_ value: ExprValue) -> ExprValue {
 		["value": value]
 	}
 
-	static let AgeTwentyAndUS: JSONValue = [
+	static let AgeTwentyAndUS: ExprValue = [
 		binaryOp("eq", varFor("age"), valueFor(20)),
 		binaryOp("eq", varFor("language"), valueFor("en-US")),
 	]
-	static let AgeOverFifty: JSONValue = [binaryOp("gte", varFor("age"), valueFor(50))]
-	static let AgeTwentyAndUS_Or_AgeOverFifty: JSONValue = [["or": [AgeTwentyAndUS, AgeOverFifty]]]
-	static let Returning: JSONValue = [varFor("returning")]
-	static let Returning_And_AgeTwentyAndUS_Or_AgeOverFifty: JSONValue = [Returning, AgeTwentyAndUS_Or_AgeOverFifty]
-	static let NotReturning_And_Spanish: JSONValue = [
+	static let AgeOverFifty: ExprValue = [binaryOp("gte", varFor("age"), valueFor(50))]
+	static let AgeTwentyAndUS_Or_AgeOverFifty: ExprValue = [["or": [AgeTwentyAndUS, AgeOverFifty]]]
+	static let Returning: ExprValue = [varFor("returning")]
+	static let Returning_And_AgeTwentyAndUS_Or_AgeOverFifty: ExprValue = [Returning, AgeTwentyAndUS_Or_AgeOverFifty]
+	static let NotReturning_And_Spanish: ExprValue = [
 		unaryOp("not", Returning), binaryOp("eq", varFor("language"), valueFor("es-ES")),
 	]
 
-	private func eval(_ expr: JSONValue, _ vars: [String: JSONValue]) -> Bool {
+	private func eval(_ expr: ExprValue, _ vars: [String: JSONValue]) -> Bool {
 		JsonExpr.evaluateBoolean(expr, vars: vars)
 	}
 

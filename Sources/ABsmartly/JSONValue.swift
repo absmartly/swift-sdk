@@ -189,7 +189,7 @@ extension JSONValue {
 	private init(foundationObject object: Any) {
 		switch object {
 		case let number as NSNumber:
-			self = JSONValue(number: number)
+			self = JSONValue(foundationNumber: number)
 		case let string as String:
 			self = .string(string)
 		case let array as [Any]:
@@ -207,7 +207,7 @@ extension JSONValue {
 	// Booleans are told apart as SwiftyJSON does: equal to true or false and of the same ObjC type.
 	// Signed integer types are integers; unsigned 64-bit only within Int64. Everything else
 	// (doubles, NSDecimalNumber) is a double, as SwiftyJSON's number is read through `doubleValue`.
-	private init(number: NSNumber) {
+	init(foundationNumber number: NSNumber) {
 		let type = String(cString: number.objCType)
 		if (number.compare(Self.trueNumber) == .orderedSame && type == String(cString: Self.trueNumber.objCType))
 			|| (number.compare(Self.falseNumber) == .orderedSame && type == String(cString: Self.falseNumber.objCType))

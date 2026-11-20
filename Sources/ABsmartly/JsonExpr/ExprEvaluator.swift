@@ -2,15 +2,16 @@ import Foundation
 
 // The audience and assignment-rule expression language, ported from 1.5.0 onto `JSONValue` with
 // its semantics unchanged, including where they differ from javascript-sdk (see
-// docs/plans/swift-2.0.md, "Known 1.5.0 divergences").
+// docs/plans/swift-2.0.md, "Known 1.5.0 divergences"). Expressions are `ExprValue`s, so a number
+// parsed as a decimal keeps its exact value; attributes are read as `JSONValue`s.
 
 enum JsonExpr {
-	static func evaluateBoolean(_ expr: JSONValue, vars: [String: JSONValue]) -> Bool {
+	static func evaluateBoolean(_ expr: ExprValue, vars: [String: JSONValue]) -> Bool {
 		let evaluator = ExprEvaluator(vars: vars)
 		return evaluator.booleanConvert(evaluator.evaluate(expr))
 	}
 
-	static func evaluate(_ expr: JSONValue, vars: [String: JSONValue]) -> JSONValue {
+	static func evaluate(_ expr: ExprValue, vars: [String: JSONValue]) -> ExprValue {
 		ExprEvaluator(vars: vars).evaluate(expr)
 	}
 }
@@ -31,7 +32,7 @@ final class ExprEvaluator {
 		self.vars = .object(vars)
 	}
 
-	func evaluate(_ expr: JSONValue) -> JSONValue {
+	func evaluate(_ expr: ExprValue) -> ExprValue {
 		switch expr {
 		case .array(let args):
 			return and(args)
@@ -46,7 +47,7 @@ final class ExprEvaluator {
 		}
 	}
 
-	private func apply(_ op: String, _ args: JSONValue) -> JSONValue {
+	private func apply(_ op: String, _ args: ExprValue) -> ExprValue {
 		switch op {
 		case "and":
 			guard case .array(let items) = args else { return .null }
@@ -98,7 +99,7 @@ final class ExprEvaluator {
 		}
 	}
 
-	private func and(_ items: [JSONValue]) -> JSONValue {
+	private func and(_ items: [ExprValue]) -> ExprValue {
 		for item in items where !booleanConvert(evaluate(item)) {
 			return .bool(false)
 		}
@@ -106,7 +107,7 @@ final class ExprEvaluator {
 	}
 
 	// Both operands are evaluated (the right one only when the left is not null); null if either is.
-	private func binary(_ args: JSONValue, _ body: (JSONValue, JSONValue) -> JSONValue) -> JSONValue {
+	private func binary(_ args: ExprValue, _ body: (ExprValue, ExprValue) -> ExprValue) -> ExprValue {
 		guard case .array(let items) = args else { return .null }
 		let lhs = evaluate(items.first ?? .null)
 		guard !lhs.isNull else { return .null }
@@ -115,7 +116,7 @@ final class ExprEvaluator {
 		return body(lhs, rhs)
 	}
 
-	private func inOperator(_ haystack: JSONValue, _ needle: JSONValue) -> JSONValue {
+	private func inOperator(_ haystack: ExprValue, _ needle: ExprValue) -> ExprValue {
 		switch haystack {
 		case .array(let items):
 			for item in items where compare(item, needle) == 0 {
@@ -133,8 +134,9 @@ final class ExprEvaluator {
 		}
 	}
 
-	// Numbers are true when their integer part is non-zero.
-	func booleanConvert(_ x: JSONValue) -> Bool {
+	// Numbers are true when their integer part is non-zero. A decimal is converted as 1.5.0 did,
+	// through Foundation's `int64Value`, so one beyond Int64 (2^64) is false on Linux.
+	func booleanConvert(_ x: ExprValue) -> Bool {
 		switch x {
 		case .bool(let value):
 			return value
@@ -144,6 +146,8 @@ final class ExprEvaluator {
 			if value.isNaN { return false }
 			guard let truncated = Int64(exactly: value.rounded(.towardZero)) else { return true }
 			return truncated != 0
+		case .decimal(let value):
+			return NSDecimalNumber(decimal: value).int64Value != 0
 		case .string(let value):
 			return value != "false" && value != "0" && value != ""
 		case .null:
@@ -153,12 +157,10 @@ final class ExprEvaluator {
 		}
 	}
 
-	func numberConvert(_ x: JSONValue) -> Double? {
+	func numberConvert(_ x: ExprValue) -> Double? {
 		switch x {
-		case .int(let value):
-			return Double(value)
-		case .double(let value):
-			return value
+		case .int, .double, .decimal:
+			return x.doubleValue
 		case .bool(let value):
 			return value ? 1 : 0
 		case .string(let value):
@@ -169,7 +171,7 @@ final class ExprEvaluator {
 	}
 
 	// Numbers are formatted with up to 15 fraction digits, without grouping.
-	func stringConvert(_ x: JSONValue) -> String? {
+	func stringConvert(_ x: ExprValue) -> String? {
 		switch x {
 		case .string(let value):
 			return value
@@ -179,12 +181,14 @@ final class ExprEvaluator {
 			return formatter.string(from: NSNumber(value: value))
 		case .double(let value):
 			return formatter.string(from: NSNumber(value: value))
+		case .decimal(let value):
+			return formatter.string(from: NSDecimalNumber(decimal: value))
 		default:
 			return nil
 		}
 	}
 
-	func extractVar(_ path: String) -> JSONValue {
+	func extractVar(_ path: String) -> ExprValue {
 		var target = vars
 		for fragment in path.split(separator: "/") {
 			switch target {
@@ -198,11 +202,11 @@ final class ExprEvaluator {
 				return .null
 			}
 		}
-		return target
+		return ExprValue(target)
 	}
 
 	/// -1, 0 or 1, or nil when the operands cannot be compared.
-	func compare(_ lhs: JSONValue, _ rhs: JSONValue) -> Int? {
+	func compare(_ lhs: ExprValue, _ rhs: ExprValue) -> Int? {
 		switch (lhs, rhs) {
 		case (.null, .null):
 			return 0
@@ -213,7 +217,7 @@ final class ExprEvaluator {
 		}
 
 		switch lhs {
-		case .int, .double:
+		case .int, .double, .decimal:
 			guard let rvalue = numberConvert(rhs) else { return nil }
 			let lvalue = lhs.doubleValue!
 			return lvalue == rvalue ? 0 : (lvalue > rvalue ? 1 : -1)
@@ -228,9 +232,11 @@ final class ExprEvaluator {
 		}
 	}
 
-	// Arrays and objects compare equal like 1.5.0's Foundation collections: numbers exactly by value,
-	// booleans with booleans (and, on Apple platforms only, with 0/1), strings by UTF-16 code units.
-	static func deepEquals(_ lhs: JSONValue, _ rhs: JSONValue) -> Bool {
+	// Arrays and objects compare equal like 1.5.0's Foundation collections: numbers exactly by value
+	// (a decimal as the NSDecimalNumber it was parsed as, so 0.1234567890123456789 and
+	// 0.1234567890123456788 differ), booleans with booleans (and, on Apple platforms only, with 0/1),
+	// strings by UTF-16 code units.
+	static func deepEquals(_ lhs: ExprValue, _ rhs: ExprValue) -> Bool {
 		switch (lhs, rhs) {
 		case (.array(let l), .array(let r)):
 			return l.count == r.count && zip(l, r).allSatisfy { deepEquals($0, $1) }
@@ -259,10 +265,11 @@ final class ExprEvaluator {
 		}
 	}
 
-	private static func scalarNumber(_ x: JSONValue) -> NSNumber? {
+	private static func scalarNumber(_ x: ExprValue) -> NSNumber? {
 		switch x {
 		case .int(let value): return NSNumber(value: value)
 		case .double(let value): return NSNumber(value: value)
+		case .decimal(let value): return NSDecimalNumber(decimal: value)
 		default: return nil
 		}
 	}

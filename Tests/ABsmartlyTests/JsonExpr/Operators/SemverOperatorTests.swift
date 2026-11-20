@@ -8,7 +8,7 @@ import Testing
 
 	// Vectors from the JavaScript SDK's versionCompare() tests.
 	@Test func compare() {
-		let cases: [(JSONValue, JSONValue, Int?)] = [
+		let cases: [(ExprValue, ExprValue, Int?)] = [
 			("1.0.0", "1.0.0", 0),
 			("0.0.0", "0.0.0", 0),
 			("999.999.999", "999.999.999", 0),

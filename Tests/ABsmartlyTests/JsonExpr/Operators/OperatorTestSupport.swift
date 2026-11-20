@@ -12,7 +12,7 @@ func apply(_ op: String, _ args: [JSONValue]) -> JSONValue {
 
 /// Evaluates an expression with no variables.
 func eval(_ expr: JSONValue, vars: [String: JSONValue] = [:]) -> JSONValue {
-	JsonExpr.evaluate(expr, vars: vars)
+	JsonExpr.evaluate(ExprValue(expr), vars: vars).jsonValue
 }
 
 /// True only for a boolean true.

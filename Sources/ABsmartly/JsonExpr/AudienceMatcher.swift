@@ -15,12 +15,12 @@ enum AudienceMatcher {
 
 	enum Audience: Sendable, Equatable {
 		case none
-		case filter(JSONValue)
+		case filter(ExprValue)
 	}
 
 	/// Parses an experiment's `audience` string once, when the context data is installed.
 	static func parseAudience(_ audience: String) -> Audience {
-		guard let json = try? JSONValue(parsing: audience) else {
+		guard let json = try? ExprValue(parsing: audience) else {
 			return .none
 		}
 		guard let filter = json["filter"] else {
@@ -49,8 +49,8 @@ enum RuleAction: Equatable, Sendable {
 extension AudienceMatcher {
 	/// Parses an assignment rules JSON string (`{"rules": [...]}`). Returns nil when it is not valid
 	/// JSON or has no `rules` array.
-	static func parseRules(_ assignmentRules: String) -> [JSONValue]? {
-		return (try? JSONValue(parsing: assignmentRules))?["rules"]?.arrayValue
+	static func parseRules(_ assignmentRules: String) -> [ExprValue]? {
+		return (try? ExprValue(parsing: assignmentRules))?["rules"]?.arrayValue
 	}
 
 	/// The action of the first rule that matches, in order. A rule is skipped when it is not an
@@ -59,7 +59,7 @@ extension AudienceMatcher {
 	/// `environmentName`, or its `conditions` are not an object or do not evaluate to true. A rule
 	/// without conditions always matches. Variant bounds are the caller's responsibility.
 	static func evaluateRules(
-		_ rules: [JSONValue], environmentName: String?, attributes: [String: JSONValue]
+		_ rules: [ExprValue], environmentName: String?, attributes: [String: JSONValue]
 	) -> RuleAction? {
 		for rule in rules {
 			guard case .object = rule, let action = parseRuleAction(rule) else {
@@ -87,7 +87,7 @@ extension AudienceMatcher {
 		return nil
 	}
 
-	private static func parseRuleAction(_ rule: JSONValue) -> RuleAction? {
+	private static func parseRuleAction(_ rule: ExprValue) -> RuleAction? {
 		switch rule["type"]?.stringValue {
 		case "assign":
 			// Like JavaScript's Number.isInteger. An integral value outside Int's range (32 bits on
@@ -106,7 +106,7 @@ extension AudienceMatcher {
 	// decimals like JavaScript's toFixed(2), must be at most 0.01. toFixed rounds the exact binary
 	// value half up, so the rounded gap exceeds 0.01 exactly when the gap is at least 0.015 — that
 	// is, greater than the double nearest 0.015, which lies just below it. An infinite gap fails too.
-	static func parseSplitPercentages(_ percentages: JSONValue?) -> [Double]? {
+	static func parseSplitPercentages(_ percentages: ExprValue?) -> [Double]? {
 		guard let string = percentages?.stringValue else { return nil }
 
 		var values: [Double] = []
@@ -194,19 +194,5 @@ extension AudienceMatcher {
 			number = number.replacingOccurrences(of: ".", with: ".0")
 		}
 		return Double(number) ?? .nan
-	}
-}
-
-extension JSONValue {
-	// SwiftyJSON's type names, used in 1.x's log messages.
-	var typeName: String {
-		switch self {
-		case .null: return "null"
-		case .bool: return "bool"
-		case .int, .double: return "number"
-		case .string: return "string"
-		case .array: return "array"
-		case .object: return "dictionary"
-		}
 	}
 }

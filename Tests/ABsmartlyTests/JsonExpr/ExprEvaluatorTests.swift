@@ -6,7 +6,7 @@ import Testing
 @Suite struct ExprEvaluatorTests {
 	@Test func evaluateConsidersListAsAndCombinator() {
 		let evaluator = ExprEvaluator(vars: [:])
-		let args: JSONValue = [["value": true], ["value": false]]
+		let args: ExprValue = [["value": true], ["value": false]]
 
 		#expect(evaluator.evaluate(args) != .null)
 		#expect(evaluator.evaluate(args) == evaluator.evaluate(["and": args]))
@@ -18,7 +18,7 @@ import Testing
 	// short-circuit tests rely on to observe that an argument was not evaluated.
 	@Test func evaluationProbeIsDetectedWhenEvaluated() {
 		let marker = uniqueMarker()
-		#expect(ExprEvaluator(vars: [:]).evaluate(evaluationProbe(marker)) == .null)
+		#expect(ExprEvaluator(vars: [:]).evaluate(ExprValue(evaluationProbe(marker))) == .null)
 		#expect(wasEvaluated(marker))
 	}
 
@@ -26,13 +26,13 @@ import Testing
 		let marker = uniqueMarker()
 		let evaluator = ExprEvaluator(vars: [:])
 		#expect(evaluator.evaluate(["not_found": true]) == .null)
-		#expect(evaluator.evaluate(["not_found": evaluationProbe(marker)]) == .null)
+		#expect(evaluator.evaluate(["not_found": ExprValue(evaluationProbe(marker))]) == .null)
 
 		#expect(!wasEvaluated(marker))
 	}
 
 	@Test func evaluateCallsOperatorWithArgs() {
-		let args: JSONValue = [1, 2, 3]
+		let args: ExprValue = [1, 2, 3]
 		let evaluator = ExprEvaluator(vars: [:])
 		#expect(evaluator.evaluate(["value": args]) == args)
 	}

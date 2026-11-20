@@ -15,7 +15,7 @@ enum SemverComparator {
 
 	// -1, 0 or 1, or nil when either side does not convert to a string or has an empty version core
 	// (for example "", "v", "+build" or "-beta").
-	static func compare(_ evaluator: ExprEvaluator, _ lhs: JSONValue, _ rhs: JSONValue) -> Int? {
+	static func compare(_ evaluator: ExprEvaluator, _ lhs: ExprValue, _ rhs: ExprValue) -> Int? {
 		guard let l = stringConvert(evaluator, lhs), let r = stringConvert(evaluator, rhs) else {
 			return nil
 		}
@@ -54,7 +54,7 @@ enum SemverComparator {
 
 	// Numbers are converted locale-independently, like JavaScript's x.toFixed(15) with trailing
 	// zeros stripped, rather than through the evaluator's NumberFormatter, which follows the locale.
-	private static func stringConvert(_ evaluator: ExprEvaluator, _ x: JSONValue) -> String? {
+	private static func stringConvert(_ evaluator: ExprEvaluator, _ x: ExprValue) -> String? {
 		if let number = x.doubleValue {
 			return jsNumberString(number)
 		}

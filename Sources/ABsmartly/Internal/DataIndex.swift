@@ -9,12 +9,12 @@ struct DataIndex: Sendable {
 		/// One variable map per variant (empty when the variant has no object config).
 		let variables: [[String: JSONValue]]
 		/// Parsed `data.assignmentRules`; nil when there are none or they are not valid JSON.
-		let rules: [JSONValue]?
+		let rules: [ExprValue]?
 		let audience: AudienceMatcher.Audience
 		let customFields: [String: CustomField]
 
 		init(
-			data: Experiment, variables: [[String: JSONValue]], rules: [JSONValue]?,
+			data: Experiment, variables: [[String: JSONValue]], rules: [ExprValue]?,
 			audience: AudienceMatcher.Audience, customFields: [String: CustomField]
 		) {
 			self.data = data
@@ -42,7 +42,7 @@ struct DataIndex: Sendable {
 		var variableExperiments: [String: [Entry]] = [:]
 
 		for experiment in data.experiments {
-			var rules: [JSONValue]?
+			var rules: [ExprValue]?
 			if let assignmentRules = experiment.assignmentRules, !assignmentRules.isEmpty {
 				rules = AudienceMatcher.parseRules(assignmentRules)
 				if rules == nil {

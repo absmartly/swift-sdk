@@ -180,7 +180,7 @@ import Testing
 @Suite struct SemverParityTests {
 	@Test func vectors() {
 		let evaluator = ExprEvaluator(vars: [:])
-		let cases: [(JSONValue, JSONValue, Int?)] = [
+		let cases: [(ExprValue, ExprValue, Int?)] = [
 			(.double(1e-7), "0.0000001", 0),
 			(.double(1e-7), "0", 1),
 			(.double(1e21), "1e+21", 0),
@@ -203,7 +203,7 @@ import Testing
 	@Test func parsedNumberLiterals() throws {
 		// Through parsed audience JSON, as the backend sends it.
 		for (literal, version) in [("1e-7", "0.0000001"), ("1e21", "1e+21"), ("-0", "0"), ("-0.0", "0")] {
-			let filter = try JSONValue(parsing: "{\"semver_eq\":[{\"value\":\(literal)},{\"value\":\"\(version)\"}]}")
+			let filter = try ExprValue(parsing: "{\"semver_eq\":[{\"value\":\(literal)},{\"value\":\"\(version)\"}]}")
 			#expect(JsonExpr.evaluateBoolean(filter, vars: [:]), "\(literal)")
 		}
 	}
@@ -262,17 +262,19 @@ import Testing
 	func literal(
 		_ row: (literal: String, string: String, negativeMatch: Bool, inString: Bool, gtZero: Bool, semverZero: Bool?)
 	) throws {
-		let value = try #require(try JSONValue(parsing: "[\(row.literal)]")[0])
+		let value = try #require(try ExprValue(parsing: "[\(row.literal)]")[0])
 		let evaluator = ExprEvaluator(vars: [:])
-		func eval(_ text: String) throws -> JSONValue {
-			JsonExpr.evaluate(try JSONValue(parsing: text), vars: [:])
+		func eval(_ text: String) throws -> ExprValue {
+			JsonExpr.evaluate(try ExprValue(parsing: text), vars: [:])
 		}
 		let l = row.literal
 		#expect(evaluator.stringConvert(value) == row.string, "\(l)")
 		#expect(try eval("{\"match\":[{\"value\":\(l)},{\"value\":\"^-\"}]}") == .bool(row.negativeMatch), "\(l)")
 		#expect(try eval("{\"in\":[{\"value\":\"x-0x\"},{\"value\":\(l)}]}") == .bool(row.inString), "\(l)")
 		#expect(try eval("{\"gt\":[{\"value\":\(l)},{\"value\":0}]}") == .bool(row.gtZero), "\(l)")
-		#expect(try eval("{\"semver_eq\":[{\"value\":\(l)},{\"value\":\"0\"}]}") == row.semverZero.map(JSONValue.bool) ?? .null, "\(l)")
+		#expect(
+			try eval("{\"semver_eq\":[{\"value\":\(l)},{\"value\":\"0\"}]}") == row.semverZero.map(ExprValue.bool)
+				?? .null, "\(l)")
 	}
 
 	@Test func negativeZeroKeepsItsSignOnlyWithAFractionOrExponent() throws {
