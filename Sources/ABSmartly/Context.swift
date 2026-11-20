@@ -578,41 +578,40 @@ public final class Context {
 	public func getTreatment(_ experimentName: String) -> Int {
 		guard ensureReady(true) else { return 0 }
 
-		let (assignment, claimed) = getAssignmentClaimingExposure(experimentName)
-		if let claimed = claimed {
-			#if DEBUG
-			Context.runTestHook(.exposureClaimed)
-			#endif
-			queueExposure(claimed, for: assignment)
-		}
-
-		return assignment.variant
+		return getAssignmentExposing(experimentName).variant
 	}
 
 	// Looks the assignment up and marks it exposed in one `contextLock` section, so `setUnit` cannot
-	// evict it in between and let a later call expose a second, different variant. `claimed` is true
-	// when this call marked it exposed and must queue the exposure; with `requireVariables`, only an
-	// assignment whose variant has variables is claimed. An already-exposed assignment returns as
-	// soon as it is found.
-	private func getAssignmentClaimingExposure(
+	// evict it in between and let a later call expose a second, different variant. With
+	// `requireVariables`, only an assignment whose variant has variables is claimed. Return only
+	// the assignment on the hot path; build and queue an exposure only for a new claim.
+	private func getAssignmentExposing(
 		_ experimentName: String, requireVariables: Bool = false
-	) -> (Assignment, claimed: ClaimedExposure?) {
+	) -> Assignment {
 		contextLock.lock()
-		defer { contextLock.unlock() }
 
 		let assignment = lookupAssignment(experimentName)
 		guard !assignment.exposed.load(ordering: .acquiring),
 			!requireVariables || assignment.variables != nil,
 			!closed.load(ordering: .acquiring), !closing.load(ordering: .acquiring)
 		else {
-			return (assignment, nil)
+			contextLock.unlock()
+			return assignment
 		}
 		let claimed = assignment.exposed.compareExchange(
 			expected: false, desired: true, ordering: .acquiringAndReleasing
 		).0
 		// Built while contextLock is held, so it reads the assignment's fields consistently with any
 		// refresh; the generation lets the queue drop it if a recovery happened in between.
-		return (assignment, claimed ? ClaimedExposure(exposure: makeExposure(assignment), generation: dataGeneration) : nil)
+		let exposure = claimed ? ClaimedExposure(exposure: makeExposure(assignment), generation: dataGeneration) : nil
+		contextLock.unlock()
+		if let exposure = exposure {
+			#if DEBUG
+			Context.runTestHook(.exposureClaimed)
+			#endif
+			queueExposure(exposure, for: assignment)
+		}
+		return assignment
 	}
 
 	private func makeExposure(_ assignment: Assignment) -> Exposure {
@@ -1301,19 +1300,10 @@ public final class Context {
 		}
 
 		for experimentVariables in keyExperimentVariables {
-			let assignment: Assignment
-			let claimed: ClaimedExposure?
-			if peek {
-				assignment = getAssignment(experimentVariables.data.name)
-				claimed = nil
-			} else {
-				(assignment, claimed) = getAssignmentClaimingExposure(experimentVariables.data.name, requireVariables: true)
-			}
+			let assignment = peek
+				? getAssignment(experimentVariables.data.name)
+				: getAssignmentExposing(experimentVariables.data.name, requireVariables: true)
 			if let variables = assignment.variables {
-				if let claimed = claimed {
-					queueExposure(claimed, for: assignment)
-				}
-
 				if let value = variables[key], assignment.assigned || assignment.overridden || assignment.ruleOverride {
 					return value
 				}

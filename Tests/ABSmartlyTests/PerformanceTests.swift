@@ -132,6 +132,35 @@ final class PerformanceTests: XCTestCase {
 		}
 	}
 
+	// Reproduce with: swift test -c release --filter PerformanceTests.testCachedExposedVariableReadPerformance
+	// Warm the no-rule/no-audience assignment and its exposure outside the timed loop.
+	func testCachedExposedVariableReadPerformance() throws {
+		let context = try createContext(config: getContextConfig(withUnits: true))
+		XCTAssertEqual("large", context.getVariableValue("banner.size")?.string)
+		XCTAssertEqual(1, context.getPendingCount())
+		let scheduled = scheduler.scheduleAfterExecuteCallsCount
+		#if DEBUG
+		let readsPerBatch = 10_000
+		#else
+		let readsPerBatch = 500_000
+		#endif
+		var matchingReads = 0
+		var batches = 0
+
+		self.measure {
+			for _ in 0..<readsPerBatch {
+				if context.getVariableValue("banner.size")?.string == "large" {
+					matchingReads += 1
+				}
+			}
+			batches += 1
+		}
+
+		XCTAssertEqual(batches * readsPerBatch, matchingReads)
+		XCTAssertEqual(1, context.getPendingCount())
+		XCTAssertEqual(scheduled, scheduler.scheduleAfterExecuteCallsCount)
+	}
+
 	func testOverrideSettingPerformance() throws {
 		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
 		let context = try createContext(config: contextConfig)

@@ -225,6 +225,28 @@ final class AsyncAPITest: XCTestCase {
 		XCTAssertEqual(1, client.closeCallsCount)
 	}
 
+	func testSDKCloseAwaitsPendingClientRejectionAndPreservesItsIdentity() async throws {
+		let client = ClientMock()
+		let (promise, resolver) = Promise<Void>.pending()
+		let sentinel = NSError(domain: "customer-close", code: 77)
+		client.closeClosure = {
+			XCTAssertTrue(promise.isPending)
+			DispatchQueue.global().asyncAfter(deadline: .now() + 0.02) {
+				resolver.reject(sentinel)
+			}
+			return promise
+		}
+		let sdk = try ABSmartlySDK(config: ABSmartlyConfig(client: client))
+
+		do {
+			try await sdk.close()
+			XCTFail("SDK.close returned without the client's pending rejection")
+		} catch {
+			XCTAssertTrue(error as NSError === sentinel)
+		}
+		XCTAssertEqual(1, client.closeCallsCount)
+	}
+
 	func testSDKCreateContextThenAwaitReady() async throws {
 		let client = ClientMock()
 		client.getContextDataReturnValue = Promise.value(try contextData())
