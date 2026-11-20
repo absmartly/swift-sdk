@@ -4090,7 +4090,7 @@ final class ContextV140BehaviourTest: XCTestCase {
 		XCTAssertEqual(1, exposure.variant)
 	}
 
-	// The failed context's automatic publish discarded the exposure before recovery: the rebuilt
+	// An explicit publish of the failed context discarded the exposure before recovery: the rebuilt
 	// assignment is still exposed (and published) by the next read.
 	func testExposureDiscardedWhileFailedIsExposedAfterRecovery() throws {
 		let context = makeContext(config(), Promise(error: ABSmartlyError("load failed")))
@@ -4421,8 +4421,7 @@ final class ContextV140BehaviourTest: XCTestCase {
 	}
 
 	// Goals tracked on a failed context schedule no automatic publish (its flush would discard the
-	// queue): both the goal re-queued by a failed close and a later goal survive until a refresh
-	// recovers the context, which schedules their publish.
+	// queue): they survive until a refresh recovers the context, which schedules their publish.
 	func testGoalTrackedOnAFailedContextKeepsTheQueueForRecovery() throws {
 		let context = makeContext(config(), Promise(error: ABSmartlyError("load failed")))
 		XCTAssertTrue(context.isFailed())

@@ -42,10 +42,9 @@ public final class Context {
 	private let refreshTimerLock = NSLock()
 
 	private let dataLock = NSLock()
-	private var index: [String: ExperimentVariables] = [:]
-	private var indexVariables: [String: [ExperimentVariables]] = [:]
-	private var customFieldValues: [String: [String: ContextCustomFieldValue]] = [:]
-	private var data: ContextData? = nil
+	// The current context data and its indexes, installed or cleared as one value; nil when there is
+	// no data (still loading, or the load failed).
+	private var prepared: PreparedData? = nil
 	private var failedError: Error? = nil
 
 	private var hashedUnits: [String: [UInt8]] = [:]
@@ -316,7 +315,7 @@ public final class Context {
 
 		dataLock.lock()
 		defer { dataLock.unlock() }
-		return data?.experiments.map { $0.name } ?? []
+		return prepared?.data.experiments.map { $0.name } ?? []
 	}
 
 	public func getCustomFieldKeys() -> Set<String> {
@@ -327,7 +326,7 @@ public final class Context {
 		dataLock.lock()
 		defer { dataLock.unlock() }
 
-		guard let data = data else { return keys }
+		guard let data = prepared?.data else { return keys }
 
 		for experiment in data.experiments {
 			guard let customFieldValues = experiment.customFieldValues else { continue }
@@ -345,7 +344,7 @@ public final class Context {
 		dataLock.lock()
 		defer { dataLock.unlock() }
 
-		guard let experimentCustomFields = customFieldValues[experimentName] else {
+		guard let experimentCustomFields = prepared?.customFieldValues[experimentName] else {
 			return []
 		}
 
@@ -357,7 +356,7 @@ public final class Context {
 		dataLock.lock()
 		defer { dataLock.unlock() }
 
-		return customFieldValues[experimentName]?[key]?.value
+		return prepared?.customFieldValues[experimentName]?[key]?.value
 	}
 
 	public func getCustomFieldValueType(experimentName: String, key: String) -> String? {
@@ -365,7 +364,7 @@ public final class Context {
 		dataLock.lock()
 		defer { dataLock.unlock() }
 
-		return customFieldValues[experimentName]?[key]?.type
+		return prepared?.customFieldValues[experimentName]?[key]?.type
 	}
 
 	public func getContextData() -> ContextData? {
@@ -373,7 +372,7 @@ public final class Context {
 
 		dataLock.lock()
 		defer { dataLock.unlock() }
-		return data
+		return prepared?.data
 	}
 
 	private func putLocked<K, V>(lock: NSRecursiveLock, dict: inout [K: V], key: K, value: V) -> V? {
@@ -658,7 +657,7 @@ public final class Context {
 		dataLock.lock()
 		defer { dataLock.unlock() }
 
-		return indexVariables.mapValues { $0.map({ $0.data.name }) }
+		return (prepared?.indexVariables ?? [:]).mapValues { $0.map({ $0.data.name }) }
 	}
 
 	public func getVariableValue(_ key: String, defaultValue: JSON? = nil) -> JSON? {
@@ -1159,7 +1158,7 @@ public final class Context {
 	}
 
 	private func getExperiment(_ experimentName: String) -> ExperimentVariables? {
-		return getLocked(lock: dataLock) { index[experimentName] }
+		return getLocked(lock: dataLock) { prepared?.index[experimentName] }
 	}
 
 	private func getAssignment(_ experimentName: String) -> Assignment {
@@ -1322,7 +1321,7 @@ public final class Context {
 	}
 
 	private func getVariableExperiments(_ experimentName: String) -> [ExperimentVariables]? {
-		return getLocked(lock: dataLock) { indexVariables[experimentName] }
+		return getLocked(lock: dataLock) { prepared?.indexVariables[experimentName] }
 	}
 
 	private func getUnitHash(_ unitType: String, _ unitUID: String) -> [UInt8] {
@@ -1504,10 +1503,7 @@ public final class Context {
 	// readyError() is only cleared together with the recovered data.
 	private func commitData(_ prepared: PreparedData) {
 		dataLock.lock()
-		self.data = prepared.data
-		self.index = prepared.index
-		self.indexVariables = prepared.indexVariables
-		self.customFieldValues = prepared.customFieldValues
+		self.prepared = prepared
 		self.failedError = nil
 		dataLock.unlock()
 	}
@@ -1516,10 +1512,7 @@ public final class Context {
 		dataLock.lock()
 		defer { dataLock.unlock() }
 
-		index = [:]
-		indexVariables = [:]
-		customFieldValues = [:]
-		data = nil
+		prepared = nil
 		failedError = error
 	}
 

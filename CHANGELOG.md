@@ -3,7 +3,10 @@
 ## 1.5.0
 
 1.5.0 is source compatible with 1.4.0: code written against 1.4.0 compiles unchanged, with the same
-PromiseKit and SwiftyJSON types, minimum platforms and Swift tools-version (5.3). It is the last 1.x
+PromiseKit and SwiftyJSON types, minimum platforms and Swift tools-version (5.3). One exception,
+from the `Int`/`Double` `setUnit` overloads that were added after 1.4.0: an untyped method reference
+such as `let set = config.setUnit(unitType:uid:)` (on `ContextConfig` or `Context`) is now
+ambiguous and needs a type, e.g. `let set: (String, String) -> Void = config.setUnit(unitType:uid:)`. It is the last 1.x
 feature release. A 2.0 SDK with a new, async-first API is planned; 1.x will be maintained (bug and
 security fixes, from the `release/1.x` branch) for 12 months after 2.0 ships.
 
@@ -106,9 +109,10 @@ security fixes, from the `release/1.x` branch) for 12 months after 2.0 ships.
   see an `.exposure` event that is never published. Goals tracked or re-queued while it is failed
   are kept for recovery: no automatic publish is scheduled for a failed context (in 1.4.0 any event
   on it started one that discarded the queue). An explicit `publish()` or `close()` of a failed
-  context still discards the queue, as in 1.4.0. A failed context is not refreshed automatically,
-  so until the app calls `refresh()`, `publish()` or `close()`, those events stay in memory and are
-  counted by `getPendingCount()`.
+  context still discards the queue, as in 1.4.0. Until the context recovers or the queue is
+  discarded, those events stay in memory and are counted by `getPendingCount()`. A failed context is
+  usually only refreshed by the app; with a positive `refreshInterval`, a rejected `close()` restarts
+  the periodic refresh, which can recover it.
   A refresh that completes while the initial load is still pending makes the context ready,
   settling `waitUntilReady()` and logging `.ready` once.
   Swift-specific: the JavaScript SDK does not refresh a failed context at all.
