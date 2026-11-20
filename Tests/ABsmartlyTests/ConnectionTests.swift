@@ -394,7 +394,6 @@ import Testing
 		let put = try #require(transport.publishes.first)
 		#expect(get.headers["X-Application-Version"] == expected, "GET for \(configured.debugDescription)")
 		#expect(put.headers["X-Application-Version"] == expected, "PUT for \(configured.debugDescription)")
-		// The public configuration keeps the caller's value.
 		#expect(client.configuration.applicationVersion == configured)
 	}
 

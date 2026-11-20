@@ -460,7 +460,6 @@ import Testing
 		// One re-evaluation after the unrelated attribute, then the advanced attrsSeq stamp holds.
 		#expect(context.revalidationCount == 1)
 
-		// A refresh with a differently written rule set that still does not match.
 		env.serveNext(
 			Self.contextData(
 				Self.experimentJSON(
