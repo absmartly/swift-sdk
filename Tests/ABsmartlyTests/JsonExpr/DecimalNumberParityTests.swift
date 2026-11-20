@@ -16,6 +16,17 @@ import Testing
 		AudienceMatcher.evaluate(AudienceMatcher.parseAudience("{\"filter\":\(filter)}"), attributes)
 	}
 
+	// 1.5.0's evaluator formatter.
+	private static let formatter: NumberFormatter = {
+		let formatter = NumberFormatter()
+		formatter.numberStyle = .decimal
+		formatter.maximumFractionDigits = 15
+		formatter.minimumIntegerDigits = 1
+		formatter.decimalSeparator = "."
+		formatter.groupingSize = 0
+		return formatter
+	}()
+
 	private static func foundation(_ text: String) throws -> Any {
 		try JSONSerialization.jsonObject(with: Data(text.utf8), options: [.fragmentsAllowed])
 	}
@@ -134,8 +145,15 @@ import Testing
 		#expect(evaluator.compare(high, try ExprValue(parsing: Self.low)) == 0)
 		#expect(evaluator.compare(high, .double(double)) == 0)
 		#expect(evaluator.compare(high, .double(double.nextUp)) == -1)
-		#expect(evaluator.stringConvert(high) == "0.123456789012346")
-		#expect(evaluator.stringConvert(try ExprValue(parsing: "18446744073709551616")) == "18446744073709552000")
+		// 1.5.0 formatted the parsed NSNumber itself.
+		for literal in [Self.high, "18446744073709551616", "-18446744073709551616", "12345678901234567890123"] {
+			let number = try #require(try Self.foundation(literal) as? NSNumber)
+			#expect(evaluator.stringConvert(try ExprValue(parsing: literal)) == Self.formatter.string(from: number), "\(literal)")
+		}
+		#if os(Linux)
+			#expect(evaluator.stringConvert(high) == "0.123456789012346")
+			#expect(evaluator.stringConvert(try ExprValue(parsing: "18446744073709551616")) == "18446744073709552000")
+		#endif
 		#expect(high.jsonValue == .double(double))
 		#expect(high.jsonValue == (try JSONValue(parsing: Self.high)))
 		#expect(high == (try ExprValue(parsing: Self.high)))

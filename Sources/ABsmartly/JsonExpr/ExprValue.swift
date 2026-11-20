@@ -43,10 +43,13 @@ extension ExprValue {
 
 	private init(foundationObject object: Any) {
 		switch object {
-		case let number as NSDecimalNumber:
-			self = .decimal(number.decimalValue)
 		case let number as NSNumber:
-			self = ExprValue(JSONValue(foundationNumber: number))
+			// Narrowed here rather than matched first: a failing `as NSDecimalNumber` is slow on Linux.
+			if let decimal = number as? NSDecimalNumber {
+				self = .decimal(decimal.decimalValue)
+			} else {
+				self = ExprValue(JSONValue(foundationNumber: number))
+			}
 		case let string as String:
 			self = .string(string)
 		case let array as [Any]:
