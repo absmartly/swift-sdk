@@ -4350,18 +4350,18 @@ final class ContextV140BehaviourTest: XCTestCase {
 	// Cross-SDK contract: a failed close() keeps the context open but does not re-arm the refresh
 	// timer, so a context closed during an outage stops polling for data.
 	func testFailedCloseDoesNotRestartRefreshTimer() throws {
-        let cfg = config()
-        cfg.refreshInterval = 10
-        let context = makeContext(cfg, Promise.value(try contextData()))
-        XCTAssertEqual(1, scheduler.scheduleWithFixedDelayAfterRepeatingExecuteCallsCount)
-        handler.publishEventReturnValue = Promise(error: ABSmartlyError("publish failed"))
-        context.track("goal", properties: nil)
-        let failed = expectation(description: "close failed")
-        _ = context.close().catch { _ in failed.fulfill() }
-        wait(for: [failed], timeout: 2)
-        XCTAssertFalse(context.isClosed())
-        XCTAssertEqual(1, scheduler.scheduleWithFixedDelayAfterRepeatingExecuteCallsCount)
-    }
+		let cfg = config()
+		cfg.refreshInterval = 10
+		let context = makeContext(cfg, Promise.value(try contextData()))
+		XCTAssertEqual(1, scheduler.scheduleWithFixedDelayAfterRepeatingExecuteCallsCount)
+		handler.publishEventReturnValue = Promise(error: ABSmartlyError("publish failed"))
+		context.track("goal", properties: nil)
+		let failed = expectation(description: "close failed")
+		_ = context.close().catch { _ in failed.fulfill() }
+		wait(for: [failed], timeout: 2)
+		XCTAssertFalse(context.isClosed())
+		XCTAssertEqual(1, scheduler.scheduleWithFixedDelayAfterRepeatingExecuteCallsCount)
+	}
 
 	// A refresh that completes while close() is publishing does not re-arm the refresh timer,
 	// whether the close then fails or succeeds.
