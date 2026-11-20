@@ -4363,6 +4363,61 @@ final class ContextV140BehaviourTest: XCTestCase {
         XCTAssertEqual(1, scheduler.scheduleWithFixedDelayAfterRepeatingExecuteCallsCount)
     }
 
+	// A refresh that completes while close() is publishing does not re-arm the refresh timer,
+	// whether the close then fails or succeeds.
+	func testRefreshCompletingDuringCloseDoesNotRestartRefreshTimer() throws {
+		for closeSucceeds in [false, true] {
+			let cfg = config()
+			cfg.refreshInterval = 10
+			scheduler = SchedulerMock()
+			scheduler.scheduleAfterExecuteReturnValue = ScheduledHandleMock()
+			scheduler.scheduleWithFixedDelayAfterRepeatingExecuteReturnValue = ScheduledHandleMock()
+			handler = ContextEventHandlerMock()
+			provider = ContextDataProviderMock()
+			let context = makeContext(cfg, Promise.value(try contextData()))
+			XCTAssertEqual(1, scheduler.scheduleWithFixedDelayAfterRepeatingExecuteCallsCount)
+
+			let (refresh, refreshSeal) = Promise<ContextData>.pending()
+			provider.getContextDataReturnValue = refresh
+			let refreshed = expectation(description: "refreshed")
+			_ = context.refresh().done { refreshed.fulfill() }
+
+			let (publish, publishSeal) = Promise<Void>.pending()
+			let publishing = expectation(description: "final publish started")
+			handler.publishEventClosure = { _ in
+				publishing.fulfill()
+				return publish
+			}
+			context.track("goal", properties: nil)
+			let settled = expectation(description: "close settled")
+			_ = context.close().ensure { settled.fulfill() }
+			wait(for: [publishing], timeout: 2)
+			XCTAssertTrue(context.isClosing())
+
+			refreshSeal.fulfill(try contextData())
+			wait(for: [refreshed], timeout: 2)
+			if closeSucceeds {
+				publishSeal.fulfill(())
+			} else {
+				publishSeal.reject(ABSmartlyError("publish failed"))
+			}
+			wait(for: [settled], timeout: 2)
+			handler.publishEventClosure = nil
+
+			XCTAssertEqual(closeSucceeds, context.isClosed())
+			XCTAssertEqual(1, scheduler.scheduleWithFixedDelayAfterRepeatingExecuteCallsCount)
+		}
+	}
+
+	// An untyped reference compiled against 1.4.0 (String only) and must still resolve to the
+	// String overload; the numeric overloads are disfavoured. A regression fails to compile.
+	func testUntypedSetUnitReferenceResolvesToTheStringOverload() throws {
+		let context = makeContext(ContextConfig(), Promise.value(try contextData()))
+		let setUnit = context.setUnit(unitType:uid:)
+		setUnit("session_id", "123")
+		XCTAssertEqual("123", context.getUnit(unitType: "session_id"))
+	}
+
 	// A goal tracked while loading, drained by close() and re-queued when the final publish fails
 	// after the load failed: neither the failed close nor a goal tracked afterwards schedules an
 	// automatic publish (it would discard the queue on the failed context); a recovering refresh
