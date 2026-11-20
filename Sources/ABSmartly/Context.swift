@@ -601,6 +601,7 @@ public final class Context {
 	// The lookup, the claim and the exposure's construction all happen in this one contextLock
 	// section, so the exposure reads the assignment's fields consistently with any refresh; the
 	// generation lets the queue drop it if a recovery happened in between.
+	@inline(__always)
 	private func claimExposure(
 		_ experimentName: String, requireVariables: Bool
 	) -> (Assignment, ClaimedExposure?) {
