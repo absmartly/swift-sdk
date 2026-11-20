@@ -396,7 +396,7 @@ public final class Context: Sendable {
 				return .failure(error)
 			}
 			if exposing {
-				let (assignment, exposure) = state.lookupExposing(experiment, now: clock.millis)
+				let (assignment, exposure) = state.lookupExposing(experiment, now: { clock.millis() })
 				return .success((assignment.variant, exposure))
 			}
 			return .success((state.lookup(experiment).variant, nil))
@@ -445,7 +445,7 @@ public final class Context: Sendable {
 		// a logger that changes the next experiment (say, overrides it) is seen, as in 1.5.0.
 		for experiment in experiments {
 			let (value, exposure) = storage.withLock {
-				$0.variableValue(key, of: experiment.data.name, peek: !exposing, now: clock.millis)
+				$0.variableValue(key, of: experiment.data.name, peek: !exposing, now: { clock.millis() })
 			}
 			if let exposure {
 				didQueue(.exposure(exposure))

@@ -295,6 +295,24 @@ import Testing
 		#expect(exposures(context).count == 1)
 	}
 
+	// The pin is also taken when a re-evaluation keeps the variant but now resolves it through a
+	// split without the unit, so the unit set afterwards still cannot switch it.
+	@Test func exposedVariantKeptBySplitWithoutUnitStaysPinned() throws {
+		let rules = Self.rules(
+			"{\"type\":\"split\",\"percentages\":\"0/0/100\",\"conditions\":{\"eq\":[{\"var\":\"country\"},{\"value\":\"GB\"}]}}",
+			"{\"type\":\"assign\",\"variant\":0}")
+		let context = createContext(
+			Self.contextData(Self.experimentJSON(rules: rules)), unit: nil, attributes: ["country": "US"])
+
+		#expect(context.treatment(for: "exp") == 0)
+		context.setAttribute("country", to: "GB")
+		#expect(context.treatment(for: "exp") == 0)
+		try context.setUnit(.sessionID, to: "unit-1")
+		context.setAttribute("other", to: true)
+		#expect(context.treatment(for: "exp") == 0)
+		#expect(exposures(context).count == 1)
+	}
+
 	@Test func assignRuleWithoutUnitKeepsCachedAssignment() throws {
 		let context = createContext(
 			Self.contextData(Self.experimentJSON(rules: Self.rules("{\"type\":\"assign\",\"variant\":2}"))), unit: nil)
@@ -491,6 +509,24 @@ import Testing
 			_ = context.variableValue("banner.size")
 		}
 		#expect(context.revalidationCount == 0)
+	}
+
+	// Rules are parsed once, when the data is installed, not on reads or re-evaluations.
+	@Test func rulesAreParsedOnceAtInstall() {
+		let count = Locked(0)
+		AudienceMatcher.$parseCount.withValue(count) {
+			let data = Self.contextData(
+				Self.experimentJSON(rules: Self.rules("{\"type\":\"assign\",\"variant\":2,\"conditions\":\(Self.countryNL)}")))
+			let context = createContext(data, attributes: ["country": "NL"])
+			#expect(count.withLock { $0 } == 1)
+			#expect(context.treatment(for: "exp") == 2)
+			for i in 0..<10 {
+				context.setAttribute("unrelated", to: i)
+				#expect(context.treatment(for: "exp") == 2)
+			}
+			#expect(context.revalidationCount == 10)
+		}
+		#expect(count.withLock { $0 } == 1)
 	}
 
 	// MARK: - parsing

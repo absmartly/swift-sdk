@@ -435,6 +435,14 @@ extension ContextTests {
 		#expect(context.treatment(for: "exp_test_ab") == 1)
 	}
 
+	// An empty application name is treated the same as unconfigured: the key is left out.
+	@Test func emptyApplicationConfigLeavesKeyOut() {
+		let env = ContextEnv()
+		let context = env.directContext(
+			data: Self.strictAudienceData(filter: #"[{"null":{"var":"application"}}]"#), application: "")
+		#expect(context.treatment(for: "exp_test_ab") == 1)
+	}
+
 	// Nothing extra is published: the payload carries no `application`/`environment`/`app_version`
 	// attribute beyond the user-set ones.
 	@Test func systemAttributesAreNotPublished() async throws {
