@@ -210,6 +210,31 @@ import Testing
 		#expect(count.withLock { $0 } == 3)
 	}
 
+	@Test(.enabled(if: countsConversions), arguments: [10, 10_000])
+	func attributeOnTheRightStopsAtFirstUnequalLeaf(size: Int) {
+		let values = JSONValue.array([0] + Array(repeating: 2, count: size - 1))
+		let literal = ExprValue.array([1] + Array(repeating: 2, count: size - 1))
+		let evaluator = ExprEvaluator(vars: ["profile": ["values": values]])
+		let count = Locked(0)
+		ExprValue.$attributeConversionCount.withValue(count) {
+			#expect(evaluator.evaluate(["eq": [["value": ["values": literal]], ["var": "profile"]]]) == .null)
+		}
+		#expect(count.withLock { $0 } == 3)
+	}
+
+	@Test(.enabled(if: countsConversions), arguments: [10, 10_000])
+	func attributeObjectOnTheRightConvertsOnlyVisitedValues(size: Int) {
+		let keys = (0..<size).map { "k\($0)" }
+		let attribute = JSONValue.object(Dictionary(uniqueKeysWithValues: keys.map { ($0, JSONValue.int(0)) }))
+		let literal = ExprValue.object(Dictionary(uniqueKeysWithValues: keys.map { ($0, ExprValue.int(1)) }))
+		let evaluator = ExprEvaluator(vars: ["o": attribute])
+		let count = Locked(0)
+		ExprValue.$attributeConversionCount.withValue(count) {
+			#expect(evaluator.evaluate(["eq": [["value": literal], ["var": "o"]]]) == .null)
+		}
+		#expect(count.withLock { $0 } == 2)
+	}
+
 	@Test(.enabled(if: countsConversions)) func attributeObjectMembershipDoesNotConvertValues() {
 		let evaluator = ExprEvaluator(vars: ["profile": ["roles": ["admin", "guest"], "extra": [1, 2, 3]]])
 		let count = Locked(0)
@@ -217,6 +242,20 @@ import Testing
 			#expect(evaluator.evaluate(["in": [["var": "profile"], ["value": "roles"]]]) == true)
 		}
 		#expect(count.withLock { $0 } == 1)
+	}
+
+	@Test func attributeObjectMembershipChecksTheKey() {
+		let evaluator = ExprEvaluator(vars: ["profile": ["roles": ["admin"]], "empty": [:]])
+		#expect(evaluator.evaluate(["in": [["var": "profile"], ["value": "roles"]]]) == true)
+		#expect(evaluator.evaluate(["in": [["var": "profile"], ["value": "missing"]]]) == false)
+		#expect(evaluator.evaluate(["in": [["var": "empty"], ["value": "roles"]]]) == false)
+	}
+
+	// Nested strings compare by UTF-16 code units, so NFC and NFD spellings differ.
+	@Test func nestedAttributeStringsCompareByCodeUnits() {
+		let evaluator = ExprEvaluator(vars: ["names": ["caf\u{E9}"]])
+		#expect(evaluator.evaluate(["eq": [["var": "names"], ["value": ["cafe\u{301}"]]]]) == .null)
+		#expect(evaluator.evaluate(["eq": [["var": "names"], ["value": ["caf\u{E9}"]]]]) == true)
 	}
 
 	@Test func attributeCollectionEqualityChecksSizesAndKeys() {

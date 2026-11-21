@@ -375,6 +375,29 @@ import Testing
 		}
 	}
 
+	@Test func ruleWinIsVisibleThroughAPeekedVariable() {
+		let data = Self.contextData(
+			Self.experimentJSON(rules: Self.rules("{\"type\":\"assign\",\"variant\":2}"), trafficSplit: [1, 0]))
+		let context = createContext(data)
+		#expect(context.variableValue("color", exposing: false) == 2)
+		#expect(context.pendingEventCount == 0)
+	}
+
+	@Test func ruleWithUnknownOperatorFallsThroughToTheNextRule() {
+		let next = (Self.defaultVariant + 1) % 3
+		let data = Self.contextData(
+			Self.experimentJSON(
+				rules: Self.rules(
+					"{\"type\":\"assign\",\"variant\":\(Self.defaultVariant),\"conditions\":{\"futureOp\":[1]}}",
+					"{\"type\":\"assign\",\"variant\":\(next)}")))
+		#expect(createContext(data).treatment(for: "exp") == next)
+	}
+
+	@Test func nonFiniteAssignVariantIsSkipped() {
+		let rules: [ExprValue] = [["type": "assign", "variant": .double(.infinity)], ["type": "assign", "variant": 1]]
+		#expect(AudienceMatcher.evaluateRules(rules, environmentName: nil, attributes: [:]) == .assign(variant: 1))
+	}
+
 	@Test func malformedRulesAreSkipped() {
 		let data = Self.contextData(
 			Self.experimentJSON(

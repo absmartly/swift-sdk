@@ -497,6 +497,10 @@ Behaviour parity is proven, not asserted:
   should move to the JS behaviour for nested comparisons on every platform is listed under owner
   decisions.
 
+- An assignment-rule `variant` that overflows a double (`1e400`, a 401-digit integer) makes
+  `JSONSerialization` reject the whole `assignmentRules` document, so no rule applies; javascript-sdk
+  skips only that rule.
+
 ## Known 2.0 difference from 1.5.0
 
 - An integer literal from 2^63 to 2^64−1 inside an audience or rule (e.g. `9223372036854775808`)
@@ -504,6 +508,9 @@ Behaviour parity is proven, not asserted:
   (a Foundation `NSNumber` formatting bug), on Apple platforms as the unsigned value. Only `match`,
   `in` and string equality see the text; numeric comparisons are unchanged. The backend does not
   produce such literals.
+- A `UInt64`/`UInt` attribute above `Int64.max` is stored as a `Double`, so it is published
+  rounded (`12345678901234567890` as `12345678901234567000`) and compares as that double's text in
+  string operators; 1.5.0 kept the exact `NSNumber`.
 - An unsigned integer literal from 2^63 to 2^64−1 is stored as a `Double`, so inside arrays and
   objects two such neighbouring values (e.g. `18446744073709551615` and `18446744073709551614`)
   compare equal; 1.5.0 kept Foundation's exact `NSNumber`. The backend does not produce such

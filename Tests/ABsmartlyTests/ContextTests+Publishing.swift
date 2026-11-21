@@ -311,6 +311,36 @@ extension ContextTests {
 		#expect(context.pendingEventCount == 0)
 	}
 
+	@Test func failedPublishKeepsItsExposuresForTheRetry() async throws {
+		let env = ContextEnv()
+		let context = env.context()
+		#expect(context.treatment(for: "exp_test_ab") == 1)
+
+		env.failNextRequest("test publish failure")
+		await #expect(throws: ABsmartlyError.self) { try await context.publish() }
+		#expect(context.pendingEventCount == 1)
+
+		try await context.publish()
+		let body = try #require(env.transport.publishedBodies.last)
+		#expect(body["exposures"]?.arrayValue?.compactMap { $0["name"]?.stringValue } == ["exp_test_ab"])
+		#expect(context.pendingEventCount == 0)
+	}
+
+	@Test func failedCloseKeepsItsExposuresForTheRetry() async throws {
+		let env = ContextEnv()
+		let context = env.context()
+		#expect(context.treatment(for: "exp_test_ab") == 1)
+
+		env.failNextRequest("test close failure")
+		await #expect(throws: ABsmartlyError.self) { try await context.close() }
+		#expect(context.pendingEventCount == 1)
+
+		try await context.close()
+		let body = try #require(env.transport.publishedBodies.last)
+		#expect(body["exposures"]?.arrayValue?.compactMap { $0["name"]?.stringValue } == ["exp_test_ab"])
+		#expect(context.state == .closed)
+	}
+
 	@Test func gracefulDegradationNoNetwork() async throws {
 		let env = ContextEnv()
 		let (context, gate) = await env.loadingContext()
