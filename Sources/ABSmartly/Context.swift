@@ -339,6 +339,7 @@ public final class Context {
 		return keys
 	}
 
+	@_disfavoredOverload
 	public func getCustomFieldKeys(experimentName: String) -> [String] {
 
 		dataLock.lock()
@@ -450,6 +451,7 @@ public final class Context {
 	/// Sets a unit from a JSON value. Only strings and numbers are accepted. An invalid UID
 	/// (blank, not a string or number, or a change to an already set unit) or a closed context
 	/// leaves the unit unchanged and logs an `.error` event.
+	@_disfavoredOverload
 	public func setUnit(unitType: String, value: JSON) {
 		guard ensureNotClosed() else { return }
 		do {

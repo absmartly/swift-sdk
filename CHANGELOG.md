@@ -128,7 +128,7 @@ security fixes, from the `release/1.x` branch) for 12 months after 2.0 ships.
 - A request keeps its `DefaultHTTPClient` alive until it settles, as in 1.4.0, so dropping the client
   mid-request no longer leaves the Promise pending forever (main-era regression).
 - The HTTP request timeout uses `connectionRequestTimeout`; data races and crashes under concurrent
-  use; astral and multibyte unit hashing.
+  use.
 - No compiler warnings in the SDK with Swift 5.10–6.4 toolchains.
 
 ### Compatibility notes

@@ -34,6 +34,7 @@ public class ContextConfig {
 
 	/// Sets a unit from a JSON value (string or number). Other values are rejected when the
 	/// context is created, which logs an `error` event for them.
+	@_disfavoredOverload
 	public func setUnit(unitType: String, value: JSON) {
 		unitValues[unitType] = value
 	}

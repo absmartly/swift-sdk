@@ -84,4 +84,20 @@ final class ContextConfigTest: XCTestCase {
 		config.setUnit(unitType: "n", uid: 5)
 		XCTAssertEqual(JSON(5), config.unitValues["n"])
 	}
+
+	// Label-free references compiled against 1.4.0, which had one overload of each; the overloads
+	// added since are disfavoured, so these still resolve to the 1.4.0 declarations.
+	func testLabelFreeReferencesResolveToThe140Declarations() throws {
+		let config = ContextConfig()
+		let setUnit = config.setUnit
+		setUnit("session_id", "123")
+		XCTAssertEqual("123", config.unitValues["session_id"]?.string)
+		let staticSetUnit = ContextConfig.setUnit
+		staticSetUnit(config)("user_id", "456")
+		XCTAssertEqual("456", config.unitValues["user_id"]?.string)
+
+		let makeSDK = ABSmartlySDK.init
+		let client = ClientMock()
+		XCTAssertNotNil(try makeSDK(ABSmartlyConfig(client: client)))
+	}
 }

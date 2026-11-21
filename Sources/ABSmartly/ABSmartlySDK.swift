@@ -32,6 +32,7 @@ public final class ABSmartlySDK {
 		}
 	}
 
+	@_disfavoredOverload
 	public convenience init(
 		endpoint: String,
 		apiKey: String,

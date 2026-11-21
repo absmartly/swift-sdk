@@ -93,6 +93,7 @@ final class AsyncAPITest: XCTestCase {
 
 		try await context.publish()
 
+		XCTAssertEqual(1, handler.publishEventCallsCount)
 		XCTAssertEqual(0, context.getPendingCount())
 		XCTAssertEqual(["goal1"], handler.publishEventReceivedEvent?.goals.map { $0.name })
 		XCTAssertEqual(0, provider.getContextDataCallsCount)
