@@ -66,6 +66,28 @@ import Testing
 		#expect(context.pendingEventCount > 0)
 	}
 
+	@Test(.enabled(if: countsCacheWrites)) func ordinaryReadsDoNotBuildAttributeMaps() {
+		#if DEBUG
+			let context = Harness().context()
+			let count = Locked(0)
+			ContextState.$attributeMapBuildCount.withValue(count) {
+				// Positive control: the hook observes a real map build.
+				_ = ContextState(application: "website", environment: "production").attributeMap()
+				#expect(count.withLock { $0 } == 1)
+				count.withLock { $0 = 0 }
+				_ = context.treatment(for: "exp_test_ab")
+				context.setAttribute("unrelated", to: 1)
+				for _ in 0..<100 {
+					_ = context.treatment(for: "exp_test_ab")
+					_ = context.treatment(for: "exp_test_ab", exposing: false)
+					_ = context.variableValue("banner.size")
+					_ = context.variableValue("banner.size", exposing: false)
+				}
+			}
+			#expect(count.withLock { $0 } == 0)
+		#endif
+	}
+
 	@Test(.enabled(if: countsCacheWrites)) func warmedReadsDoNotWriteAssignmentCache() {
 		#if DEBUG
 			let context = Harness().context()

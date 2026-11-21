@@ -170,7 +170,14 @@ struct ContextState {
 
 	// System values first, then user attributes overlaid on top, so a user-set value always wins —
 	// including one set after an assignment was cached (the `attrsSeq` bump invalidates it).
+	#if DEBUG
+		@TaskLocal static var attributeMapBuildCount: Locked<Int>?
+	#endif
+
 	func attributeMap() -> [String: JSONValue] {
+		#if DEBUG
+			Self.attributeMapBuildCount?.withLock { $0 += 1 }
+		#endif
 		var map = systemAttributes
 		for attribute in attributes {
 			map[attribute.name] = attribute.value

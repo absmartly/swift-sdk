@@ -213,4 +213,3 @@ These API-level differences are also worth knowing:
 - `client.context(units:...)` (the awaited form) throws when the data cannot be fetched instead of
   returning a failed context. Use `makeContext` to keep the failed context (reads return defaults).
 - A custom `VariableParser` can no longer change how variant configs are parsed.
-EOF
