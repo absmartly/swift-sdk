@@ -3,8 +3,9 @@
 ## 2.0.0 (unreleased)
 
 A new API for Swift 6 over the 1.5.0 engine. Assignment, audiences, assignment rules, exposures,
-goals and the publish payload are unchanged from 1.5.0 (a parity test replays 1.5.0's recorded
-output); the `X-Agent` header is `absmartly-swift-sdk/2.0.0`. See [MIGRATING.md](MIGRATING.md) for every
+goals and the publish payload retain 1.5.0 behaviour apart from the extreme unsigned-number
+rounding described in [MIGRATING.md](MIGRATING.md#behaviour-notes) (a parity test replays 1.5.0's
+recorded output); the `X-Agent` header is `absmartly-swift-sdk/2.0.0`. See [MIGRATING.md](MIGRATING.md) for every
 1.x API and its replacement, and [SUPPORT.md](SUPPORT.md) for the 1.x support window.
 
 ### BREAKING (everyone moves)

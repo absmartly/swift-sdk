@@ -1,8 +1,8 @@
 # Migrating from 1.x to 2.0
 
-2.0 is a new API over the same engine: every assignment, exposure, goal and publish payload is the
-same as in 1.5.0 (a parity test replays 1.5.0's recorded output against 2.0). What changes is the
-API shape:
+2.0 is a new API over the 1.5.0 engine (a parity test replays recorded output against 2.0).
+Ordinary assignments, exposures, goals and publishing retain their behaviour; extreme unsigned
+numbers have the rounding differences listed under **Behaviour notes** below. The API changes:
 
 - `async`/`await` instead of PromiseKit.
 - Swift 6 strict concurrency: every public type is `Sendable`.
@@ -192,8 +192,18 @@ Delivery threads are unchanged: `exposure`, `goal` and `error` on the calling th
 
 ## Behaviour notes
 
-Nothing about assignment or publishing changes relative to 1.5.0 (see the note for 1.4.x users at
-the top). These API-level differences are worth knowing:
+Assignment and publishing retain 1.5.0 behaviour apart from these extreme-number differences
+(see also the note for 1.4.x users at the top):
+
+- `UInt64`/`UInt` attributes above `Int64.max` are stored as doubles: `12345678901234567890` is
+  published as `1.2345678901234567e+19`, not the exact integer. String operators see the double's
+  text, rather than 1.5.0's exact `NSNumber` formatting.
+- Unsigned integer literals from 2^63 to 2^64−1 in audiences/rules are also doubles. Neighbouring
+  values can compare equal inside collections and string operators can see different text.
+  Decimal-parsed literals still retain their exact nested-comparison and truthiness semantics.
+  See [the design's numeric differences](docs/plans/swift-2.0.md#known-20-difference-from-150).
+
+These API-level differences are also worth knowing:
 
 - `setUnit` throws as well as emitting the `.error` event (1.x only emitted it). The unit is left
   unchanged, as before.

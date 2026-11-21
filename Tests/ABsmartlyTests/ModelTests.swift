@@ -238,6 +238,34 @@ import Testing
 		#expect(context.treatment(for: "exp_test_abc", exposing: false) != 0)
 	}
 
+	@Test func futureVariantArraysPreserveFetchedAssignmentsAndVariables() async throws {
+		let env = ContextEnv()
+		let data = ContextAssignmentRulesTests.contextData(
+			ContextAssignmentRulesTests.experimentJSON(rules: nil, name: "one", fullOnVariant: 1),
+			ContextAssignmentRulesTests.experimentJSON(rules: nil, name: "two", fullOnVariant: 2))
+		var root = try #require(try JSONSerialization.jsonObject(with: JSONEncoder().encode(data)) as? [String: Any])
+		var experiments = try #require(root["experiments"] as? [[String: Any]])
+		for i in experiments.indices {
+			var variants = try #require(experiments[i]["variants"] as? [[String: Any]])
+			for j in variants.indices {
+				variants[j]["future"] = [1, ["nested": true]] as [Any]
+			}
+			experiments[i]["variants"] = variants
+		}
+		root["experiments"] = experiments
+		env.transport.enqueue(status: 200, body: try JSONSerialization.data(withJSONObject: root))
+		let context = try await env.client.context(units: Fixtures.units)
+		#expect(context.state == .ready)
+		#expect(context.treatment(for: "one", exposing: false) == 1)
+		#expect(context.treatment(for: "two", exposing: false) == 2)
+		#expect(context.contextData?.experiments.map { $0.variants.count } == [3, 3])
+		#expect(context.contextData?.experiments[0].variants[1].config == "{\"color\":1}")
+		#expect(context.contextData?.experiments[1].variants[2].config == "{\"color\":2}")
+		#expect(context.variableValue("color", exposing: false) == 1)
+		context.setOverride(2, for: "one")
+		#expect(context.variableValue("color", exposing: false) == 2)
+	}
+
 	@Test func nestedModelsHaveOptionalFields() throws {
 		let experiment = try Self.experiment(
 			#""applications":[{}],"variants":[{}],"customFieldValues":[{"name":null,"type":null,"value":null}]"#)
