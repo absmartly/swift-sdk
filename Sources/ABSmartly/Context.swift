@@ -589,10 +589,10 @@ public final class Context {
 		_ experimentName: String, requireVariables: Bool = false
 	) -> Assignment {
 		let (assignment, exposure) = claimExposure(experimentName, requireVariables: requireVariables)
-		#if DEBUG
-		Context.runTestHook(.exposureClaimed)
-		#endif
 		if let exposure = exposure {
+			#if DEBUG
+			Context.runTestHook(.exposureClaimed)
+			#endif
 			queueExposure(exposure, for: assignment)
 		}
 		return assignment
@@ -600,7 +600,9 @@ public final class Context {
 
 	// The lookup, the claim and the exposure's construction all happen in this one contextLock
 	// section, so the exposure reads the assignment's fields consistently with any refresh; the
-	// generation lets the queue drop it if a recovery happened in between.
+	// generation lets the queue drop it if a recovery happened in between. Every write to `exposed`
+	// (this claim and releaseUnqueuedExposure) holds contextLock, so a store after the check is an
+	// exclusive claim.
 	@inline(__always)
 	private func claimExposure(
 		_ experimentName: String, requireVariables: Bool
@@ -611,11 +613,11 @@ public final class Context {
 		let assignment = lookupAssignment(experimentName)
 		guard !assignment.exposed.load(ordering: .acquiring),
 			!requireVariables || assignment.variables != nil,
-			!closed.load(ordering: .acquiring), !closing.load(ordering: .acquiring),
-			assignment.exposed.compareExchange(expected: false, desired: true, ordering: .acquiringAndReleasing).0
+			!closed.load(ordering: .acquiring), !closing.load(ordering: .acquiring)
 		else {
 			return (assignment, nil)
 		}
+		assignment.exposed.store(true, ordering: .releasing)
 		return (assignment, ClaimedExposure(exposure: makeExposure(assignment), generation: dataGeneration))
 	}
 
