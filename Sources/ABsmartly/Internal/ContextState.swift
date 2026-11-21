@@ -47,12 +47,21 @@ struct ContextState {
 	var overrides: [String: Int] = [:]
 	var customAssignments: [String: Int] = [:]
 
-	// Test hook: how many times a cached assignment's rules/audience were re-evaluated.
-	var revalidations = 0
+	#if DEBUG
+		// Test hooks: actual dictionary writes and cached rule/audience re-evaluations.
+		var assignmentCacheWrites = 0
+		var revalidations = 0
+	#endif
 
 	var hashedUnits: [String: [UInt8]] = [:]
 	var assigners: [String: VariantAssigner] = [:]
-	var assignmentCache: [String: Assignment] = [:]
+	#if DEBUG
+		var assignmentCache: [String: Assignment] = [:] {
+			didSet { assignmentCacheWrites += 1 }
+		}
+	#else
+		var assignmentCache: [String: Assignment] = [:]
+	#endif
 
 	var exposures: [Exposure] = []
 	var goals: [Goal] = []
@@ -204,7 +213,9 @@ struct ContextState {
 
 		let hasAudience = !(entry.data.audience ?? "").isEmpty
 		if (attrsSeq > assignment.attrsSeq && (entry.rules != nil || hasAudience)) || ruleKeyChanged {
-			revalidations += 1
+			#if DEBUG
+				revalidations += 1
+			#endif
 			let attrs = attributeMap()
 
 			// An exposed split resolved without its unit keeps resolving as if the unit were still

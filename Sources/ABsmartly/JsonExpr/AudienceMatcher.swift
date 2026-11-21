@@ -20,7 +20,9 @@ enum AudienceMatcher {
 
 	/// Parses an experiment's `audience` string once, when the context data is installed.
 	static func parseAudience(_ audience: String) -> Audience {
-		audienceParseCount?.withLock { $0 += 1 }
+		#if DEBUG
+			audienceParseCount?.withLock { $0 += 1 }
+		#endif
 		guard let json = try? ExprValue(parsing: audience) else {
 			return .none
 		}
@@ -51,13 +53,17 @@ extension AudienceMatcher {
 	/// Parses an assignment rules JSON string (`{"rules": [...]}`). Returns nil when it is not valid
 	/// JSON or has no `rules` array.
 	static func parseRules(_ assignmentRules: String) -> [ExprValue]? {
-		parseCount?.withLock { $0 += 1 }
+		#if DEBUG
+			parseCount?.withLock { $0 += 1 }
+		#endif
 		return (try? ExprValue(parsing: assignmentRules))?["rules"]?.arrayValue
 	}
 
-	/// Test hook: counts `parseRules` calls made by the current task.
-	@TaskLocal static var parseCount: Locked<Int>?
-	@TaskLocal static var audienceParseCount: Locked<Int>?
+	#if DEBUG
+		/// Test hooks: counts parsing calls made by the current task.
+		@TaskLocal static var parseCount: Locked<Int>?
+		@TaskLocal static var audienceParseCount: Locked<Int>?
+	#endif
 
 	/// The action of the first rule that matches, in order. A rule is skipped when it is not an
 	/// object, its type is unknown, an `assign` variant is not an integer, a `split` has invalid

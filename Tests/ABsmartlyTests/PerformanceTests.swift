@@ -3,6 +3,12 @@ import Testing
 
 @testable import ABsmartly
 
+#if DEBUG
+	private let countsCacheWrites = true
+#else
+	private let countsCacheWrites = false
+#endif
+
 @Suite(.timeLimit(.minutes(1))) struct PerformanceTests {
 	private static let iterations = 10
 	private static let bound: TimeInterval = 10
@@ -58,6 +64,68 @@ import Testing
 		}
 
 		#expect(context.pendingEventCount > 0)
+	}
+
+	@Test(.enabled(if: countsCacheWrites)) func warmedReadsDoNotWriteAssignmentCache() {
+		#if DEBUG
+			let context = Harness().context()
+			let beforeWarmup = context.assignmentCacheWriteCount
+			#expect(context.treatment(for: "exp_test_ab") == 1)
+			#expect(context.assignmentCacheWriteCount == beforeWarmup + 1)
+
+			let warmed = context.assignmentCacheWriteCount
+			for _ in 0..<100 {
+				#expect(context.treatment(for: "exp_test_ab") == 1)
+				#expect(context.treatment(for: "exp_test_ab", exposing: false) == 1)
+				#expect(context.variableValue("banner.size") == "large")
+				#expect(context.variableValue("banner.size", exposing: false) == "large")
+			}
+			#expect(context.assignmentCacheWriteCount == warmed)
+			#expect(context.pendingEventCount == 1)
+		#endif
+	}
+
+	@Test(.enabled(if: countsCacheWrites)) func revalidatedReadsDoNotWriteAssignmentCache() async throws {
+		#if DEBUG
+			let rules = ContextAssignmentRulesTests.self
+			let audience = #"{"filter":[{"eq":[{"var":"country"},{"value":"DE"}]}]}"#
+			let first = rules.contextData(
+				rules.experimentJSON(
+					rules: rules.rules("{\"type\":\"assign\",\"variant\":2,\"conditions\":\(rules.countryNL)}"),
+					audience: audience))
+			let env = ContextEnv()
+			let context = env.directContext(data: first, units: [.sessionID: "unit-1"], attributes: ["country": "DE"])
+			let variant = rules.defaultVariant
+			let beforeWarmup = context.assignmentCacheWriteCount
+			#expect(context.treatment(for: "exp") == variant)
+			#expect(context.assignmentCacheWriteCount == beforeWarmup + 1)
+			let warmed = context.assignmentCacheWriteCount
+
+			func readRepeatedly() {
+				for _ in 0..<100 {
+					#expect(context.treatment(for: "exp") == variant)
+					#expect(context.treatment(for: "exp", exposing: false) == variant)
+					#expect(context.variableValue("color") == .int(Int64(variant)))
+					#expect(context.variableValue("color", exposing: false) == .int(Int64(variant)))
+				}
+				#expect(context.assignmentCacheWriteCount == warmed)
+			}
+
+			context.setAttribute("unrelated", to: true)
+			readRepeatedly()
+			#expect(context.revalidationCount == 1)
+
+			env.serveNext(
+				rules.contextData(
+					rules.experimentJSON(
+						rules: rules.rules(
+							"{\"type\":\"assign\",\"variant\":1,\"conditions\":\(rules.countryNL)}",
+							#"{"type":"assign","variant":2,"environments":["staging"]}"#), audience: audience)))
+			try await context.refresh()
+			readRepeatedly()
+			#expect(context.revalidationCount == 2)
+			#expect(context.pendingEventCount == 1)
+		#endif
 	}
 
 	@Test func goalTrackingPerformance() {

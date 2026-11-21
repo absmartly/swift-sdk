@@ -223,19 +223,77 @@ import Testing
 		#expect(experiment.customFieldValues == [CustomFieldValue(name: "owner", type: "text", value: "me")])
 	}
 
-	@Test func unknownRootArrayKeepsFetchedContextReady() async throws {
+	enum FutureFieldLevel: CaseIterable, Sendable {
+		case root, experiment, application, variant, customField
+	}
+
+	enum FutureFieldShape: CaseIterable, Sendable {
+		case scalar, object, array
+
+		var value: Any {
+			switch self {
+			case .scalar: return 42
+			case .object: return ["nested": [1, 2]]
+			case .array: return [1, ["nested": true]] as [Any]
+			}
+		}
+	}
+
+	@Test(arguments: FutureFieldLevel.allCases, FutureFieldShape.allCases)
+	func unknownFieldsPreserveFetchedContext(level: FutureFieldLevel, shape: FutureFieldShape) async throws {
 		let env = ContextEnv()
-		var json = String(decoding: Fixtures.data("context"), as: UTF8.self)
-		let brace = try #require(json.firstIndex(of: "{"))
-		json.insert(contentsOf: #""future":[1,{"nested":true}],"futureObject":{"list":[]},"#, at: json.index(after: brace))
-		env.transport.enqueue(status: 200, body: Data(json.utf8))
+		var expected = ContextData(experiments: Array(Fixtures.contextData().experiments.prefix(2)))
+		for i in expected.experiments.indices {
+			expected.experiments[i].customFieldValues.append(
+				CustomFieldValue(name: "owner", type: "text", value: "retained-\(i)"))
+		}
+		var root = try #require(
+			try JSONSerialization.jsonObject(with: JSONEncoder().encode(expected)) as? [String: Any])
+		if level == .root {
+			root["future"] = shape.value
+		} else {
+			var experiments = try #require(root["experiments"] as? [[String: Any]])
+			for i in experiments.indices {
+				if level == .experiment {
+					experiments[i]["future"] = shape.value
+				} else {
+					let key: String
+					switch level {
+					case .application: key = "applications"
+					case .variant: key = "variants"
+					case .customField: key = "customFieldValues"
+					case .root, .experiment: throw TestError("Expected a nested future-field level")
+					}
+					var nested = try #require(experiments[i][key] as? [[String: Any]])
+					try #require(!nested.isEmpty)
+					for j in nested.indices {
+						nested[j]["future"] = shape.value
+					}
+					experiments[i][key] = nested
+				}
+			}
+			root["experiments"] = experiments
+		}
+		env.transport.enqueue(status: 200, body: try JSONSerialization.data(withJSONObject: root))
 		let context = try await env.client.context(units: Fixtures.units)
 
 		#expect(context.state == .ready)
 		#expect(env.log.errors == [])
-		#expect(context.treatment(for: "exp_test_ab", exposing: false) == ContextFixtures.expectedVariants["exp_test_ab"])
-		#expect(context.treatment(for: "exp_test_abc", exposing: false) == ContextFixtures.expectedVariants["exp_test_abc"])
-		#expect(context.treatment(for: "exp_test_abc", exposing: false) != 0)
+		#expect(context.contextData == expected)
+		for (i, experiment) in expected.experiments.enumerated() {
+			#expect(
+				context.treatment(for: experiment.name, exposing: false)
+					== ContextFixtures.expectedVariants[experiment.name])
+			#expect(context.customFieldValue("owner", in: experiment.name) == .string("retained-\(i)"))
+			#expect(context.customFieldType("owner", in: experiment.name) == "text")
+		}
+		#expect(context.customFieldValue("country", in: "exp_test_ab") == "US,PT,ES,DE,FR")
+		#expect(context.customFieldValue("country", in: "exp_test_abc") == "US,PT,ES")
+		#expect(context.variableValue("banner.border", exposing: false) == 1)
+		#expect(context.variableValue("banner.size", exposing: false) == "large")
+		#expect(context.variableValue("button.color", exposing: false) == "red")
+		#expect(context.treatment(for: "exp_test_ab") == 1)
+		#expect(context.treatment(for: "exp_test_abc") == 2)
 	}
 
 	@Test func futureVariantArraysPreserveFetchedAssignmentsAndVariables() async throws {
@@ -258,7 +316,7 @@ import Testing
 		#expect(context.state == .ready)
 		#expect(context.treatment(for: "one", exposing: false) == 1)
 		#expect(context.treatment(for: "two", exposing: false) == 2)
-		#expect(context.contextData?.experiments.map { $0.variants.count } == [3, 3])
+		try #require(context.contextData?.experiments.map { $0.variants.count } == [3, 3])
 		#expect(context.contextData?.experiments[0].variants[1].config == "{\"color\":1}")
 		#expect(context.contextData?.experiments[1].variants[2].config == "{\"color\":2}")
 		#expect(context.variableValue("color", exposing: false) == 1)

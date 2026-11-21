@@ -3,6 +3,12 @@ import Testing
 
 @testable import ABsmartly
 
+#if DEBUG
+	private let countsAssignmentWork = true
+#else
+	private let countsAssignmentWork = false
+#endif
+
 @Suite struct ContextAssignmentRulesTests {
 	static let seedHi = 3_603_515
 	static let seedLo = 233_373_850
@@ -473,42 +479,44 @@ import Testing
 	// A revalidation that keeps the outcome keeps the cached assignment: after an unrelated attribute
 	// change, and after a refresh whose rules changed without changing the outcome, every read gives
 	// the same variant and no new exposure is queued.
-	@Test func sameOutcomeRevalidationIsNotRepeated() async throws {
-		let audience = "{\"filter\":[{\"eq\":[{\"var\":\"country\"},{\"value\":\"DE\"}]}]}"
-		let first = Self.contextData(
-			Self.experimentJSON(
-				rules: Self.rules("{\"type\":\"assign\",\"variant\":2,\"conditions\":\(Self.countryNL)}"), audience: audience))
-		let context = createContext(first, attributes: ["country": "DE"])
-
-		let variant = context.treatment(for: "exp")
-		#expect(variant == Self.defaultVariant)
-
-		func readRepeatedly() {
-			for _ in 0..<3 {
-				#expect(context.treatment(for: "exp") == variant)
-				#expect(context.treatment(for: "exp", exposing: false) == variant)
-				#expect(context.variableValue("color") == JSONValue(integerLiteral: Int64(variant)))
-			}
-		}
-
-		context.setAttribute("unrelated", to: true)
-		readRepeatedly()
-		// One re-evaluation after the unrelated attribute, then the advanced attrsSeq stamp holds.
-		#expect(context.revalidationCount == 1)
-
-		env.serveNext(
-			Self.contextData(
+	@Test(.enabled(if: countsAssignmentWork)) func sameOutcomeRevalidationIsNotRepeated() async throws {
+		#if DEBUG
+			let audience = "{\"filter\":[{\"eq\":[{\"var\":\"country\"},{\"value\":\"DE\"}]}]}"
+			let first = Self.contextData(
 				Self.experimentJSON(
-					rules: Self.rules(
-						"{\"type\":\"assign\",\"variant\":1,\"conditions\":\(Self.countryNL)}",
-						"{\"type\":\"assign\",\"variant\":2,\"environments\":[\"staging\"]}"),
-					audience: audience)))
-		try await context.refresh()
+					rules: Self.rules("{\"type\":\"assign\",\"variant\":2,\"conditions\":\(Self.countryNL)}"), audience: audience))
+			let context = createContext(first, attributes: ["country": "DE"])
 
-		readRepeatedly()
-		// One more after the changed rule JSON, then the advanced ruleKey stamp holds.
-		#expect(context.revalidationCount == 2)
-		#expect(exposures(context).count == 1)
+			let variant = context.treatment(for: "exp")
+			#expect(variant == Self.defaultVariant)
+
+			func readRepeatedly() {
+				for _ in 0..<3 {
+					#expect(context.treatment(for: "exp") == variant)
+					#expect(context.treatment(for: "exp", exposing: false) == variant)
+					#expect(context.variableValue("color") == JSONValue(integerLiteral: Int64(variant)))
+				}
+			}
+
+			context.setAttribute("unrelated", to: true)
+			readRepeatedly()
+			// One re-evaluation after the unrelated attribute, then the advanced attrsSeq stamp holds.
+			#expect(context.revalidationCount == 1)
+
+			env.serveNext(
+				Self.contextData(
+					Self.experimentJSON(
+						rules: Self.rules(
+							"{\"type\":\"assign\",\"variant\":1,\"conditions\":\(Self.countryNL)}",
+							"{\"type\":\"assign\",\"variant\":2,\"environments\":[\"staging\"]}"),
+						audience: audience)))
+			try await context.refresh()
+
+			readRepeatedly()
+			// One more after the changed rule JSON, then the advanced ruleKey stamp holds.
+			#expect(context.revalidationCount == 2)
+			#expect(exposures(context).count == 1)
+		#endif
 	}
 
 	// A rule-won assignment ignores the audience, so an attribute that flips the audience result
@@ -534,52 +542,58 @@ import Testing
 	}
 
 	// Ordinary cached reads (no rules, no audience) never re-evaluate, even after attributes change.
-	@Test func cachedReadsWithoutRulesOrAudienceDoNotRevalidate() {
-		let context = env.context()
-		_ = context.treatment(for: "exp_test_ab")
-		context.setAttribute("age", to: 30)
-		for _ in 0..<100 {
+	@Test(.enabled(if: countsAssignmentWork)) func cachedReadsWithoutRulesOrAudienceDoNotRevalidate() {
+		#if DEBUG
+			let context = env.context()
 			_ = context.treatment(for: "exp_test_ab")
-			_ = context.treatment(for: "exp_test_ab", exposing: false)
-			_ = context.variableValue("banner.size")
-		}
-		#expect(context.revalidationCount == 0)
+			context.setAttribute("age", to: 30)
+			for _ in 0..<100 {
+				_ = context.treatment(for: "exp_test_ab")
+				_ = context.treatment(for: "exp_test_ab", exposing: false)
+				_ = context.variableValue("banner.size")
+			}
+			#expect(context.revalidationCount == 0)
+		#endif
 	}
 
-	@Test func rulesAreParsedOnceAtInstall() {
-		let count = Locked(0)
-		AudienceMatcher.$parseCount.withValue(count) {
-			let data = Self.contextData(
-				Self.experimentJSON(rules: Self.rules("{\"type\":\"assign\",\"variant\":2,\"conditions\":\(Self.countryNL)}")))
-			let context = createContext(data, attributes: ["country": "NL"])
-			#expect(count.withLock { $0 } == 1)
-			#expect(context.treatment(for: "exp") == 2)
-			for i in 0..<10 {
-				context.setAttribute("unrelated", to: i)
+	@Test(.enabled(if: countsAssignmentWork)) func rulesAreParsedOnceAtInstall() {
+		#if DEBUG
+			let count = Locked(0)
+			AudienceMatcher.$parseCount.withValue(count) {
+				let data = Self.contextData(
+					Self.experimentJSON(rules: Self.rules("{\"type\":\"assign\",\"variant\":2,\"conditions\":\(Self.countryNL)}")))
+				let context = createContext(data, attributes: ["country": "NL"])
+				#expect(count.withLock { $0 } == 1)
 				#expect(context.treatment(for: "exp") == 2)
+				for i in 0..<10 {
+					context.setAttribute("unrelated", to: i)
+					#expect(context.treatment(for: "exp") == 2)
+				}
+				#expect(context.revalidationCount == 10)
 			}
-			#expect(context.revalidationCount == 10)
-		}
-		#expect(count.withLock { $0 } == 1)
+			#expect(count.withLock { $0 } == 1)
+		#endif
 	}
 
-	@Test func audiencesAreParsedOnceAtInstall() {
-		let count = Locked(0)
-		AudienceMatcher.$audienceParseCount.withValue(count) {
-			let data = Self.contextData(Self.experimentJSON(
-				rules: nil, audience: "{\"filter\":[{\"value\":true}]}"))
-			let context = createContext(data)
-			#expect(count.withLock { $0 } == 1)
-			let variant = context.treatment(for: "exp")
-			for i in 0..<5 {
-				context.setAttribute("unrelated", to: i)
-				#expect(context.treatment(for: "exp") == variant)
-				#expect(context.treatment(for: "exp", exposing: false) == variant)
-				_ = context.variableValue("color")
+	@Test(.enabled(if: countsAssignmentWork)) func audiencesAreParsedOnceAtInstall() {
+		#if DEBUG
+			let count = Locked(0)
+			AudienceMatcher.$audienceParseCount.withValue(count) {
+				let data = Self.contextData(Self.experimentJSON(
+					rules: nil, audience: "{\"filter\":[{\"value\":true}]}"))
+				let context = createContext(data)
+				#expect(count.withLock { $0 } == 1)
+				let variant = context.treatment(for: "exp")
+				for i in 0..<5 {
+					context.setAttribute("unrelated", to: i)
+					#expect(context.treatment(for: "exp") == variant)
+					#expect(context.treatment(for: "exp", exposing: false) == variant)
+					_ = context.variableValue("color")
+				}
+				#expect(context.revalidationCount == 5)
 			}
-			#expect(context.revalidationCount == 5)
-		}
-		#expect(count.withLock { $0 } == 1)
+			#expect(count.withLock { $0 } == 1)
+		#endif
 	}
 
 	// MARK: - parsing

@@ -790,9 +790,16 @@ extension JSONValue {
 	}
 }
 
-extension Context {
-	/// Test hook: how many times cached assignments were re-evaluated against their rules/audience.
-	var revalidationCount: Int {
-		storage.withLock { $0.revalidations }
+#if DEBUG
+	extension Context {
+		/// Test hook: actual assignment-cache dictionary writes, including redundant write-backs.
+		var assignmentCacheWriteCount: Int {
+			storage.withLock { $0.assignmentCacheWrites }
+		}
+
+		/// Test hook: how many times cached assignments were re-evaluated against their rules/audience.
+		var revalidationCount: Int {
+			storage.withLock { $0.revalidations }
+		}
 	}
-}
+#endif
