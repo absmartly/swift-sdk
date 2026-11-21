@@ -509,8 +509,8 @@ Behaviour parity is proven, not asserted:
   `in` and string equality see the text; numeric comparisons are unchanged. The backend does not
   produce such literals.
 - A `UInt64`/`UInt` attribute above `Int64.max` is stored as a `Double`, so it is published
-  rounded (`12345678901234567890` as `12345678901234567000`) and compares as that double's text in
-  string operators; 1.5.0 kept the exact `NSNumber`.
+  rounded (`12345678901234567890` goes on the wire as `1.2345678901234567e+19`) and compares as
+  that double's text in string operators; 1.5.0 kept the exact `NSNumber`.
 - An unsigned integer literal from 2^63 to 2^64−1 is stored as a `Double`, so inside arrays and
   objects two such neighbouring values (e.g. `18446744073709551615` and `18446744073709551614`)
   compare equal; 1.5.0 kept Foundation's exact `NSNumber`. The backend does not produce such

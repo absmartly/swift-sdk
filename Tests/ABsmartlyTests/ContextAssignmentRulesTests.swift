@@ -398,6 +398,19 @@ import Testing
 		#expect(AudienceMatcher.evaluateRules(rules, environmentName: nil, attributes: [:]) == .assign(variant: 1))
 	}
 
+	// Reachable from variableValue when close() starts between listing a key's experiments and
+	// walking them.
+	@Test func closingContextQueuesNoExposure() {
+		var state = ContextState(application: "website", environment: "production")
+		state.index = DataIndex(Self.contextData(Self.experimentJSON(rules: nil)))
+		state.ready = true
+		state.closing = true
+		let (_, exposure) = state.lookupExposing("exp", now: { 0 })
+		#expect(exposure == nil)
+		#expect(state.exposures.isEmpty)
+		#expect(state.pendingCount == 0)
+	}
+
 	@Test func malformedRulesAreSkipped() {
 		let data = Self.contextData(
 			Self.experimentJSON(
