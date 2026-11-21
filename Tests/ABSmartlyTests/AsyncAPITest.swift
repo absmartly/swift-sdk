@@ -263,6 +263,54 @@ final class AsyncAPITest: XCTestCase {
 		XCTAssertEqual(1, client.publishEventCallsCount)
 	}
 
+	func testClientCloseAwaitsPendingRejection() async throws {
+		struct CloseError: Error, Equatable { let id = UUID() }
+		let sentinel = CloseError()
+		let mock = ClientMock()
+		mock.closeClosure = { after(seconds: 0.02).then { Promise<Void>(error: sentinel) } }
+		let client: Client = mock
+
+		do {
+			try await client.close()
+			XCTFail("Client.close returned before rejecting")
+		} catch {
+			XCTAssertEqual(sentinel, error as? CloseError)
+		}
+		XCTAssertEqual(1, mock.closeCallsCount)
+	}
+
+	func testEventHandlerPublishAwaitsPendingRejection() async throws {
+		struct PublishError: Error, Equatable { let id = UUID() }
+		let sentinel = PublishError()
+		let mock = ContextEventHandlerMock()
+		mock.publishEventClosure = { _ in after(seconds: 0.02).then { Promise<Void>(error: sentinel) } }
+		let handler: ContextEventHandler = mock
+
+		do {
+			try await handler.publish(event: publishEvent())
+			XCTFail("ContextEventHandler.publish returned before rejecting")
+		} catch {
+			XCTAssertEqual(sentinel, error as? PublishError)
+		}
+		XCTAssertEqual(1, mock.publishEventCallsCount)
+	}
+
+	func testHTTPClientCloseAwaitsPendingRejection() async throws {
+		struct CloseError: Error, Equatable { let id = UUID() }
+		let sentinel = CloseError()
+		let mock = HTTPClientMock()
+		mock.closeClosure = { after(seconds: 0.02).then { Promise<Void>(error: sentinel) } }
+		let client: HTTPClient = mock
+
+		do {
+			try await client.close()
+			XCTFail("HTTPClient.close returned before rejecting")
+		} catch {
+			XCTAssertEqual(sentinel, error as? CloseError)
+		}
+		XCTAssertEqual(1, mock.closeCallsCount)
+	}
+
 	func testClientAndProviderOverloads() async throws {
 		let client = ClientMock()
 		client.getContextDataReturnValue = Promise.value(try contextData())
