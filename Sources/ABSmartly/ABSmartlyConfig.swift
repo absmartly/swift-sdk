@@ -1,18 +1,17 @@
 import Foundation
 
-public class ABsmartlyConfig {
+public class ABSmartlyConfig {
 	public var scheduler: Scheduler?
 	public var contextDataProvider: ContextDataProvider?
-	public var contextPublisher: ContextPublisher?
+	public var contextEventHandler: ContextEventHandler?
 	public var contextEventLogger: ContextEventLogger?
 	public var variableParser: VariableParser?
 	public var client: Client?
 
-	/// Deprecated: Use contextPublisher instead.
-	@available(*, deprecated, renamed: "contextPublisher")
-	public var contextEventHandler: ContextPublisher? {
-		get { contextPublisher }
-		set { contextPublisher = newValue }
+	/// The same value as `contextEventHandler`, under the name other A/B Smartly SDKs use.
+	public var contextPublisher: ContextPublisher? {
+		get { contextEventHandler }
+		set { contextEventHandler = newValue }
 	}
 
 	public init() {
@@ -20,41 +19,40 @@ public class ABsmartlyConfig {
 
 	public convenience init(client: Client) {
 		self.init(
-			contextDataProvider: nil, contextPublisher: nil, contextEventLogger: nil, variableParser: nil,
+			contextDataProvider: nil, contextEventHandler: nil, contextEventLogger: nil, variableParser: nil,
 			scheduler: nil, client: client)
 	}
 
 	public init(
-		contextDataProvider: ContextDataProvider?, contextPublisher: ContextPublisher?,
+		contextDataProvider: ContextDataProvider?, contextEventHandler: ContextEventHandler?,
 		contextEventLogger: ContextEventLogger?,
 		variableParser: VariableParser?, scheduler: Scheduler?, client: Client?
 	) {
 		self.scheduler = scheduler
 		self.contextDataProvider = contextDataProvider
-		self.contextPublisher = contextPublisher
+		self.contextEventHandler = contextEventHandler
 		self.contextEventLogger = contextEventLogger
 		self.variableParser = variableParser
 		self.client = client
 	}
 }
 
-extension ABsmartlyConfig {
-	/// Deprecated: Use `init(contextDataProvider:contextPublisher:...)` instead.
-	@available(*, deprecated, message: "Use init(contextDataProvider:contextPublisher:contextEventLogger:variableParser:scheduler:client:) instead")
+extension ABSmartlyConfig {
+	/// `init(contextDataProvider:contextEventHandler:...)` under the name other A/B Smartly SDKs use.
 	public convenience init(
-		contextDataProvider: ContextDataProvider?, contextEventHandler: ContextPublisher?,
+		contextDataProvider: ContextDataProvider?, contextPublisher: ContextPublisher?,
 		contextEventLogger: ContextEventLogger?,
 		variableParser: VariableParser?, scheduler: Scheduler?, client: Client?
 	) {
 		self.init(
-			contextDataProvider: contextDataProvider, contextPublisher: contextEventHandler,
+			contextDataProvider: contextDataProvider, contextEventHandler: contextPublisher,
 			contextEventLogger: contextEventLogger, variableParser: variableParser,
 			scheduler: scheduler, client: client)
 	}
 }
 
-@available(*, deprecated, message: "Use ABsmartlyConfig instead")
-public typealias AbsmartlyConfig = ABsmartlyConfig
+/// `ABSmartlyConfig` under the spelling other A/B Smartly SDKs use.
+public typealias ABsmartlyConfig = ABSmartlyConfig
 
-@available(*, deprecated, message: "Use ABsmartlyConfig instead")
-public typealias ABSmartlyConfig = ABsmartlyConfig
+@available(*, deprecated, message: "Use ABSmartlyConfig instead")
+public typealias AbsmartlyConfig = ABSmartlyConfig

@@ -1,8 +1,6 @@
 import Foundation
 #if canImport(CommonCrypto)
 import CommonCrypto
-#else
-import Crypto
 #endif
 
 // NOTE: MD5 is used here for non-cryptographic purposes only.
@@ -12,9 +10,8 @@ import Crypto
 public class Hashing {
 
 	private static func MD5Base64Url(_ string: String) -> String {
-		let data = Data(string.utf8)
-
 		#if canImport(CommonCrypto)
+		let data = Data(string.utf8)
 		// Apple platforms
 		let md5 = data.withUnsafeBytes { (bytes: UnsafeRawBufferPointer) -> [UInt8] in
 			var hash = [UInt8](repeating: 0, count: Int(CC_MD5_DIGEST_LENGTH))
@@ -22,9 +19,7 @@ public class Hashing {
 			return hash
 		}
 		#else
-		// Linux with Swift Crypto
-		let digest = Insecure.MD5.hash(data: data)
-		let md5 = Array(digest)
+		let md5 = MD5.digest(Array(string.utf8))
 		#endif
 
 		let base64Str = Data(md5).base64EncodedString()
@@ -82,5 +77,10 @@ public class Hashing {
 
 	static func hashBytes(_ unit: String) -> [UInt8] {
 		return Array(MD5Base64Url(unit).utf8)
+	}
+
+	// The v1.4.0 name of hashBytes, kept for code using `@testable import`.
+	static func hash(_ unit: String) -> [UInt8] {
+		return hashBytes(unit)
 	}
 }

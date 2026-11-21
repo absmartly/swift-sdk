@@ -1,6 +1,7 @@
 import Foundation
 import PromiseKit
 
-/// Deprecated: Use ContextPublisher instead.
-@available(*, deprecated, renamed: "ContextPublisher")
-public typealias ContextEventHandler = ContextPublisher
+// sourcery: AutoMockable
+public protocol ContextEventHandler {
+	func publish(event: PublishEvent) -> Promise<Void>
+}

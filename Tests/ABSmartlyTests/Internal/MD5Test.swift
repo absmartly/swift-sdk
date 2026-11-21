@@ -113,4 +113,19 @@ final class MD5Test: XCTestCase {
 			XCTAssertEqual(Array(stringHash.utf8), bytesHash, "hashBytes mismatch for input: \(testCase.input)")
 		}
 	}
+
+	// Lengths around the 64-byte block and 56-byte padding boundaries, which exercise the
+	// Linux MD5 implementation's padding; expected values from Python's hashlib.
+	func testHashPaddingBoundaries() {
+		let expected: [(Int, String)] = [
+			(55, "7xdytt_5oSI1hVKVStDfZQ"), (56, "OwyKxwP4KLBMbBlwBtFyGA"), (57, "ZSuQbWCvloROvSG2dPNekw"),
+			(63, "sGUh85FT1hhVBga-KXRm1Q"), (64, "AUhC1IC1cUlaSgNjeT9zZw"), (65, "x0OkXg0uapXLhZra4CSENQ"),
+			(119, "invQcy7WooznX22ryQ4WEw"), (120, "X2HAzK1MrETHX_UF4fHlNw"), (128, "5RBoOz9f_kCT0CGAi8b_cA"),
+			(1000, "yr5F3MmuW2a6hmAMymuLqA"),
+		]
+		for (length, hash) in expected {
+			XCTAssertEqual(hash, Hashing.hash(String(repeating: "a", count: length)) as String, "length \(length)")
+		}
+		XCTAssertEqual("Y5JYhjwYxQXMIYOl5LYzlA", Hashing.hash(String(repeating: "é", count: 40)) as String)
+	}
 }
