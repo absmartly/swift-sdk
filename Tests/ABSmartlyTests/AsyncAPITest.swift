@@ -311,6 +311,56 @@ final class AsyncAPITest: XCTestCase {
 		XCTAssertEqual(1, mock.closeCallsCount)
 	}
 
+	func testClientPublishAwaitsPendingRejection() async throws {
+		struct PublishError: Error, Equatable { let id = UUID() }
+		let sentinel = PublishError()
+		let mock = ClientMock()
+		mock.publishEventClosure = { _ in after(seconds: 0.02).then { Promise<Void>(error: sentinel) } }
+		let client: Client = mock
+
+		do {
+			try await client.publish(event: publishEvent())
+			XCTFail("Client.publish returned before rejecting")
+		} catch {
+			XCTAssertEqual(sentinel, error as? PublishError)
+		}
+		XCTAssertEqual(1, mock.publishEventCallsCount)
+	}
+
+	func testSDKGetContextDataAwaitsPendingRejection() async throws {
+		struct FetchError: Error, Equatable { let id = UUID() }
+		let sentinel = FetchError()
+		let mock = ClientMock()
+		mock.getContextDataClosure = { after(seconds: 0.02).then { Promise<ContextData>(error: sentinel) } }
+		let sdk = try ABSmartlySDK(config: ABSmartlyConfig(client: mock))
+
+		do {
+			_ = try await sdk.getContextData()
+			XCTFail("SDK.getContextData returned before rejecting")
+		} catch {
+			XCTAssertEqual(sentinel, error as? FetchError)
+		}
+		XCTAssertEqual(1, mock.getContextDataCallsCount)
+	}
+
+	func testHTTPClientGetAwaitsPendingRejection() async throws {
+		struct RequestError: Error, Equatable { let id = UUID() }
+		let sentinel = RequestError()
+		let mock = HTTPClientMock()
+		mock.getUrlQueryHeadersClosure = { _, _, _ in
+			after(seconds: 0.02).then { Promise<Response>(error: sentinel) }
+		}
+		let client: HTTPClient = mock
+
+		do {
+			_ = try await client.get(url: "https://example.test/get", query: nil, headers: nil)
+			XCTFail("HTTPClient.get returned before rejecting")
+		} catch {
+			XCTAssertEqual(sentinel, error as? RequestError)
+		}
+		XCTAssertEqual(1, mock.getUrlQueryHeadersCallsCount)
+	}
+
 	func testClientAndProviderOverloads() async throws {
 		let client = ClientMock()
 		client.getContextDataReturnValue = Promise.value(try contextData())
@@ -372,7 +422,7 @@ final class AsyncAPITest: XCTestCase {
 				method: String, url: String, query: [String: String]?, headers: [String: String]?, body: Data?
 			) -> Promise<Response> {
 				received = (method, url, query, headers, body)
-				return Promise(error: URLError(.badURL))
+				return after(seconds: 0.02).then { Promise<Response>(error: URLError(.badURL)) }
 			}
 		}
 		let http = RecordingHTTPClient(config: DefaultHTTPClientConfig())
