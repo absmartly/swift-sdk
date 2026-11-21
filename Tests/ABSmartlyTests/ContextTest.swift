@@ -4297,6 +4297,19 @@ final class ContextV140BehaviourTest: XCTestCase {
 		XCTAssertEqual(JSON(1), context.getAttribute(name: "a"))
 	}
 
+	// The claim hook runs only when a read claims an exposure, not on cached reads.
+	func testExposureClaimedHookRunsOnlyForANewClaim() throws {
+		let context = makeContext(config(), Promise.value(try contextData()))
+		var claims = 0
+		Context.setTestHook(.exposureClaimed) { claims += 1 }
+		defer { Context.setTestHook(.exposureClaimed, nil) }
+
+		XCTAssertEqual(1, context.getTreatment("exp_test_ab"))
+		XCTAssertEqual(1, context.getTreatment("exp_test_ab"))
+		XCTAssertEqual("large", context.getVariableValue("banner.size")?.string)
+		XCTAssertEqual(1, claims)
+	}
+
 	// A recovery that completes between a read's claim and its enqueue: the stale exposure is
 	// dropped and the next read exposes the rebuilt assignment, attributed.
 	func testExposureClaimedBeforeARecoveryIsDroppedAndReExposed() throws {
