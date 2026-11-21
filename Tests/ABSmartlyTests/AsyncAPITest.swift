@@ -361,6 +361,84 @@ final class AsyncAPITest: XCTestCase {
 		XCTAssertEqual(1, mock.getUrlQueryHeadersCallsCount)
 	}
 
+	func testClientFetchAwaitsPendingRejection() async throws {
+		struct Failure: Error, Equatable { let id = UUID() }
+		let sentinel = Failure()
+		let mock = ClientMock()
+		mock.getContextDataClosure = { after(seconds: 0.02).then { Promise<ContextData>(error: sentinel) } }
+		let client: Client = mock
+		do {
+			_ = try await client.getContextData()
+			XCTFail("ClientFetch returned before rejecting")
+		} catch {
+			XCTAssertEqual(sentinel, error as? Failure)
+		}
+		XCTAssertEqual(1, mock.getContextDataCallsCount)
+	}
+
+	func testProviderFetchAwaitsPendingRejection() async throws {
+		struct Failure: Error, Equatable { let id = UUID() }
+		let sentinel = Failure()
+		let mock = ContextDataProviderMock()
+		mock.getContextDataClosure = { after(seconds: 0.02).then { Promise<ContextData>(error: sentinel) } }
+		let client: ContextDataProvider = mock
+		do {
+			_ = try await client.getContextData()
+			XCTFail("ProviderFetch returned before rejecting")
+		} catch {
+			XCTAssertEqual(sentinel, error as? Failure)
+		}
+		XCTAssertEqual(1, mock.getContextDataCallsCount)
+	}
+
+	func testHTTPPutAwaitsPendingRejection() async throws {
+		struct Failure: Error, Equatable { let id = UUID() }
+		let sentinel = Failure()
+		let mock = HTTPClientMock()
+		mock.putUrlQueryHeadersBodyClosure = { _, _, _, _ in after(seconds: 0.02).then { Promise<Response>(error: sentinel) } }
+		let client: HTTPClient = mock
+		do {
+			_ = try await client.put(url: "https://example.test/put", query: nil, headers: nil, body: nil)
+			XCTFail("HTTPPut returned before rejecting")
+		} catch {
+			XCTAssertEqual(sentinel, error as? Failure)
+		}
+		XCTAssertEqual(1, mock.putUrlQueryHeadersBodyCallsCount)
+	}
+
+	func testHTTPPostAwaitsPendingRejection() async throws {
+		struct Failure: Error, Equatable { let id = UUID() }
+		let sentinel = Failure()
+		let mock = HTTPClientMock()
+		mock.postUrlQueryHeadersBodyClosure = { _, _, _, _ in after(seconds: 0.02).then { Promise<Response>(error: sentinel) } }
+		let client: HTTPClient = mock
+		do {
+			_ = try await client.post(url: "https://example.test/post", query: nil, headers: nil, body: nil)
+			XCTFail("HTTPPost returned before rejecting")
+		} catch {
+			XCTAssertEqual(sentinel, error as? Failure)
+		}
+		XCTAssertEqual(1, mock.postUrlQueryHeadersBodyCallsCount)
+	}
+
+	func testFinalizeAwaitsRejectedFinalPublishAndRetainsGoal() async throws {
+		struct Failure: Error, Equatable { let id = UUID() }
+		let sentinel = Failure()
+		let context = makeContext(Promise.value(try contextData()))
+		context.track("goal", properties: nil)
+		handler.publishEventClosure = { _ in after(seconds: 0.02).then { Promise<Void>(error: sentinel) } }
+		do {
+			try await context.finalize()
+			XCTFail("finalize returned before rejecting")
+		} catch {
+			XCTAssertEqual(sentinel, error as? Failure)
+		}
+		XCTAssertEqual(1, handler.publishEventCallsCount)
+		XCTAssertFalse(context.isClosed())
+		XCTAssertFalse(context.isClosing())
+		XCTAssertEqual(1, context.getPendingCount())
+	}
+
 	func testClientAndProviderOverloads() async throws {
 		let client = ClientMock()
 		client.getContextDataReturnValue = Promise.value(try contextData())
