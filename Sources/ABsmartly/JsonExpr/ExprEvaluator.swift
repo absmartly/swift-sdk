@@ -61,7 +61,7 @@ final class ExprEvaluator {
 		case "value":
 			return args
 		case "var":
-			let path = args.objectValue != nil ? (args["path"] ?? .null) : args
+			let path = args.objectCount != nil ? (args["path"] ?? .null) : args
 			if case .string(let path) = path {
 				return extractVar(path)
 			}

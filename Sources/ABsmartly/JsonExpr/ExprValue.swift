@@ -15,7 +15,6 @@ enum ExprValue: Sendable {
 	case string(String)
 	case array([ExprValue])
 	case object([String: ExprValue])
-	// Retain attribute storage; operators convert only the children they visit.
 	case attributeArray([JSONValue])
 	case attributeObject([String: JSONValue])
 }

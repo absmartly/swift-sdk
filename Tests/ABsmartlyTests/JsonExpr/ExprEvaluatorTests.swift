@@ -3,7 +3,6 @@ import Testing
 
 @testable import ABsmartly
 
-// The attribute conversion counter only counts in debug builds.
 #if DEBUG
 	private let countsConversions = true
 #else
@@ -251,7 +250,6 @@ import Testing
 		#expect(evaluator.evaluate(["in": [["var": "empty"], ["value": "roles"]]]) == false)
 	}
 
-	// Nested strings compare by UTF-16 code units, so NFC and NFD spellings differ.
 	@Test func nestedAttributeStringsCompareByCodeUnits() {
 		let evaluator = ExprEvaluator(vars: ["names": ["caf\u{E9}"]])
 		#expect(evaluator.evaluate(["eq": [["var": "names"], ["value": ["cafe\u{301}"]]]]) == .null)
@@ -282,7 +280,6 @@ import Testing
 		}
 	}
 
-	// `ExprValue ==` and the collection accessors on attribute storage, used by tests and parsing.
 	@Test func attributeCollectionsCompareAndConvert() {
 		let evaluator = ExprEvaluator(vars: ["d": [1, 2, 3], "f": ["x": 3]])
 		#expect(evaluator.extractVar("d") != [1, 2])

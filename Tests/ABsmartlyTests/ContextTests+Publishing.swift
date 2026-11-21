@@ -321,8 +321,10 @@ extension ContextTests {
 		#expect(context.pendingEventCount == 1)
 
 		try await context.publish()
-		let body = try #require(env.transport.publishedBodies.last)
-		#expect(body["exposures"]?.arrayValue?.compactMap { $0["name"]?.stringValue } == ["exp_test_ab"])
+		// The failed PUT is recorded too, so the retry is the second one.
+		let bodies = env.transport.publishedBodies
+		try #require(bodies.count == 2)
+		#expect(bodies[1]["exposures"]?.arrayValue?.compactMap { $0["name"]?.stringValue } == ["exp_test_ab"])
 		#expect(context.pendingEventCount == 0)
 	}
 
@@ -336,8 +338,10 @@ extension ContextTests {
 		#expect(context.pendingEventCount == 1)
 
 		try await context.close()
-		let body = try #require(env.transport.publishedBodies.last)
-		#expect(body["exposures"]?.arrayValue?.compactMap { $0["name"]?.stringValue } == ["exp_test_ab"])
+		// The failed PUT is recorded too, so the retry is the second one.
+		let bodies = env.transport.publishedBodies
+		try #require(bodies.count == 2)
+		#expect(bodies[1]["exposures"]?.arrayValue?.compactMap { $0["name"]?.stringValue } == ["exp_test_ab"])
 		#expect(context.state == .closed)
 	}
 
