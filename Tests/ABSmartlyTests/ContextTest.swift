@@ -4297,7 +4297,6 @@ final class ContextV140BehaviourTest: XCTestCase {
 		XCTAssertEqual(JSON(1), context.getAttribute(name: "a"))
 	}
 
-	// The claim hook runs only when a read claims an exposure, not on cached reads.
 	func testExposureClaimedHookRunsOnlyForANewClaim() throws {
 		let context = makeContext(config(), Promise.value(try contextData()))
 		var claims = 0
