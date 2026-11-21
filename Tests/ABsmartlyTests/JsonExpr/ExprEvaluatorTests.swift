@@ -212,6 +212,43 @@ import Testing
 		#expect(count.withLock { $0 } == 1)
 	}
 
+	@Test func attributeCollectionEqualityChecksSizesAndKeys() {
+		let evaluator = ExprEvaluator(vars: ["roles": ["a", "b"], "o": ["x": 1, "y": 2], "p": ["x": 1]])
+		#expect(evaluator.evaluate(["eq": [["var": "roles"], ["value": ["a"]]]]) == .null)
+		#expect(evaluator.evaluate(["eq": [["value": ["a"]], ["var": "roles"]]]) == .null)
+		#expect(evaluator.evaluate(["eq": [["value": ["a", "b", "c"]], ["var": "roles"]]]) == .null)
+		#expect(evaluator.evaluate(["eq": [["var": "roles"], ["value": ["a", "b"]]]]) == true)
+		#expect(evaluator.evaluate(["eq": [["value": ["x": 1, "y": 2]], ["var": "o"]]]) == true)
+		#expect(evaluator.evaluate(["eq": [["value": ["x": 2, "y": 1]], ["var": "o"]]]) == .null)
+		#expect(evaluator.evaluate(["eq": [["value": ["x": 1, "z": 2]], ["var": "o"]]]) == .null)
+		#expect(evaluator.evaluate(["eq": [["var": "p"], ["value": ["x": 1, "y": 2]]]]) == .null)
+		#expect(evaluator.evaluate(["eq": [["value": ["x": 1, "y": 2]], ["var": "p"]]]) == .null)
+		#expect(evaluator.evaluate(["eq": [["var": "o"], ["var": "p"]]]) == .null)
+		#expect(evaluator.evaluate(["eq": [["var": "o"], ["var": "o"]]]) == true)
+	}
+
+	@Test func attributeCollectionsAreTruthy() {
+		let vars: [String: JSONValue] = ["roles": ["a"], "o": ["x": 1], "empty": [], "none": [:]]
+		let evaluator = ExprEvaluator(vars: vars)
+		for name in vars.keys {
+			#expect(evaluator.evaluate(["not": ["var": .string(name)]]) == false, "\(name)")
+			#expect(JsonExpr.evaluateBoolean([["var": .string(name)]], vars: vars), "\(name)")
+		}
+	}
+
+	// `ExprValue ==` and the collection accessors on attribute storage, used by tests and parsing.
+	@Test func attributeCollectionsCompareAndConvert() {
+		let evaluator = ExprEvaluator(vars: ["d": [1, 2, 3], "f": ["x": 3]])
+		#expect(evaluator.extractVar("d") != [1, 2])
+		#expect(evaluator.extractVar("d") != [1, 2, 4])
+		#expect(evaluator.extractVar("f") != ["x": 4])
+		#expect(evaluator.extractVar("f") != ["y": 3])
+		#expect(evaluator.extractVar("d").arrayValue == [1, 2, 3])
+		#expect(evaluator.extractVar("f").objectValue == ["x": 3])
+		#expect(evaluator.extractVar("d").objectValue == nil)
+		#expect(evaluator.extractVar("f").arrayValue == nil)
+	}
+
 	@Test func attributeConversionCounterIncludesVisitedElements() {
 		let evaluator = ExprEvaluator(vars: ["roles": ["admin", "guest", "owner"]])
 		let count = Locked(0)

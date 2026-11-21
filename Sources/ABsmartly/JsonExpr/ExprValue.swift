@@ -21,7 +21,7 @@ enum ExprValue: Sendable {
 }
 
 extension ExprValue {
-	/// Test hook: counts attribute nodes converted by the current task.
+	/// Test hook (debug builds): counts attribute nodes converted by the current task.
 	@TaskLocal static var attributeConversionCount: Locked<Int>?
 
 	init(_ json: JSONValue) {
@@ -37,7 +37,10 @@ extension ExprValue {
 	}
 
 	init(attribute json: JSONValue) {
-		Self.attributeConversionCount?.withLock { $0 += 1 }
+		// Debug only: a task-local lookup on every attribute read costs ~12% of an evaluation.
+		#if DEBUG
+			Self.attributeConversionCount?.withLock { $0 += 1 }
+		#endif
 		switch json {
 		case .array(let value):
 			self = .attributeArray(value)
