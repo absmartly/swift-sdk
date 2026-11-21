@@ -4430,8 +4430,6 @@ final class ContextV140BehaviourTest: XCTestCase {
 		}
 	}
 
-	// An untyped reference compiled against 1.4.0 (String only) and must still resolve to the
-	// String overload; the numeric overloads are disfavoured. A regression fails to compile.
 	// Label-free references compiled against 1.4.0 (one overload of each) still resolve to the
 	// 1.4.0 declarations; the overloads added since are disfavoured.
 	func testLabelFreeReferencesResolveToThe140Declarations() throws {
@@ -4446,6 +4444,8 @@ final class ContextV140BehaviourTest: XCTestCase {
 		XCTAssertEqual(context.getCustomFieldKeys(), customFieldKeys())
 	}
 
+	// An untyped reference compiled against 1.4.0 (String only) and must still resolve to the
+	// String overload; the numeric overloads are disfavoured. A regression fails to compile.
 	func testUntypedSetUnitReferenceResolvesToTheStringOverload() throws {
 		let context = makeContext(ContextConfig(), Promise.value(try contextData()))
 		let setUnit = context.setUnit(unitType:uid:)

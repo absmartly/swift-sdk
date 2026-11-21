@@ -18,6 +18,9 @@ final class AsyncAPITest: XCTestCase {
 		scheduler = SchedulerMock()
 		scheduler.scheduleAfterExecuteReturnValue = ScheduledHandleMock()
 		scheduler.scheduleWithFixedDelayAfterRepeatingExecuteReturnValue = ScheduledHandleMock()
+		// A default, so a misrouted call (e.g. publish() calling refresh()) fails an assertion on
+		// the provider's call count instead of crashing the run in the mock.
+		provider.getContextDataReturnValue = Promise(error: ABSmartlyError("unexpected fetch"))
 	}
 
 	private func contextData() throws -> ContextData {
@@ -185,6 +188,7 @@ final class AsyncAPITest: XCTestCase {
 
 		try await task.value
 		XCTAssertEqual(1, handler.publishEventCallsCount)
+		XCTAssertEqual(0, provider.getContextDataCallsCount)
 		XCTAssertEqual(0, context.getPendingCount())
 	}
 
