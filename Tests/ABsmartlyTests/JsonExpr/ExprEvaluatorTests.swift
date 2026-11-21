@@ -171,6 +171,56 @@ import Testing
 		#expect(evaluator.extractVar("f/y/0") == 10)
 	}
 
+	@Test(arguments: [10, 10_000]) func firstAttributeMatchSkipsRemainingConversions(size: Int) {
+		let roles = JSONValue.array(["admin"] + Array(repeating: "guest", count: size - 1))
+		let evaluator = ExprEvaluator(vars: ["roles": roles])
+		let count = Locked(0)
+		ExprValue.$attributeConversionCount.withValue(count) {
+			#expect(evaluator.evaluate(["in": [["var": "roles"], ["value": "admin"]]]) == true)
+		}
+		#expect(count.withLock { $0 } == 2)
+	}
+
+	@Test(arguments: [10, 10_000]) func nestedAttributePathAndMatchSkipUnvisitedSubtrees(size: Int) {
+		let unused = JSONValue.array(Array(repeating: ["unused": [1, 2, 3]], count: size))
+		let roles = JSONValue.array([["name": "admin"], unused])
+		let evaluator = ExprEvaluator(vars: ["profiles": [["roles": roles], unused]])
+		let count = Locked(0)
+		ExprValue.$attributeConversionCount.withValue(count) {
+			#expect(evaluator.evaluate(["in": [["var": "profiles/0/roles"], ["value": ["name": "admin"]]]]) == true)
+		}
+		#expect(count.withLock { $0 } == 3)
+	}
+
+	@Test(arguments: [10, 10_000]) func nestedAttributeEqualityStopsAtFirstUnequalLeaf(size: Int) {
+		let values = JSONValue.array([0] + Array(repeating: 2, count: size - 1))
+		let literal = ExprValue.array([1] + Array(repeating: 2, count: size - 1))
+		let evaluator = ExprEvaluator(vars: ["profile": ["values": values]])
+		let count = Locked(0)
+		ExprValue.$attributeConversionCount.withValue(count) {
+			#expect(evaluator.evaluate(["eq": [["var": "profile"], ["value": ["values": literal]]]]) == .null)
+		}
+		#expect(count.withLock { $0 } == 3)
+	}
+
+	@Test func attributeObjectMembershipDoesNotConvertValues() {
+		let evaluator = ExprEvaluator(vars: ["profile": ["roles": ["admin", "guest"], "extra": [1, 2, 3]]])
+		let count = Locked(0)
+		ExprValue.$attributeConversionCount.withValue(count) {
+			#expect(evaluator.evaluate(["in": [["var": "profile"], ["value": "roles"]]]) == true)
+		}
+		#expect(count.withLock { $0 } == 1)
+	}
+
+	@Test func attributeConversionCounterIncludesVisitedElements() {
+		let evaluator = ExprEvaluator(vars: ["roles": ["admin", "guest", "owner"]])
+		let count = Locked(0)
+		ExprValue.$attributeConversionCount.withValue(count) {
+			#expect(evaluator.evaluate(["in": [["var": "roles"], ["value": "missing"]]]) == false)
+		}
+		#expect(count.withLock { $0 } == 4)
+	}
+
 	@Test func compareNull() {
 		let evaluator = ExprEvaluator(vars: [:])
 

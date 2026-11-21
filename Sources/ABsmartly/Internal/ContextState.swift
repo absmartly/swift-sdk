@@ -382,11 +382,6 @@ struct ContextState {
 	// assignment rule and whose variant defines the key provides the value. The caller walks them
 	// one at a time, delivering each exposure before resolving the next, as 1.5.0 did.
 
-	/// The experiments defining `key`, by ascending id.
-	func variableExperiments(_ key: String) -> [DataIndex.Entry] {
-		index.variableExperiments[key] ?? []
-	}
-
 	/// The value `experimentName` provides for `key`, if any, and the exposure queued for it unless
 	/// peeking.
 	mutating func variableValue(

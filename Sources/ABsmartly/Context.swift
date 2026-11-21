@@ -433,7 +433,7 @@ public final class Context: Sendable {
 			if let error = state.checkReady(expectNotClosed: true) {
 				return .failure(error)
 			}
-			return .success(state.variableExperiments(key))
+			return .success(state.index.variableExperiments[key] ?? [])
 		}
 		guard case .success(let experiments) = listed else {
 			if case .failure(let error) = listed {

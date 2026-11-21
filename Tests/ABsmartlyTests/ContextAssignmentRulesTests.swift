@@ -510,7 +510,6 @@ import Testing
 		#expect(context.revalidationCount == 0)
 	}
 
-	// Rules are parsed once, when the data is installed, not on reads or re-evaluations.
 	@Test func rulesAreParsedOnceAtInstall() {
 		let count = Locked(0)
 		AudienceMatcher.$parseCount.withValue(count) {

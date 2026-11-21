@@ -223,8 +223,6 @@ import Testing
 		#expect(experiment.customFieldValues == [CustomFieldValue(name: "owner", type: "text", value: "me")])
 	}
 
-	// Through the public factory: an unknown root array (and nested future fields) leave a fetched
-	// context ready, with every experiment still assigning.
 	@Test func unknownRootArrayKeepsFetchedContextReady() async throws {
 		let env = ContextEnv()
 		var json = String(decoding: Fixtures.data("context"), as: UTF8.self)

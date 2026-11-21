@@ -435,7 +435,6 @@ extension ContextTests {
 		#expect(context.treatment(for: "exp_test_ab") == 1)
 	}
 
-	// An empty application name is treated the same as unconfigured: the key is left out.
 	@Test func emptyApplicationConfigLeavesKeyOut() {
 		let env = ContextEnv()
 		let context = env.directContext(

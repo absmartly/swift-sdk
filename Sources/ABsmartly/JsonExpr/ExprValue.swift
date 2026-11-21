@@ -15,9 +15,15 @@ enum ExprValue: Sendable {
 	case string(String)
 	case array([ExprValue])
 	case object([String: ExprValue])
+	// Retain attribute storage; operators convert only the children they visit.
+	case attributeArray([JSONValue])
+	case attributeObject([String: JSONValue])
 }
 
 extension ExprValue {
+	/// Test hook: counts attribute nodes converted by the current task.
+	@TaskLocal static var attributeConversionCount: Locked<Int>?
+
 	init(_ json: JSONValue) {
 		switch json {
 		case .null: self = .null
@@ -25,8 +31,20 @@ extension ExprValue {
 		case .int(let value): self = .int(value)
 		case .double(let value): self = .double(value)
 		case .string(let value): self = .string(value)
-		case .array(let value): self = .array(value.map(ExprValue.init))
-		case .object(let value): self = .object(value.mapValues(ExprValue.init))
+		case .array(let value): self = .array(value.map { ExprValue($0) })
+		case .object(let value): self = .object(value.mapValues { ExprValue($0) })
+		}
+	}
+
+	init(attribute json: JSONValue) {
+		Self.attributeConversionCount?.withLock { $0 += 1 }
+		switch json {
+		case .array(let value):
+			self = .attributeArray(value)
+		case .object(let value):
+			self = .attributeObject(value)
+		default:
+			self.init(json)
 		}
 	}
 
@@ -72,6 +90,8 @@ extension ExprValue {
 		case .string(let value): return .string(value)
 		case .array(let value): return .array(value.map(\.jsonValue))
 		case .object(let value): return .object(value.mapValues(\.jsonValue))
+		case .attributeArray(let value): return .array(value)
+		case .attributeObject(let value): return .object(value)
 		}
 	}
 
@@ -96,23 +116,60 @@ extension ExprValue {
 	}
 
 	var arrayValue: [ExprValue]? {
-		if case .array(let value) = self { return value }
-		return nil
+		switch self {
+		case .array(let value): return value
+		case .attributeArray(let value): return value.map(ExprValue.init(attribute:))
+		default: return nil
+		}
 	}
 
 	var objectValue: [String: ExprValue]? {
-		if case .object(let value) = self { return value }
-		return nil
+		switch self {
+		case .object(let value): return value
+		case .attributeObject(let value): return value.mapValues(ExprValue.init(attribute:))
+		default: return nil
+		}
+	}
+
+	func allObjectValuesSatisfy(_ predicate: (String, ExprValue) -> Bool) -> Bool {
+		switch self {
+		case .object(let object): return object.allSatisfy { predicate($0.key, $0.value) }
+		case .attributeObject(let object):
+			return object.allSatisfy { predicate($0.key, ExprValue(attribute: $0.value)) }
+		default: return false
+		}
+	}
+
+	var arrayCount: Int? {
+		switch self {
+		case .array(let value): return value.count
+		case .attributeArray(let value): return value.count
+		default: return nil
+		}
+	}
+
+	var objectCount: Int? {
+		switch self {
+		case .object(let value): return value.count
+		case .attributeObject(let value): return value.count
+		default: return nil
+		}
 	}
 
 	subscript(key: String) -> ExprValue? {
-		if case .object(let object) = self { return object[key] }
-		return nil
+		switch self {
+		case .object(let object): return object[key]
+		case .attributeObject(let object): return object[key].map(ExprValue.init(attribute:))
+		default: return nil
+		}
 	}
 
 	subscript(index: Int) -> ExprValue? {
-		if case .array(let array) = self, array.indices.contains(index) { return array[index] }
-		return nil
+		switch self {
+		case .array(let array): return array.indices.contains(index) ? array[index] : nil
+		case .attributeArray(let array): return array.indices.contains(index) ? ExprValue(attribute: array[index]) : nil
+		default: return nil
+		}
 	}
 
 	// SwiftyJSON's type names, used in 1.x's log messages.
@@ -122,8 +179,8 @@ extension ExprValue {
 		case .bool: return "bool"
 		case .int, .double, .decimal: return "number"
 		case .string: return "string"
-		case .array: return "array"
-		case .object: return "dictionary"
+		case .array, .attributeArray: return "array"
+		case .object, .attributeObject: return "dictionary"
 		}
 	}
 }
@@ -135,6 +192,12 @@ extension ExprValue: Equatable {
 		case (.decimal, _), (_, .decimal): return false
 		case (.array(let l), .array(let r)): return l == r
 		case (.object(let l), .object(let r)): return l == r
+		case (.attributeArray, _), (_, .attributeArray):
+			guard let count = lhs.arrayCount, count == rhs.arrayCount else { return false }
+			return (0..<count).allSatisfy { lhs[$0] == rhs[$0] }
+		case (.attributeObject, _), (_, .attributeObject):
+			guard let count = lhs.objectCount, count == rhs.objectCount else { return false }
+			return lhs.allObjectValuesSatisfy { key, value in rhs[key].map { value == $0 } ?? false }
 		default: return lhs.jsonValue == rhs.jsonValue
 		}
 	}
@@ -152,12 +215,5 @@ extension ExprValue: ExpressibleByNilLiteral, ExpressibleByBooleanLiteral, Expre
 	init(arrayLiteral elements: ExprValue...) { self = .array(elements) }
 	init(dictionaryLiteral elements: (String, ExprValue)...) {
 		self = .object(Dictionary(elements, uniquingKeysWith: { _, last in last }))
-	}
-}
-
-extension ExprValue: CustomStringConvertible {
-	var description: String {
-		if case .decimal(let value) = self { return NSDecimalNumber(decimal: value).description }
-		return jsonValue.description
 	}
 }

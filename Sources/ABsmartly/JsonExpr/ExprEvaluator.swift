@@ -118,8 +118,8 @@ final class ExprEvaluator {
 
 	private func inOperator(_ haystack: ExprValue, _ needle: ExprValue) -> ExprValue {
 		switch haystack {
-		case .array(let items):
-			for item in items where compare(item, needle) == 0 {
+		case .array, .attributeArray:
+			for index in 0..<haystack.arrayCount! where compare(haystack[index]!, needle) == 0 {
 				return .bool(true)
 			}
 			return .bool(false)
@@ -127,6 +127,9 @@ final class ExprEvaluator {
 			guard let needle = stringConvert(needle) else { return .bool(false) }
 			return .bool(string.contains(needle))
 		case .object(let object):
+			guard let needle = stringConvert(needle) else { return .bool(false) }
+			return .bool(object[needle] != nil)
+		case .attributeObject(let object):
 			guard let needle = stringConvert(needle) else { return .bool(false) }
 			return .bool(object[needle] != nil)
 		default:
@@ -152,7 +155,7 @@ final class ExprEvaluator {
 			return value != "false" && value != "0" && value != ""
 		case .null:
 			return false
-		case .array, .object:
+		case .array, .object, .attributeArray, .attributeObject:
 			return true
 		}
 	}
@@ -177,12 +180,8 @@ final class ExprEvaluator {
 			return value
 		case .bool(let value):
 			return value ? "true" : "false"
-		case .int(let value):
-			return formatter.string(from: NSNumber(value: value))
-		case .double(let value):
-			return formatter.string(from: NSNumber(value: value))
-		case .decimal(let value):
-			return formatter.string(from: NSDecimalNumber(decimal: value))
+		case .int, .double, .decimal:
+			return formatter.string(from: Self.scalarNumber(x)!)
 		default:
 			return nil
 		}
@@ -202,7 +201,7 @@ final class ExprEvaluator {
 				return .null
 			}
 		}
-		return ExprValue(target)
+		return ExprValue(attribute: target)
 	}
 
 	/// -1, 0 or 1, or nil when the operands cannot be compared.
@@ -242,6 +241,12 @@ final class ExprEvaluator {
 			return l.count == r.count && zip(l, r).allSatisfy { deepEquals($0, $1) }
 		case (.object(let l), .object(let r)):
 			return l.count == r.count && l.allSatisfy { key, value in r[key].map { deepEquals(value, $0) } ?? false }
+		case (.array, .attributeArray), (.attributeArray, .array), (.attributeArray, .attributeArray):
+			let count = lhs.arrayCount!
+			return count == rhs.arrayCount && (0..<count).allSatisfy { deepEquals(lhs[$0]!, rhs[$0]!) }
+		case (.object, .attributeObject), (.attributeObject, .object), (.attributeObject, .attributeObject):
+			return lhs.objectCount == rhs.objectCount
+				&& lhs.allObjectValuesSatisfy { key, value in rhs[key].map { deepEquals(value, $0) } ?? false }
 		case (.string(let l), .string(let r)):
 			return l.utf16.elementsEqual(r.utf16)
 		case (.null, .null):
