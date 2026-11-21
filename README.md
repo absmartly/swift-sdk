@@ -1,704 +1,324 @@
-# A/B Smartly Swift SDK <a href="https://github.com/apple/swift-package-manager" title="Swift Package Manager compatible"><img src="https://img.shields.io/badge/Swift%20Package%20Manager-compatible-brightgreen.svg" alt="Swift Package Manager compatible" /></a>
+# ABsmartly Swift SDK <a href="https://github.com/apple/swift-package-manager" title="Swift Package Manager compatible"><img src="https://img.shields.io/badge/Swift%20Package%20Manager-compatible-brightgreen.svg" alt="Swift Package Manager compatible" /></a>
 
-A/B Smartly - Swift SDK for iOS, macOS and Linux applications.
+The ABsmartly SDK for iOS, macOS, tvOS, watchOS, visionOS and Linux: `async`/`await`, Swift 6 strict
+concurrency (every public type is `Sendable`) and no third-party dependencies linked on Apple
+platforms (swift-crypto is linked on Linux only).
+
+> **Using 1.x?** This is 2.x. The 1.x line (module `ABSmartly`, PromiseKit API) is maintained on the
+> [`release/1.x`](https://github.com/absmartly/swift-sdk/tree/release/1.x) branch, with bug fixes
+> for 12 months after 2.0.0 (see [SUPPORT.md](SUPPORT.md)). To move to 2.x, follow
+> [MIGRATING.md](MIGRATING.md).
 
 ## Compatibility
 
-The A/B Smartly Swift SDK is supported on:
-- iOS 10.0 or later
-- macOS 10.10 or later
-- Linux (Swift Package Manager, Swift 5.10 or later)
+| Platform | Minimum |
+|---|---|
+| iOS / iPadOS | 15.0 |
+| macOS | 12.0 |
+| Mac Catalyst | 15.0 |
+| tvOS | 15.0 |
+| watchOS | 8.0 |
+| visionOS | 1.0 |
+| Linux | Swift 6.0 |
 
-| Platform    | Support    | Notes                                          |
-|-------------|------------|------------------------------------------------|
-| iOS         | iOS 10+    | Full support including UIDevice integration    |
-| macOS       | 10.10+     | Full support                                   |
-| Linux       | Swift 5.10+ | Swift Package Manager; tested in CI with Swift 6.1. `JSON` is a vendored copy of SwiftyJSON's `JSON` (same API); on Apple platforms it is `SwiftyJSON.JSON` |
-| Swift       | 5.0+       | Swift Package Manager and CocoaPods supported  |
+Building needs Swift 6.0 or later (Xcode 16 or later).
 
 ## Installation
 
 ### Swift Package Manager
 
-To install the A/B Smartly SDK using Swift Package Manager, following these steps:
+```swift
+dependencies: [
+    .package(url: "https://github.com/absmartly/swift-sdk.git", from: "2.0.0")
+],
+targets: [
+    .target(name: "App", dependencies: [
+        .product(name: "ABsmartly", package: "swift-sdk"),
+        // Optional: SwiftUI property wrappers
+        .product(name: "ABsmartlyUI", package: "swift-sdk"),
+    ])
+]
+```
 
-- In Xcode go to: ```File -> Swift Packages -> Add Package Dependency...```
+In Xcode: **File → Add Package Dependencies…**, enter `https://github.com/absmartly/swift-sdk.git`
+and choose the `ABsmartly` (and optionally `ABsmartlyUI`) product.
 
-- Enter the A/B Smartly Swift SDK GitHub repository: ```https://github.com/absmartly/swift-sdk```
-
-- Select the SDK version (latest recommended)
-
-- Select the ABSmartly library
-
-### Cocoapods
-
-To install the A/B Smartly SDK with CocoaPods, add the following lines to your `Podfile`:
+### CocoaPods
 
 ```ruby
-pod 'ABSmartlySwiftSDK', '~> 1.0.2'
+pod 'ABsmartly', '~> 2.0'        # core
+pod 'ABsmartly/UI', '~> 2.0'     # with the SwiftUI property wrappers
 ```
 
-Run the following command to update your Xcode project:
-```
-pod install
-```
+The CocoaPods trunk stops accepting new versions on 2026-12-02. Releases after that are published
+for Swift Package Manager only.
 
-## Getting Started
-
-Please follow the [installation](#installation) instructions before trying the following code.
+## Getting started
 
 ### Initialization
 
-This example assumes an API Key, an Application, and an Environment have been created in the A/B Smartly web console.
-
-Import the SDK into your application:
-
 ```swift
-import ABSmartly
+import ABsmartly
+
+let client = try ABsmartlyClient(
+    endpoint: URL(string: "https://your-company.absmartly.io/v1")!,
+    apiKey: apiKey,
+    application: "website",
+    environment: .production
+)
 ```
 
-#### Recommended: Named Parameters
+Create one client and keep it for the lifetime of the app. It is `Sendable`, so you can share it
+between tasks and actors.
 
-Initialize the SDK using named parameters:
+#### Advanced configuration
 
 ```swift
-let sdk: ABsmartlySDK
+var configuration = ABsmartlyClient.Configuration(
+    endpoint: URL(string: "https://your-company.absmartly.io/v1")!,
+    apiKey: apiKey,
+    application: "website",
+    environment: "staging")
+configuration.applicationVersion = "1042"
+configuration.timeout = 3
+configuration.retries = 3
+configuration.transport = transport
+configuration.eventLogger = .custom { context, event in
+    print("ABsmartly event: \(event)")
+}
+let client = try ABsmartlyClient(configuration: configuration)
+```
+
+`transport` is any type conforming to `Transport` (one `async` method that sends an `HTTPRequest`).
+Use it to route requests through your own networking stack; the SDK still builds the requests,
+retries and decodes the responses.
+
+## Creating a context
+
+There are three ways to create a context:
+
+```swift
+// 1. Await until ready (common case); throws if the context data can't be fetched
+let context = try await client.context(units: [.deviceID: deviceID])
+
+// 2. Create now, wait later (e.g. start at launch, await before the first screen needs it)
+let context = client.makeContext(units: [.deviceID: deviceID])
+try await context.ready()
+
+// 3. Pre-fetched data from your server: synchronous, ready immediately
+let context = client.context(units: [.deviceID: deviceID], data: contextData)
+```
+
+`contextData` is a `ContextData` (it is `Codable`): fetch it on your server, or with
+`try await client.fetchContextData()`.
+
+All three take the same optional arguments:
+
+```swift
+let context = try await client.context(
+    units: [.deviceID: deviceID, .userID: "user-42"],
+    attributes: ["plan": "pro", "age": 42],
+    overrides: ["exp_banner": 1],
+    options: Context.Options(publishDelay: 0.1, refreshInterval: 300)
+)
+```
+
+Unit types are `UnitType` values: `.deviceID`, `.userID`, `.sessionID`, or any string literal
+(`"email"`).
+
+### Synchronous reads, asynchronous network
+
+- **Reads stay synchronous**: `treatment(for:)`, `variable(_:default:)`, `track(_:properties:)` and
+  the other reads never `await`, so you can call them from a SwiftUI `body`, a table view cell or any
+  thread.
+- **Network calls are `async`**: `ready()`, `refresh()`, `publish()` and `close()`.
+- **`Context` is `Sendable`**: store it in a `@MainActor` view model or pass it into a `Task` without
+  warnings in Swift 6.
+
+```swift
+@MainActor
+final class CheckoutModel: ObservableObject {
+    @Published var showExpressCheckout = false
+    private let context: Context
+
+    init(context: Context) {
+        self.context = context
+        showExpressCheckout = context.treatment(for: "exp_checkout") == 2
+    }
+
+    func purchase(total: Double) {
+        context.track("purchase", properties: ["total": .double(total)])
+        Task { try? await context.publish() }
+    }
+}
+```
+
+### State
+
+```swift
+switch context.state {
+case .loading: print("loading")
+case .ready: print("ready")
+case .failed(let error): print("failed: \(error)")
+case .closing, .closed: print("closed")
+}
+```
+
+A context whose data could not be fetched is `.failed`: its reads return the control variant and
+the defaults, and it publishes nothing.
+
+## Basic usage
+
+### Treatments
+
+```swift
+let variant = context.treatment(for: "exp_checkout")
+if variant == 1 {
+    // show the new checkout
+}
+```
+
+The first read of an experiment queues an exposure, which is published automatically. To read
+without exposing ("peek"):
+
+```swift
+let peeked = context.treatment(for: "exp_checkout", exposing: false)
+```
+
+Helpers:
+
+```swift
+if context.isInTreatment("exp_checkout") {
+    // variant != 0
+}
+let style = context.treatment(for: "exp_checkout", as: CheckoutVariant.self)   // enum CheckoutVariant: Int
+```
+
+### Variables
+
+```swift
+let color: String = context.variable("button.color", default: "blue")
+let limit = context.variable("cart.limit", default: 10)
+let config: CheckoutConfig = context.variable("checkout", default: .standard)   // any Decodable
+let raw: JSONValue? = context.variableValue("checkout")
+```
+
+Reading a variable exposes the experiment that provides it. Pass `exposing: false` to peek.
+
+### Overrides
+
+Overrides force a variant, for example in QA builds. Set them at creation, one at a time, or several
+at once:
+
+```swift
+let context = client.context(
+    units: [.deviceID: deviceID], overrides: ["exp_checkout": 1, "exp_banner": 2], data: contextData)
+context.setOverride(2, for: "exp_checkout")
+context.setOverrides(["exp_banner": 1, "exp_search": 2])
+context.setOverride(nil, for: "exp_banner")
+context.setCustomAssignment(1, for: "exp_search")
+let current = context.overrides   // ["exp_checkout": 2, "exp_search": 2]
+```
+
+`setOverride(_:for:)` and `setOverrides(_:)` update atomically, so they are safe from any thread.
+Assigning the `overrides` property (`context.overrides["x"] = 1`) also works, but replaces the whole
+dictionary: two threads doing it at the same time can overwrite each other.
+
+### Attributes and units
+
+```swift
+context.setAttribute("plan", to: "pro")
+context.setAttributes(["age": 42, "country": "PT"])
+try context.setUnit(.userID, to: "user-42")
+```
+
+Audiences and assignment rules evaluate the attributes, plus the configured `application` and
+`environment` names (an attribute you set with the same name wins). `setUnit` throws
+`ABsmartlyError.blankUnitUID`, `.unitAlreadySet` or `.closed`, and leaves the unit unchanged.
+
+### Goals
+
+```swift
+context.track("purchase", properties: ["total": 19.99, "items": 2])
+```
+
+### Publishing, refreshing and closing
+
+```swift
+try await context.publish()
+try await context.refresh()
+try await context.close()
+```
+
+Exposures and goals are published `publishDelay` seconds after they are queued (0.1 s by default; a
+negative value disables it). `close()` publishes whatever is pending; call it when the user's session
+ends. A failed publish keeps the events queued for the next one.
+
+## Events
+
+```swift
+for await event in context.events {
+    switch event {
+    case .ready: seen.append("ready")
+    case .exposure(let exposure): seen.append("exposure \(exposure.name)")
+    case .goal(let goal): seen.append("goal \(goal.name)")
+    case .error(let error): seen.append("error \(error)")
+    case .refresh, .publish: break
+    case .close: seen.append("close")
+    }
+}
+```
+
+Each access to `context.events` returns a new stream, which finishes after the context closes. To
+see the events of every context, set `configuration.eventLogger` (`.osLog` writes them to the unified
+log).
+
+## Errors
+
+The `async` APIs throw `ABsmartlyError` (typed throws), so `catch` sees the cases directly:
+
+```swift
 do {
-    sdk = try ABsmartlySDK(
-        endpoint: "https://your-company.absmartly.io/v1",
-        apiKey: "YOUR-API-KEY",
-        application: "website",
-        environment: "production"
-    )
+    let context = try await client.context(units: [.deviceID: deviceID])
+    _ = context.treatment(for: "exp_checkout")
+} catch .httpStatus(let code, _) {
+    print("ABsmartly is unavailable (\(code)); using defaults")
 } catch {
-    print("Failed to initialize ABSmartly SDK: \(error.localizedDescription)")
-    return
+    print("ABsmartly failed: \(error.localizedDescription)")
 }
 ```
 
-#### With Optional Parameters
+Reads never throw. A read before the context is ready, or after it is closed, returns the default
+and emits an `.error` event.
+
+## SwiftUI
+
+The `ABsmartlyUI` product adds property wrappers that read the context from the environment:
 
 ```swift
-let sdk = try ABsmartlySDK(
-    endpoint: "https://your-company.absmartly.io/v1",
-    apiKey: "YOUR-API-KEY",
-    application: "website",
-    environment: "production",
-    applicationVersion: "10000",   // An integer; sent as "0" otherwise
-    timeout: 5.0,           // Default: 3.0 seconds
-    retries: 5              // Default: 3
-)
-```
+import ABsmartlyUI
 
-#### Alternative: Using Configuration Objects
+RootView().absmartlyContext(context)
 
-For use cases with custom providers or handlers:
-
-```swift
-let clientConfig = ClientConfig(
-    apiKey: "YOUR-API-KEY",
-    application: "website",
-    endpoint: "https://your-company.absmartly.io/v1",
-    environment: "production"
-)
-
-let client = try DefaultClient(config: clientConfig)
-let sdkConfig = ABsmartlyConfig(client: client)
-let sdk = try ABsmartlySDK(config: sdkConfig)
-```
-
-**SDK Options**
-
-| Config                  | Type                              | Required? |   Default   | Description                                                                                                                                                                   |
-| :---------------------- | :-------------------------------- | :-------: | :---------: | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| endpoint                | `String`                          | &#9989;   | `nil`       | The URL to your API endpoint. Most commonly `"https://your-company.absmartly.io/v1"`                                                                                         |
-| apiKey                  | `String`                          | &#9989;   | `nil`       | Your API key which can be found on the Web Console.                                                                                                                           |
-| application             | `String`                          | &#9989;   | `nil`       | The name of the application where the SDK is installed. Applications are created on the Web Console and should match the applications where your experiments will be running. |
-| environment             | `String`                          | &#9989;   | `nil`       | The environment of the platform where the SDK is installed. Environments are created on the Web Console and should match the available environments in your infrastructure.   |
-| applicationVersion      | `String`                          | &#10060;  | `"0"`       | The version of your application, as an integer (e.g. `"10203"`). The collector only accepts digits, so any other value is sent as `"0"`.                                                                                                                                            |
-| timeout                 | `TimeInterval`                    | &#10060;  | `3.0`       | Network request timeout in seconds.                                                                                                                                           |
-| retries                 | `UInt`                            | &#10060;  | `3`         | Number of retry attempts for failed network requests.                                                                                                                         |
-| contextEventLogger      | `ContextEventLogger`              | &#10060;  | `nil`       | Callback to handle SDK events (ready, exposure, goal, etc.)                                                                                                                   |
-| contextDataProvider     | `ContextDataProvider`             | &#10060;  | auto        | Custom provider for context data (advanced usage)                                                                                                                             |
-| contextPublisher        | `ContextPublisher`                | &#10060;  | auto        | Custom publisher for context events (advanced usage)                                                                                                                          |
-| contextEventHandler     | `ContextEventHandler`             | &#10060;  | auto        | Custom handler for publishing events (advanced usage)                                                                                                                         |
-| variableParser          | `VariableParser`                  | &#10060;  | auto        | Custom parser for variable values (advanced usage)                                                                                                                            |
-| scheduler               | `Scheduler`                       | &#10060;  | auto        | Custom scheduler for async operations (advanced usage)                                                                                                                        |
-
-## Creating a New Context
-
-### Asynchronously (Recommended)
-
-```swift
-let contextConfig = ContextConfig()
-contextConfig.setUnit(unitType: "session_id", uid: "5ebf06d8cb5d8137290c4abb64155584fbdb64d8")
-
-let context = sdk.createContext(config: contextConfig)
-context.waitUntilReady().done { context in
-    print("ABSmartly Context ready!")
-}.catch { error in
-    print("Context failed to initialize: \(error.localizedDescription)")
-}
-```
-
-### Using async/await (iOS 13+)
-
-```swift
-let contextConfig = ContextConfig()
-contextConfig.setUnit(unitType: "session_id", uid: "5ebf06d8cb5d8137290c4abb64155584fbdb64d8")
-
-let context = sdk.createContext(config: contextConfig)
-do {
-    try await context.waitUntilReady()
-    print("ABSmartly Context ready!")
-} catch {
-    print("Context failed to initialize: \(error.localizedDescription)")
-}
-```
-
-### With Pre-fetched Data
-
-When doing full-stack experimentation with A/B Smartly, we recommend creating a context only once on the server-side. Creating a context involves a round-trip to the A/B Smartly event collector. We can avoid repeating the round-trip on the client-side by sending the server-side data embedded with other application data. Then we can initialize the A/B Smartly context directly with it.
-
-```swift
-let contextConfig = ContextConfig()
-contextConfig.setUnit(unitType: "session_id", uid: "5ebf06d8cb5d8137290c4abb64155584fbdb64d8")
-
-let context = sdk.createContext(config: contextConfig)
-try await context.waitUntilReady()
-
-let anotherContextConfig = ContextConfig()
-anotherContextConfig.setUnit(unitType: "session_id", uid: "another-user-id")
-
-let anotherContext = sdk.createContextWithData(config: anotherContextConfig, contextData: context.getContextData())
-```
-
-### Refreshing the Context with Fresh Experiment Data
-
-For long-running contexts, the context is usually created once when the application is first started. However, any experiments being tracked in your production code, but started after the context was created, will not be triggered.
-
-To mitigate this, we can use the `refreshInterval` property on the context config:
-
-```swift
-let contextConfig = ContextConfig()
-contextConfig.setUnit(unitType: "session_id", uid: "5ebf06d8cb5d8137290c4abb64155584fbdb64d8")
-contextConfig.refreshInterval = 4 * 3600 // every 4 hours (in seconds)
-```
-
-Alternatively, the `refresh()` method can be called manually. The `refresh()` method pulls updated experiment data from the A/B Smartly collector and will trigger recently started experiments when `getTreatment()` is called again.
-
-```swift
-context.refresh().done {
-    print("Context refreshed with latest experiment data")
-}.catch { error in
-    print("Refresh failed: \(error.localizedDescription)")
-}
-```
-
-### Setting Extra Units
-
-You can add additional units to a context by calling the `setUnit()` or `setUnits()` methods. This is useful when a user logs in to your application and you want to associate a new unit type with the context.
-
-Please note that **you cannot override an already set unit type** as that would be a change of identity. In this case, you must create a new context instead.
-
-The `setUnit()` and `setUnits()` methods can be called before the context is ready.
-
-```swift
-context.setUnit(unitType: "db_user_id", uid: "1000013")
-context.setUnits([
-    "db_user_id": "1000013"
-])
-```
-
-## Basic Usage
-
-### Selecting a Treatment
-
-```swift
-let treatment = context.getTreatment("exp_test_experiment")
-if treatment == 0 {
-    // user is in control group (variant 0)
-} else {
-    // user is in treatment group
-}
-```
-
-### Treatment Variables
-
-```swift
-let defaultButtonColor = "red"
-let buttonColor = context.getVariableValue("button.color", defaultValue: defaultButtonColor)
-```
-
-### Peek at Treatment Variants
-
-Although generally not recommended, it is sometimes necessary to peek at a treatment or variable without triggering an exposure. The A/B Smartly SDK provides a `peekTreatment()` method for that.
-
-```swift
-let treatment = context.peekTreatment("exp_test_experiment")
-if treatment == 0 {
-    // user is in control group (variant 0)
-} else {
-    // user is in treatment group
-}
-```
-
-#### Peeking at Variables
-
-```swift
-let color = context.peekVariableValue("colorGComponent", defaultValue: 255)
-```
-
-### Overriding Treatment Variants
-
-During development, for example, it is useful to force a treatment for an experiment. This can be achieved with the `setOverride()` and/or `setOverrides()` methods.
-
-The `setOverride()` and `setOverrides()` methods can be called before the context is ready.
-
-```swift
-context.setOverride(experimentName: "exp_test_experiment", variant: 1)  // force variant 1 of treatment
-context.setOverrides(["exp_test_experiment": 1, "exp_another_experiment": 0])
-```
-
-## Advanced
-
-### Context Attributes
-
-The `setAttribute()` and `setAttributes()` methods can be called before the context is ready.
-
-```swift
-context.setAttribute(name: "device", value: UIDevice.current.model)
-context.setAttributes([
-    "customer_age": "new_customer",
-    "screen": "product"
-])
-```
-
-The configured `application` and `environment` names are always available to audience filters and
-assignment-rule conditions as the `application` and `environment` attributes, so experiments can be
-targeted by them without setting anything. A user-set attribute of the same name wins, even when set
-after the context is created. These attributes are evaluation-only: they are not sent on the publish
-payload (the collector adds them server-side) and are not returned by `getAttributes()`.
-
-Audience filters and rule conditions can compare versions with `semver_eq`, `semver_gt`, `semver_gte`,
-`semver_lt` and `semver_lte` (a leading `v` and build metadata are ignored, and a release ranks above
-its pre-releases).
-
-### Assignment Rules
-
-Experiments can carry ordered assignment rules, set up in the A/B Smartly dashboard. The first rule
-whose environments and conditions match decides the variant: an `assign` rule sets a fixed variant, and
-a `split` rule spreads matching units over the variants by its percentages (hashed with the
-experiment's own seed). A matching rule wins over the audience, traffic allocation, full-on and custom
-assignments; only `setOverride` beats it. Its exposures carry `ruleOverride: true` and are kept out of
-the experiment's analysis.
-
-### Tracking Goals
-
-Goals are created in the A/B Smartly web console.
-
-```swift
-context.track("payment", properties: [
-    "item_count": 1,
-    "total_amount": 1999.99
-])
-```
-
-### Publishing Pending Data
-
-Sometimes it is necessary to ensure all events have been published to the A/B Smartly collector before proceeding. You can explicitly call the `publish()` method.
-
-```swift
-context.publish().done {
-    print("All pending events published")
-}.catch { error in
-    print("Publish failed: \(error.localizedDescription)")
-}
-```
-
-### Finalizing
-
-The `close()` method will ensure all events have been published to the A/B Smartly collector, like `publish()`, and will also "seal" the context, after which any method that could generate an event is ignored and logs an `error` event.
-
-```swift
-context.close().done {
-    print("Context closed")
-}.catch { error in
-    print("Close failed: \(error.localizedDescription)")
-}
-```
-
-### Custom Event Logger
-
-The A/B Smartly SDK can be instantiated with an event logger used for all contexts. In addition, an event logger can be specified when creating a particular context in the `ContextConfig`.
-
-```swift
-public class CustomEventLogger: ContextEventLogger {
-    public func handleEvent(context: Context, event: ContextEventLoggerEvent) {
-        switch event {
-        case let .exposure(exposure):
-            print("Exposed to experiment: \(exposure.name)")
-        case let .goal(goal):
-            print("Goal tracked: \(goal.name)")
-        case let .error(error):
-            print("Error: \(error.localizedDescription)")
-        case let .publish(event):
-            print("Events published")
-        case let .ready(data):
-            print("Context ready")
-        case let .refresh(data):
-            print("Context refreshed")
-        case .close:
-            print("Context closed")
-        }
-    }
-}
-```
-
-**Usage:**
-
-```swift
-// For all contexts, during SDK initialization
-let sdk = try ABsmartlySDK(
-    endpoint: "https://your-company.absmartly.io/v1",
-    apiKey: "YOUR-API-KEY",
-    application: "website",
-    environment: "production",
-    contextEventLogger: CustomEventLogger()
-)
-
-// OR, alternatively, during a particular context initialization
-let contextConfig = ContextConfig()
-contextConfig.eventLogger = CustomEventLogger()
-```
-
-**Event Types**
-
-The data parameter depends on the type of event. Currently, the SDK logs the following events:
-
-| Event      | When                                               | Data                                      |
-| ---------- | -------------------------------------------------- | ----------------------------------------- |
-| `error`    | Context receives an error                          | `Error` object                            |
-| `ready`    | Context turns ready                                | `ContextData` used to initialize          |
-| `refresh`  | `refresh()` method succeeds                        | `ContextData` used to refresh             |
-| `publish`  | `publish()` method succeeds                        | `PublishEvent` sent to collector          |
-| `exposure` | `getTreatment()` succeeds on first exposure        | `Exposure` enqueued for publishing        |
-| `goal`     | `track()` method succeeds                          | `GoalAchievement` enqueued for publishing |
-| `close`    | `close()` method succeeds the first time           | `nil`                                     |
-
-## Platform-Specific Examples
-
-### Using with SwiftUI (iOS 13+)
-
-```swift
-// ABSmartlyService.swift
-import Foundation
-import ABSmartly
-
-class ABSmartlyService: ObservableObject {
-    static let shared = ABSmartlyService()
-
-    private let sdk: ABsmartlySDK
-
-    private init() {
-        sdk = try! ABsmartlySDK(
-            endpoint: "https://your-company.absmartly.io/v1",
-            apiKey: ProcessInfo.processInfo.environment["ABSMARTLY_API_KEY"] ?? "",
-            application: "ios-app",
-            environment: "production"
-        )
-    }
-
-    func createContext(deviceId: String) async throws -> Context {
-        let contextConfig = ContextConfig()
-        contextConfig.setUnit(unitType: "device_id", uid: deviceId)
-
-        let context = sdk.createContext(config: contextConfig)
-        try await context.waitUntilReady()
-
-        return context
-    }
-}
-
-// ContentView.swift
-import SwiftUI
-import ABSmartly
-
-struct ContentView: View {
-    @StateObject private var absmartly = ABSmartlyService.shared
-    @State private var context: Context?
-    @State private var buttonColor: String = "blue"
+struct CheckoutButton: View {
+    @Treatment("exp_checkout") var variant
+    @Variable("button.color", default: "blue") var color: String
 
     var body: some View {
-        VStack {
-            Button("Click Me") {
-                context?.track("button_clicked")
-            }
-            .foregroundColor(Color(buttonColor))
-            .padding()
-        }
-        .task {
-            do {
-                let deviceId = UIDevice.current.identifierForVendor?.uuidString ?? UUID().uuidString
-                context = try await absmartly.createContext(deviceId: deviceId)
-
-                let treatment = context?.getTreatment("button_test")
-                buttonColor = context?.getVariableValue("button.color", defaultValue: "blue") ?? "blue"
-            } catch {
-                print("Failed to initialize ABSmartly: \(error)")
-            }
-        }
-        .onDisappear {
-            context?.close()
-        }
+        Button(variant == 1 ? "Buy now" : "Buy") {}
     }
 }
 ```
 
-### Using with UIKit (iOS 10+)
+Views re-render when the context becomes ready or refreshes. Without a context, or before it is
+ready, the wrappers return `0` and the default.
 
-```swift
-// ExperimentViewController.swift
-import UIKit
-import ABSmartly
-import PromiseKit
+Every snippet in this README is compiled by `Tests/ABsmartlyUITests/DocSnippetTests.swift`.
 
-class ExperimentViewController: UIViewController {
-    private var sdk: ABsmartlySDK!
-    private var context: Context?
+## About ABsmartly
 
-    override func viewDidLoad() {
-        super.viewDidLoad()
-
-        do {
-            sdk = try ABsmartlySDK(
-                endpoint: "https://your-company.absmartly.io/v1",
-                apiKey: "YOUR-API-KEY",
-                application: "ios-app",
-                environment: "production"
-            )
-        } catch {
-            print("Failed to initialize SDK: \(error)")
-            return
-        }
-
-        let contextConfig = ContextConfig()
-        contextConfig.setUnit(unitType: "device_id", uid: UIDevice.current.identifierForVendor?.uuidString ?? "")
-
-        context = sdk.createContext(config: contextConfig)
-        context?.waitUntilReady().done { [weak self] ctx in
-            self?.setupExperiment(context: ctx)
-        }.catch { error in
-            print("Context failed: \(error)")
-        }
-    }
-
-    private func setupExperiment(context: Context) {
-        let treatment = context.getTreatment("button_experiment")
-        let buttonTitle = context.getVariableValue("button.title", defaultValue: "Click Me")
-
-        if treatment == 1 {
-            let backgroundColor = context.getVariableValue("button.background", defaultValue: "#007AFF")
-        }
-    }
-
-    deinit {
-        context?.close()
-    }
-}
-```
-
-### Using with macOS AppKit
-
-```swift
-// AppDelegate.swift
-import Cocoa
-import ABSmartly
-import PromiseKit
-
-@NSApplicationMain
-class AppDelegate: NSObject, NSApplicationDelegate {
-    private var sdk: ABsmartlySDK!
-    private var context: Context?
-
-    func applicationDidFinishLaunching(_ notification: Notification) {
-        do {
-            sdk = try ABsmartlySDK(
-                endpoint: "https://your-company.absmartly.io/v1",
-                apiKey: "YOUR-API-KEY",
-                application: "macos-app",
-                environment: "production"
-            )
-        } catch {
-            print("Failed to initialize SDK: \(error)")
-            return
-        }
-
-        let contextConfig = ContextConfig()
-        let machineId = getMachineIdentifier()
-        contextConfig.setUnit(unitType: "machine_id", uid: machineId)
-
-        context = sdk.createContext(config: contextConfig)
-        context?.waitUntilReady().done { [weak self] ctx in
-            self?.runExperiment(context: ctx)
-        }.catch { error in
-            print("Context failed: \(error)")
-        }
-    }
-
-    private func getMachineIdentifier() -> String {
-        let platformExpert = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("IOPlatformExpertDevice"))
-        defer { IOObjectRelease(platformExpert) }
-
-        guard let serialNumber = IORegistryEntryCreateCFProperty(
-            platformExpert,
-            kIOPlatformSerialNumberKey as CFString,
-            kCFAllocatorDefault,
-            0
-        ).takeRetainedValue() as? String else {
-            return UUID().uuidString
-        }
-
-        return serialNumber
-    }
-
-    private func runExperiment(context: Context) {
-        let featureEnabled = context.getTreatment("new_feature") == 1
-
-        if featureEnabled {
-            let featureConfig = context.getVariableValue("feature.config", defaultValue: [:])
-        }
-
-        context.track("app_launched")
-    }
-
-    func applicationWillTerminate(_ notification: Notification) {
-        context?.close()
-    }
-}
-```
-
-## Advanced Request Configuration
-
-### PromiseKit Cancellation (iOS 10+)
-
-The Swift SDK uses PromiseKit for async operations. You can cancel promises:
-
-```swift
-import ABSmartly
-import PromiseKit
-
-class ExperimentLoader {
-    private var sdk: ABsmartlySDK!
-    private var contextPromise: Promise<Context>?
-
-    func loadExperiment(deviceId: String) {
-        let contextConfig = ContextConfig()
-        contextConfig.setUnit(unitType: "device_id", uid: deviceId)
-
-        let context = sdk.createContext(config: contextConfig)
-        contextPromise = context.waitUntilReady()
-
-        contextPromise?.done { ctx in
-            print("Context ready!")
-        }.catch { error in
-            if error is CancellableError {
-                print("Context loading cancelled")
-            } else {
-                print("Context failed: \(error.localizedDescription)")
-            }
-        }
-    }
-
-    func cancelLoad() {
-        contextPromise?.cancel()
-        print("Cancelling context load...")
-    }
-}
-```
-
-### iOS 13+ async/await with Task Cancellation
-
-```swift
-import ABSmartly
-
-class ExperimentManager {
-    private var sdk: ABsmartlySDK!
-    private var contextTask: Task<Context, Error>?
-
-    func loadExperiment(deviceId: String) {
-        contextTask = Task {
-            let contextConfig = ContextConfig()
-            contextConfig.setUnit(unitType: "device_id", uid: deviceId)
-
-            let context = sdk.createContext(config: contextConfig)
-            try await context.waitUntilReady()
-
-            return context
-        }
-
-        Task {
-            do {
-                let context = try await contextTask!.value
-                print("Context ready!")
-                await handleExperiment(context: context)
-            } catch is CancellationError {
-                print("Context loading cancelled")
-            } catch {
-                print("Context failed: \(error)")
-            }
-        }
-    }
-
-    func cancelLoad() {
-        contextTask?.cancel()
-        print("Cancelling context load...")
-    }
-
-    private func handleExperiment(context: Context) async {
-        let treatment = context.getTreatment("experiment_name")
-    }
-}
-```
-
-### Timeout Override
-
-Override the default timeout:
-
-```swift
-let sdk = try ABsmartlySDK(
-    endpoint: "https://your-company.absmartly.io/v1",
-    apiKey: "YOUR-API-KEY",
-    application: "ios-app",
-    environment: "production",
-    timeout: 10.0  // 10 seconds instead of default 3 seconds
-)
-```
-
-For full control over the HTTP client configuration:
-
-```swift
-let httpClientConfig = DefaultHTTPClientConfig()
-httpClientConfig.connectionResourceTimeout = 10.0
-httpClientConfig.connectionRequestTimeout = 10.0
-
-let httpClient = DefaultHTTPClient(config: httpClientConfig)
-let clientConfig = ClientConfig(
-    apiKey: "YOUR-API-KEY",
-    application: "ios-app",
-    endpoint: "https://your-company.absmartly.io/v1",
-    environment: "production"
-)
-
-let client = try DefaultClient(config: clientConfig, httpClient: httpClient)
-let sdkConfig = ABsmartlyConfig(client: client)
-let sdk = try ABsmartlySDK(config: sdkConfig)
-```
-
-## About A/B Smartly
-
-**A/B Smartly** is the leading provider of state-of-the-art, on-premises, full-stack experimentation platforms for engineering and product teams that want to confidently deploy features as fast as they can develop them.
-A/B Smartly's real-time analytics helps engineering and product teams ensure that new features will improve the customer experience without breaking or degrading performance and/or business metrics.
+**ABsmartly** is the leading provider of state-of-the-art, on-premises, full-stack experimentation platforms for engineering and product teams that want to confidently deploy features as fast as they can develop them.
+ABsmartly's real-time analytics helps engineering and product teams ensure that new features will improve the customer experience without breaking or degrading performance and/or business metrics.
 
 ### Have a look at our growing list of clients and SDKs:
 - [JavaScript SDK](https://www.github.com/absmartly/javascript-sdk)

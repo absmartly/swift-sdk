@@ -10,7 +10,7 @@
 		D5B6E55F282EA59900D553DF /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5B6E55E282EA59900D553DF /* AppDelegate.swift */; };
 		D5B6E563282EA59900D553DF /* ViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5B6E562282EA59900D553DF /* ViewController.swift */; };
 		D5B6E568282EA59A00D553DF /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D5B6E567282EA59A00D553DF /* Assets.xcassets */; };
-		D5B6E576282EA81700D553DF /* ABSmartly in Frameworks */ = {isa = PBXBuildFile; productRef = D5B6E575282EA81700D553DF /* ABSmartly */; };
+		D5B6E576282EA81700D553DF /* ABsmartly in Frameworks */ = {isa = PBXBuildFile; productRef = D5B6E575282EA81700D553DF /* ABsmartly */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -27,7 +27,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				D5B6E576282EA81700D553DF /* ABSmartly in Frameworks */,
+				D5B6E576282EA81700D553DF /* ABsmartly in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -95,7 +95,7 @@
 			);
 			name = Example;
 			packageProductDependencies = (
-				D5B6E575282EA81700D553DF /* ABSmartly */,
+				D5B6E575282EA81700D553DF /* ABsmartly */,
 			);
 			productName = Example;
 			productReference = D5B6E55B282EA59900D553DF /* Example.app */;
@@ -208,7 +208,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 10.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -262,7 +262,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 10.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = iphoneos;
@@ -284,7 +284,7 @@
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				IPHONEOS_DEPLOYMENT_TARGET = 10.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -293,7 +293,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = "com.absmartly.swift-sdk.Example";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_VERSION = 5.0;
+				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
@@ -310,7 +310,7 @@
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				IPHONEOS_DEPLOYMENT_TARGET = 10.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -319,7 +319,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = "com.absmartly.swift-sdk.Example";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_VERSION = 5.0;
+				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
@@ -348,9 +348,9 @@
 /* End XCConfigurationList section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		D5B6E575282EA81700D553DF /* ABSmartly */ = {
+		D5B6E575282EA81700D553DF /* ABsmartly */ = {
 			isa = XCSwiftPackageProductDependency;
-			productName = ABSmartly;
+			productName = ABsmartly;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
