@@ -425,7 +425,7 @@ final class AsyncAPITest: XCTestCase {
 		struct Failure: Error, Equatable { let id = UUID() }
 		let sentinel = Failure()
 		let context = makeContext(Promise.value(try contextData()))
-		context.track("goal", properties: nil)
+		context.track("goal", properties: ["amount": 7])
 		handler.publishEventClosure = { _ in after(seconds: 0.02).then { Promise<Void>(error: sentinel) } }
 		do {
 			try await context.finalize()
@@ -437,6 +437,16 @@ final class AsyncAPITest: XCTestCase {
 		XCTAssertFalse(context.isClosed())
 		XCTAssertFalse(context.isClosing())
 		XCTAssertEqual(1, context.getPendingCount())
+
+		handler.publishEventClosure = nil
+		handler.publishEventReturnValue = Promise.value(())
+		try await context.finalize()
+		XCTAssertEqual(2, handler.publishEventCallsCount)
+		XCTAssertEqual(
+			[GoalAchievement("goal", achievedAt: clock.millis(), properties: ["amount": 7])],
+			handler.publishEventReceivedEvent?.goals)
+		XCTAssertEqual(0, context.getPendingCount())
+		XCTAssertTrue(context.isClosed())
 	}
 
 	func testClientAndProviderOverloads() async throws {
@@ -500,7 +510,7 @@ final class AsyncAPITest: XCTestCase {
 				method: String, url: String, query: [String: String]?, headers: [String: String]?, body: Data?
 			) -> Promise<Response> {
 				received = (method, url, query, headers, body)
-				return after(seconds: 0.02).then { Promise<Response>(error: URLError(.badURL)) }
+				return after(seconds: 0.02).then { Promise<Response>(error: URLError(.timedOut)) }
 			}
 		}
 		let http = RecordingHTTPClient(config: DefaultHTTPClientConfig())
@@ -509,7 +519,7 @@ final class AsyncAPITest: XCTestCase {
 				method: "PATCH", url: "https://example.test/r", query: ["q": "1"], headers: ["h": "2"], body: Data([7]))
 			XCTFail("expected the request to fail")
 		} catch {
-			XCTAssertEqual(URLError(.badURL), error as? URLError)
+			XCTAssertEqual(URLError(.timedOut), error as? URLError)
 		}
 		XCTAssertEqual("PATCH", http.received?.method)
 		XCTAssertEqual("https://example.test/r", http.received?.url)
