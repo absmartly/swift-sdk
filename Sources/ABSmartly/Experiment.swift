@@ -19,6 +19,11 @@ public struct Experiment: Codable {
 	public let customFieldValues: [CustomFieldValue]?
 	/// The experiment's assignment rules, a JSON string of the form `{"rules": [...]}`.
 	public let assignmentRules: String?
+	/// Ids of the `ContextData.holdouts` entries that cover this experiment.
+	public let holdoutIds: [Int]?
+	/// The holdout's type (`"full"`, `"all_full_on"`) on a `ContextData.holdouts` entry. Informational:
+	/// the SDK derives a holdout's arms from its `split`.
+	public let holdoutType: String?
 
 	// Every field except `name` decodes leniently: a missing or wrong-typed
 	// field falls back to its default instead of failing the whole context.
@@ -53,6 +58,10 @@ public struct Experiment: Codable {
 		{
 			Logger.error("Ignoring assignmentRules for experiment '\(name)': expected a JSON string.")
 		}
+
+		holdoutIds = (try? container.decodeIfPresent([LenientElement<Int>].self, forKey: .holdoutIds))?
+			.flatMap { $0.compactMap { $0.value } }
+		holdoutType = try? container.decodeIfPresent(String.self, forKey: .holdoutType)
 	}
 }
 
@@ -64,6 +73,7 @@ extension Experiment: Equatable {
 			&& lhs.trafficSeedLo == rhs.trafficSeedLo && lhs.trafficSplit == rhs.trafficSplit
 			&& lhs.fullOnVariant == rhs.fullOnVariant && lhs.applications == rhs.applications
 			&& lhs.variants == rhs.variants && lhs.customFieldValues == rhs.customFieldValues
-			&& lhs.assignmentRules == rhs.assignmentRules
+			&& lhs.assignmentRules == rhs.assignmentRules && lhs.holdoutIds == rhs.holdoutIds
+			&& lhs.holdoutType == rhs.holdoutType
 	}
 }

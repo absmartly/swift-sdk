@@ -557,7 +557,6 @@ final class DefaultClientTest: XCTestCase {
 			XCTAssertEqual(
 				expected, httpMock.putUrlQueryHeadersBodyReceivedArguments?.headers?["X-Application-Version"],
 				"PUT for \(configured.debugDescription)")
-			// The public configuration keeps the caller's value.
 			XCTAssertEqual(configured, clientConfig.applicationVersion)
 		}
 	}

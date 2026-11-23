@@ -524,7 +524,6 @@ final class ContextAssignmentRulesTest: XCTestCase {
 		readRepeatedly()
 		XCTAssertEqual(2, matcher.evaluations)
 
-		// A refresh with a differently written rule set that still does not match.
 		provider.getContextDataReturnValue = Promise<ContextData>.value(
 			try contextData(
 				experimentJSON(

@@ -21,6 +21,15 @@ security fixes, from the `release/1.x` branch) for 12 months after 2.0 ships.
   (see the README). With Swift 6
   compilers they run in the caller's isolation (`#isolation`), so they can be awaited from
   `@MainActor` code in Swift 6 apps without Sendable diagnostics. Not available through CocoaPods.
+- Holdouts, matching the JavaScript SDK. `ContextData.holdouts` and `Experiment.holdoutIds` are decoded
+  (with `Experiment.holdoutType`, informational), and a unit held out by any holdout covering an
+  experiment gets the control variant and values with no exposure of its own; in a three-arm holdout,
+  arm 1 holds out only experiments that are not full-on. Each covering holdout publishes an ordinary
+  exposure (its id, name and the unit's arm) the first time a covered experiment is read. Overrides and
+  matching assignment rules still win. A payload without holdouts assigns and publishes exactly as
+  before (v1.4.0 ignored holdouts). `ContextData(experiments:holdouts:)` is a new initialiser;
+  `ContextData(experiments:)` and `ContextData()` are unchanged. A malformed holdout entry is ignored on
+  its own.
 - Assignment rules (`Experiment.assignmentRules`), matching the JavaScript SDK. The first rule whose
   `environments` and `conditions` match sets the variant: `assign` gives a fixed variant, `split`
   hashes the unit with the experiment's seed over the rule's percentages (which must sum to 100 within
@@ -54,6 +63,10 @@ security fixes, from the `release/1.x` branch) for 12 months after 2.0 ships.
   CocoaPods note under Compatibility.
 
 ### Changed (cross-SDK contract)
+- Holdouts configured in A/B Smartly take effect (v1.4.0 ignored them; see *Added*). A unit held out by
+  a holdout covering an experiment moves to the control variant, and that experiment's exposure is
+  replaced by the holdout's own exposure. Experiments not covered by a holdout are unchanged; a unit
+  that is not held out is assigned as before, plus one exposure per covering holdout.
 - Audiences and assignment-rule conditions see the configured `application` and `environment` names
   as attributes, as in the other SDKs. An experiment with a strict audience on `environment` or
   `application` used to give every unit variant 0 (the attribute was never set); it now matches. A
