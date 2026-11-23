@@ -77,10 +77,6 @@ security fixes, from the `release/1.x` branch) for 12 months after 2.0 ships.
   wins over the configured value even when set after the context is created, so it has to
   invalidate an assignment cached before it was set. A `setAttribute` after a treatment was read can change
   that experiment's assignment (and log a new exposure) when the audience result flips.
-- A variable key shared by several experiments resolves like the JavaScript SDK: experiments are walked
-  in ascending id order, each one visited is exposed, and the value comes from the first experiment that
-  is assigned, overridden or selected by an assignment rule and whose variant defines the key. `getVariableValue` also exposes an
-  experiment whose strict audience mismatch yields the control variant, as `getTreatment` does.
 - The `X-Agent` header is `absmartly-swift-sdk/<version>` (was `absmartly-swift-sdk`).
 - The context GET carries the same headers as the publish PUT (`X-API-Key`, `X-Agent`, `X-Application`,
   `X-Application-Version`, `X-Environment`), as the JavaScript SDK does.
@@ -90,6 +86,24 @@ security fixes, from the `release/1.x` branch) for 12 months after 2.0 ships.
 - Every exposure in the publish payload carries `ruleOverride` (`false` when no assignment rule matched).
 
 ### Fixed
+- Variable keys shared by several experiments. Affects anyone running two or more experiments whose
+  variants define the same variable key. Before this release, an experiment the user was only checked
+  against could be exposed, recording users in experiments they never saw, and the wrong experiment
+  could win. A key's candidates are now the experiments whose variants define it, in ascending id
+  order, and the rule matches the Java SDK:
+  - The winner is the first candidate the user is in: assigned, overridden or selected by an
+    assignment rule. When no candidate qualifies, the first held-out candidate supplies its control
+    value. Otherwise `getVariableValue` returns the default.
+  - When the winner's variant does not define the key, the default is returned. A later candidate is
+    never used because of the variant the user got.
+  - Only the winner is exposed. Candidates that were checked but did not win get no exposure; a later
+    `getTreatment` on one still exposes it once.
+  - Each holdout covering a checked candidate is exposed once, as in Java.
+  - `peekVariableValue` exposes nothing.
+
+  Under this rule, a strict audience mismatch gives the control variant without an exposure. In 1.4.0
+  the value came from the first assigned or overridden candidate, even when its variant lacked the key.
+  The pre-release main also exposed every candidate it checked.
 - A `json` custom field holding valid non-object JSON (array, number, string, boolean) is returned as
   `JSON` by `getCustomFieldValue`; 1.4.0 returned `nil` because the `VariableParser` only accepts objects.
   `null` returns `nil`. Objects and invalid JSON still go through the configured `VariableParser`, and

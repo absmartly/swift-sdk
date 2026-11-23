@@ -507,11 +507,12 @@ public final class Context {
 	// claim and its release together: a missing-unit split kept across setUnit only because it
 	// looked exposed is dropped once its unit is known, so the next read re-resolves it with the
 	// unit. Takes contextLock without holding eventLock (refresh takes them in that order).
-	private func releaseUnqueuedExposure(_ assignment: Assignment, arms: [Assignment]) {
+	private func releaseUnqueuedExposure(_ assignment: Assignment?, arms: [Assignment]) {
 		contextLock.lock()
 		defer { contextLock.unlock() }
-		assignment.exposed.store(false, ordering: .releasing)
 		releaseUnqueuedArms(arms)
+		guard let assignment = assignment else { return }
+		assignment.exposed.store(false, ordering: .releasing)
 		if assignment.ruleMissingUnit || assignment.holdoutMissingUnit, let unitType = assignment.unitType, units[unitType] != nil,
 			assignmentCache[assignment.name] === assignment
 		{
@@ -601,60 +602,59 @@ public final class Context {
 	}
 
 	// Looks the assignment up and marks it exposed in one `contextLock` section, so `setUnit` cannot
-	// evict it in between and let a later call expose a second, different variant. With
-	// `requireVariables`, only an assignment whose variant has variables is claimed. Return only
-	// the assignment on the hot path; build and queue an exposure only for a new claim.
-	private func getAssignmentExposing(
-		_ experimentName: String, requireVariables: Bool = false
-	) -> Assignment {
-		let (assignment, exposure) = claimExposure(experimentName, requireVariables: requireVariables)
-		if let exposure = exposure {
-			#if DEBUG
-			Context.runTestHook(.exposureClaimed)
-			#endif
-			queueExposure(exposure, for: assignment)
+	// evict it in between and let a later call expose a second, different variant. Return only the
+	// assignment on the hot path; build and queue an exposure only for a new claim.
+	private func getAssignmentExposing(_ experimentName: String) -> Assignment {
+		let (assignment, claimed) = claimExposure(experimentName)
+		if let claimed = claimed {
+			queueClaimed(claimed)
 		}
 		return assignment
 	}
 
-	// The lookup, the claim and the exposure's construction all happen in this one contextLock
-	// section, so the exposure reads the assignment's fields consistently with any refresh; the
-	// generation lets the queue drop it if a recovery happened in between. Every write to `exposed`
-	// (this claim and releaseUnqueuedExposure) holds contextLock, so a store after the check is an
-	// exclusive claim.
 	@inline(__always)
-	private func claimExposure(
-		_ experimentName: String, requireVariables: Bool
-	) -> (Assignment, ClaimedExposure?) {
+	private func claimExposure(_ experimentName: String) -> (Assignment, ClaimedExposure?) {
 		contextLock.lock()
 		defer { contextLock.unlock() }
 
 		let assignment = lookupAssignment(experimentName)
-		guard !assignment.exposed.load(ordering: .acquiring),
-			!requireVariables || assignment.variables != nil,
-			!closed.load(ordering: .acquiring), !closing.load(ordering: .acquiring)
-		else {
+		if assignment.exposed.load(ordering: .acquiring) || closed.load(ordering: .acquiring)
+			|| closing.load(ordering: .acquiring)
+		{
 			return (assignment, nil)
 		}
-		assignment.exposed.store(true, ordering: .releasing)
+		var claim = ClaimBuilder()
+		claimLocked(assignment, into: &claim)
+		return (assignment, claim.build(generation: dataGeneration))
+	}
 
-		// A held-out experiment publishes no exposure of its own (an override or a matching rule still
-		// does); every holdout covering it publishes its own, once per epoch, from the arms pinned when
-		// the assignment was resolved. Arms are claimed under this same contextLock section.
-		var exposures: [Exposure] = []
-		var arms: [Assignment] = []
+	// The lookup, the claim and the exposure's construction all happen in one contextLock section, so
+	// the exposure reads the assignment's fields consistently with any refresh; the generation lets
+	// the queue drop it if a recovery happened in between. Every write to `exposed` (these claims and
+	// the releases) holds contextLock, so a store after the check is an exclusive claim.
+	//
+	// A held-out experiment publishes no exposure of its own (an override or a matching rule still
+	// does); every holdout covering it publishes its own, once per epoch, from the arms pinned when
+	// the assignment was resolved.
+	private func claimLocked(_ assignment: Assignment, into claim: inout ClaimBuilder) {
+		guard !assignment.exposed.load(ordering: .acquiring) else { return }
+		assignment.exposed.store(true, ordering: .releasing)
+		claim.assignment = assignment
 		if !assignment.suppressed || assignment.overridden || assignment.ruleOverride {
-			exposures.append(makeExposure(assignment, name: assignment.name))
+			claim.exposures.append(makeExposure(assignment, name: assignment.name))
 		}
+		claimHoldoutArmsLocked(assignment, into: &claim)
+	}
+
+	private func claimHoldoutArmsLocked(_ assignment: Assignment, into claim: inout ClaimBuilder) {
 		for holdout in assignment.holdouts ?? [] {
 			if let arm = holdout.arm, !arm.exposed.load(ordering: .acquiring) {
 				arm.exposed.store(true, ordering: .releasing)
-				arms.append(arm)
+				claim.arms.append(arm)
 				// Named by the definition the assignment was resolved with, as in JavaScript.
-				exposures.append(makeExposure(arm, name: holdout.definition.name))
+				claim.exposures.append(makeExposure(arm, name: holdout.definition.name))
 			}
 		}
-		return (assignment, ClaimedExposure(exposures: exposures, arms: arms, generation: dataGeneration))
 	}
 
 	private func makeExposure(_ assignment: Assignment, name: String) -> Exposure {
@@ -667,7 +667,10 @@ public final class Context {
 
 	// All of a claim's exposures are queued before the logger hears of any, so a logger that closes
 	// the context cannot flush between them.
-	private func queueExposure(_ claimed: ClaimedExposure, for assignment: Assignment) {
+	private func queueClaimed(_ claimed: ClaimedExposure) {
+		#if DEBUG
+		Context.runTestHook(.exposureClaimed)
+		#endif
 		guard !claimed.exposures.isEmpty else { return }
 		eventLock.lock()
 		// Made before a recovery replaced the data it came from: drop it, the rebuilt assignment
@@ -680,7 +683,7 @@ public final class Context {
 		guard !closed.load(ordering: .acquiring), !closing.load(ordering: .acquiring) else {
 			eventLock.unlock()
 			// Not queued, so not exposed: a read after a failed close can still expose it.
-			releaseUnqueuedExposure(assignment, arms: claimed.arms)
+			releaseUnqueuedExposure(claimed.assignment, arms: claimed.arms)
 			return
 		}
 		exposures.append(contentsOf: claimed.exposures)
@@ -1387,34 +1390,54 @@ public final class Context {
 		return assignment
 	}
 
-	// Experiments sharing a key are walked in ascending id order, like the JavaScript SDK: each
-	// one visited is exposed (unless peeking), and the first that is assigned, overridden or won by
-	// an assignment rule and whose variant defines the key provides the value. A held-out unit reads
-	// the first held-out experiment's control value, not the default, when nothing else wins.
+	// Experiments sharing a key are candidates in ascending id order, as in the Java SDK. The winner
+	// is the first candidate the unit is in (assigned, overridden or won by an assignment rule); when
+	// there is none, the first held-out candidate supplies its control value. The value is the
+	// winner's for the key, or the default when the winner's variant does not define it: a later
+	// candidate is never used because of the variant the unit got. Only the winner is exposed; like
+	// Java, the holdouts covering every candidate visited are exposed too. Peeking exposes nothing.
 	private func resolveVariableValue(_ key: String, defaultValue: JSON?, peek: Bool) -> JSON? {
-		guard let keyExperimentVariables = getVariableExperiments(key) else {
+		guard let candidates = getVariableExperiments(key) else {
 			return defaultValue
 		}
 
-		var suppressedFallback: [String: JSON]?
-		for experimentVariables in keyExperimentVariables {
-			let assignment = peek
-				? getAssignment(experimentVariables.data.name)
-				: getAssignmentExposing(experimentVariables.data.name, requireVariables: true)
-			if let variables = assignment.variables {
-				if let value = variables[key], assignment.assigned || assignment.overridden || assignment.ruleOverride {
-					return value
-				}
+		let (winner, claimed) = selectVariableAssignment(candidates, expose: !peek)
+		if let claimed = claimed {
+			queueClaimed(claimed)
+		}
+		return winner?.variables?[key] ?? defaultValue
+	}
 
-				if assignment.suppressed && !assignment.overridden && !assignment.ruleOverride
-					&& suppressedFallback == nil
-				{
-					suppressedFallback = variables
-				}
+	// Selects and claims in one contextLock section, so setUnit cannot change a candidate in between.
+	private func selectVariableAssignment(
+		_ candidates: [ExperimentVariables], expose: Bool
+	) -> (Assignment?, ClaimedExposure?) {
+		contextLock.lock()
+		defer { contextLock.unlock() }
+
+		let expose = expose && !closed.load(ordering: .acquiring) && !closing.load(ordering: .acquiring)
+		var claim = ClaimBuilder()
+		var winner: Assignment?
+		var suppressedFallback: Assignment?
+		for candidate in candidates {
+			let assignment = lookupAssignment(candidate.data.name)
+			if expose {
+				claimHoldoutArmsLocked(assignment, into: &claim)
+			}
+			if assignment.assigned || assignment.overridden || assignment.ruleOverride {
+				winner = assignment
+				break
+			}
+			if assignment.suppressed && suppressedFallback == nil {
+				suppressedFallback = assignment
 			}
 		}
 
-		return suppressedFallback?[key] ?? defaultValue
+		winner = winner ?? suppressedFallback
+		if expose, let winner = winner {
+			claimLocked(winner, into: &claim)
+		}
+		return (winner, expose ? claim.build(generation: dataGeneration) : nil)
 	}
 
 	// Arm 0 always holds the experiment out. In a 3-arm holdout, arm 1 holds out only an experiment
@@ -1734,10 +1757,26 @@ public final class Context {
 }
 
 private struct ClaimedExposure {
-	// The experiment's own exposure (unless held out) and one per newly claimed holdout arm.
+	// The newly claimed assignment (nil when only holdout arms were claimed), its own exposure (unless
+	// held out) and one per newly claimed holdout arm.
+	let assignment: Assignment?
 	let exposures: [Exposure]
 	let arms: [Assignment]
 	let generation: Int
+}
+
+private struct ClaimBuilder {
+	var assignment: Assignment?
+	var exposures: [Exposure] = []
+	var arms: [Assignment] = []
+
+	// nil when nothing was claimed.
+	func build(generation: Int) -> ClaimedExposure? {
+		if assignment == nil && arms.isEmpty {
+			return nil
+		}
+		return ClaimedExposure(assignment: assignment, exposures: exposures, arms: arms, generation: generation)
+	}
 }
 
 // Holds a context strongly until taken or released; the initial load's completions go through it.

@@ -308,6 +308,15 @@ let defaultButtonColor: JSON = "red"
 let buttonColor = context.getVariableValue("button.color", defaultValue: defaultButtonColor)?.stringValue
 ```
 
+#### Shared variable keys
+
+When several experiments define the same variable key, the experiments whose variants define it are
+checked in ascending experiment id order. The value comes from the first one the user is in
+(assigned, overridden or selected by an assignment rule), and only that experiment is exposed. If its
+variant does not define the key, `getVariableValue` returns the default; a later experiment's value is
+never used. If the user is in none of them, a held-out experiment's control value (see Holdouts) or the
+default is returned. The holdouts covering each experiment checked publish their own exposure.
+
 ### Peek at Treatment Variants
 
 Although generally not recommended, it is sometimes necessary to peek at a treatment or variable without triggering an exposure. The A/B Smartly SDK provides a `peekTreatment()` method for that.

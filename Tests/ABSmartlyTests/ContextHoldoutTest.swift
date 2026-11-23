@@ -922,8 +922,8 @@ final class ContextHoldoutTest: XCTestCase {
 		try assertPublished(
 			context,
 			[
-				exposure(1, "exp_detached_variable_winner", 1, unitType: "user_id", fullOn: true),
 				holdoutExposure(11, "holdout_detached_variable", 1, unitType: "user_id"),
+				exposure(1, "exp_detached_variable_winner", 1, unitType: "user_id", fullOn: true),
 			], unitType: "user_id")
 	}
 
@@ -1675,8 +1675,8 @@ final class ContextHoldoutTest: XCTestCase {
 		try assertPublished(
 			context,
 			[
-				exposure(1, "exp_holdout_rules", 1, assigned: false, ruleOverride: true),
 				holdoutExposure(11, "holdout_rules_suppression", 0),
+				exposure(1, "exp_holdout_rules", 1, assigned: false, ruleOverride: true),
 			], attributes: [Attribute("country", value: "US", setAt: now)])
 	}
 
@@ -2066,8 +2066,8 @@ final class ContextHoldoutTest: XCTestCase {
 		try assertPublished(
 			context,
 			[
-				holdoutExposure(11, "holdout_a", 0), exposure(2, "exp_assigned", Self.normalVariant),
-				holdoutExposure(12, "holdout_b", 1),
+				holdoutExposure(11, "holdout_a", 0), holdoutExposure(12, "holdout_b", 1),
+				exposure(2, "exp_assigned", Self.normalVariant),
 			])
 	}
 

@@ -771,8 +771,8 @@ final class ContextTest: XCTestCase {
 		let context2 = try createContext(config: contextConfig, data: Promise<ContextData>.value(contextData))
 		context2.setAttribute(name: "age", value: 19)
 		XCTAssertEqual("circle", context2.getVariableValue("icon", defaultValue: "square"))
-		// exp_test_ab (id 1) is visited first and exposed with its control variant
-		XCTAssertEqual(2, context2.getPendingCount())
+		// exp_test_ab (id 1) is checked first but not assigned (strict mismatch): only the winner is exposed.
+		XCTAssertEqual(1, context2.getPendingCount())
 	}
 
 	func testGetVariableValueQueuesExposureWithAudienceMismatchFalseOnAudienceMatch() throws {
@@ -856,7 +856,7 @@ final class ContextTest: XCTestCase {
 		wait(for: [expectation], timeout: 1.0)
 	}
 
-	func testGetVariableValueQueuesExposureWithControlVariantOnAudienceMismatchInStrictMode() throws {
+	func testGetVariableValueDoesNotQueueExposureOnAudienceMismatchInStrictMode() throws {
 		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
 		let contextData = try getContextData(source: "audience_strict_context")
 		let context = try createContext(config: contextConfig, data: Promise<ContextData>.value(contextData))
@@ -864,10 +864,8 @@ final class ContextTest: XCTestCase {
 		logger.clearInvocations()
 
 		XCTAssertEqual("small", context.getVariableValue("banner.size", defaultValue: "small"))
-		XCTAssertEqual(1, context.getPendingCount())
-		XCTAssertEqual(
-			[Exposure(1, "exp_test_ab", "session_id", 0, clock.millis(), false, true, false, false, false, true)],
-			loggedExposures())
+		XCTAssertEqual(0, context.getPendingCount())
+		XCTAssertEqual([], loggedExposures())
 	}
 
 	func testGetVariableValueCallsEventLogger() throws {
@@ -974,16 +972,46 @@ final class ContextTest: XCTestCase {
 			loggedExposures())
 	}
 
-	func testGetVariableValueSharedKeyFirstUnassignedFallsThroughAndExposesBoth() throws {
+	func testGetVariableValueSharedKeyFirstUnassignedLosesAndOnlyTheWinnerIsExposed() throws {
 		let context = try createSharedKeyContext(sharedKeyFirstUnassigned())
 
 		XCTAssertEqual("two", context.getVariableValue("icon", defaultValue: "default"))
 		XCTAssertEqual(
-			[
-				Exposure(1, "exp_one", "device_id", 0, clock.millis(), false, true, false, false, false, false),
-				Exposure(2, "exp_two", "session_id", 1, clock.millis(), true, true, false, true, false, false),
-			],
+			[Exposure(2, "exp_two", "session_id", 1, clock.millis(), true, true, false, true, false, false)],
 			loggedExposures())
+		XCTAssertEqual(1, context.getPendingCount())
+	}
+
+	// exp_one has a strict audience the unit does not match, so it gives the control variant without
+	// being assigned; exp_two is assigned.
+	func sharedKeyFirstStrictAudienceMismatch() -> [String] {
+		let one = sharedKeyExperiment(
+			id: 1, name: "exp_one", fullOnVariant: 0, configs: ["{\"icon\":\"zero\"}", "{\"icon\":\"one\"}"]
+		).replacingOccurrences(
+			of: "\"audience\":null",
+			with: "\"audienceStrict\":true,\"audience\":\"{\\\"filter\\\":[{\\\"value\\\":false}]}\"")
+		return [one, sharedKeyExperiment(id: 2, name: "exp_two", configs: [nil, "{\"icon\":\"two\"}"])]
+	}
+
+	func testGetVariableValueSharedKeyStrictAudienceMismatchLosesAndOnlyTheWinnerIsExposed() throws {
+		let context = try createSharedKeyContext(sharedKeyFirstStrictAudienceMismatch())
+		XCTAssertEqual(0, context.peekTreatment("exp_one"))
+
+		XCTAssertEqual("two", context.getVariableValue("icon", defaultValue: "default"))
+		XCTAssertEqual(
+			[Exposure(2, "exp_two", "session_id", 1, clock.millis(), true, true, false, true, false, false)],
+			loggedExposures())
+		XCTAssertEqual(1, context.getPendingCount())
+	}
+
+	// A candidate that was only checked is not marked exposed: reading its treatment later exposes it once.
+	func testSharedKeyLosingCandidateIsExposedByALaterTreatmentRead() throws {
+		let context = try createSharedKeyContext(sharedKeyFirstStrictAudienceMismatch())
+
+		XCTAssertEqual("two", context.getVariableValue("icon", defaultValue: "default"))
+		XCTAssertEqual(0, context.getTreatment("exp_one"))
+		XCTAssertEqual(0, context.getTreatment("exp_one"))
+		XCTAssertEqual(["exp_two", "exp_one"], loggedExposures().map { $0.name })
 		XCTAssertEqual(2, context.getPendingCount())
 	}
 
@@ -997,16 +1025,108 @@ final class ContextTest: XCTestCase {
 			loggedExposures())
 	}
 
-	func testGetVariableValueSharedKeyAssignedVariantLackingKeyFallsThrough() throws {
-		let context = try createSharedKeyContext(sharedKeyAssignedVariantLacksKey())
+	// The override wins even onto a variant without the key: the default, never a later candidate's value.
+	func testGetVariableValueSharedKeyOverrideToAVariantLackingTheKeyGivesTheDefault() throws {
+		let experiments = [
+			sharedKeyExperiment(
+				id: 1, name: "exp_one", unitType: "device_id", fullOnVariant: 0,
+				configs: ["{\"other\":0}", "{\"icon\":\"one\"}"]),
+			sharedKeyExperiment(id: 2, name: "exp_two", configs: [nil, "{\"icon\":\"two\"}"]),
+		]
+		let overridden = try createSharedKeyContext(experiments)
+		overridden.setOverride(experimentName: "exp_one", variant: 0)
 
-		XCTAssertEqual("two", context.getVariableValue("icon", defaultValue: "default"))
+		XCTAssertEqual("default", overridden.getVariableValue("icon", defaultValue: "default"))
+		XCTAssertEqual(
+			[Exposure(1, "exp_one", "device_id", 0, clock.millis(), false, true, true, false, false, false)],
+			loggedExposures())
+		XCTAssertEqual(1, overridden.getPendingCount())
+	}
+
+	// A matching assignment rule puts the unit in exp_one even though its unit is missing.
+	func testGetVariableValueSharedKeyRuleAssignedLowerIdWins() throws {
+		let rule =
+			"{\\\"rules\\\":[{\\\"name\\\":\\\"all\\\",\\\"type\\\":\\\"assign\\\",\\\"conditions\\\":{\\\"value\\\":true},\\\"environments\\\":[],\\\"variant\\\":1}]}"
+		let one = sharedKeyExperiment(
+			id: 1, name: "exp_one", unitType: "device_id", fullOnVariant: 0,
+			configs: ["{\"icon\":\"zero\"}", "{\"icon\":\"one\"}"]
+		).replacingOccurrences(of: "\"audience\":null", with: "\"audience\":null,\"assignmentRules\":\"\(rule)\"")
+		let context = try createSharedKeyContext(
+			[one, sharedKeyExperiment(id: 2, name: "exp_two", configs: [nil, "{\"icon\":\"two\"}"])])
+
+		XCTAssertEqual("one", context.getVariableValue("icon", defaultValue: "default"))
 		XCTAssertEqual(
 			[
-				Exposure(1, "exp_one", "session_id", 1, clock.millis(), true, true, false, true, false, false),
-				Exposure(2, "exp_two", "session_id", 1, clock.millis(), true, true, false, true, false, false),
+				Exposure(
+					1, "exp_one", "device_id", 1, clock.millis(), false, true, false, false, false, false,
+					ruleOverride: true)
 			],
 			loggedExposures())
+	}
+
+	func testGetVariableValueSharedKeyWinnersVariantLackingKeyGivesTheDefaultAndExposesOnlyTheWinner() throws {
+		let context = try createSharedKeyContext(sharedKeyAssignedVariantLacksKey())
+
+		XCTAssertEqual("default", context.getVariableValue("icon", defaultValue: "default"))
+		XCTAssertEqual(
+			[Exposure(1, "exp_one", "session_id", 1, clock.millis(), true, true, false, true, false, false)],
+			loggedExposures())
+		XCTAssertEqual(1, context.getPendingCount())
+	}
+
+	func testGetVariableValueSharedKeyNoCandidateAssignedGivesTheDefaultAndNoExposure() throws {
+		let context = try createSharedKeyContext([
+			sharedKeyExperiment(
+				id: 1, name: "exp_one", unitType: "device_id", fullOnVariant: 0, configs: [nil, "{\"icon\":\"one\"}"]),
+			sharedKeyExperiment(
+				id: 2, name: "exp_two", unitType: "device_id", fullOnVariant: 0, configs: [nil, "{\"icon\":\"two\"}"]),
+		])
+
+		XCTAssertEqual("default", context.getVariableValue("icon", defaultValue: "default"))
+		XCTAssertEqual([], loggedExposures())
+		XCTAssertEqual(0, context.getPendingCount())
+	}
+
+	// A key the winner defines as null, false, 0 or "" returns that value, not the default and not a
+	// later candidate's value.
+	func testGetVariableValueSharedKeyFalsyValuesOfTheWinnerAreReturned() throws {
+		for (config, expected) in [
+			("{\"icon\":null}", JSON(NSNull())), ("{\"icon\":false}", JSON(false)), ("{\"icon\":0}", JSON(0)),
+			("{\"icon\":\"\"}", JSON("")),
+		] {
+			setUp()
+			let context = try createSharedKeyContext([
+				sharedKeyExperiment(id: 1, name: "exp_one", configs: [nil, config]),
+				sharedKeyExperiment(id: 2, name: "exp_two", configs: [nil, "{\"icon\":\"two\"}"]),
+			])
+
+			XCTAssertEqual(expected, context.getVariableValue("icon", defaultValue: "default"), config)
+			XCTAssertEqual(expected, context.peekVariableValue("icon", defaultValue: "default"), config)
+			XCTAssertEqual(["exp_one"], loggedExposures().map { $0.name }, config)
+		}
+	}
+
+	// Concurrent reads of a shared key, interleaved with treatment reads of the losing candidate: the
+	// winner and the loser are each exposed exactly once (TSan runs this in CI).
+	func testConcurrentSharedKeyReadsExposeTheWinnerOnce() throws {
+		let context = try createSharedKeyContext(sharedKeyFirstStrictAudienceMismatch())
+		let done = expectation(description: "readers done")
+		done.expectedFulfillmentCount = 4
+		for reader in 0..<4 {
+			DispatchQueue.global().async {
+				for _ in 0..<200 {
+					XCTAssertEqual("two", context.getVariableValue("icon", defaultValue: "default"))
+					if reader == 0 {
+						_ = context.getTreatment("exp_one")
+					}
+				}
+				done.fulfill()
+			}
+		}
+		wait(for: [done], timeout: 10)
+
+		XCTAssertEqual(["exp_one", "exp_two"], loggedExposures().map { $0.name }.sorted())
+		XCTAssertEqual(2, context.getPendingCount())
 	}
 
 	func testPeekVariableValueSharedKeyMatchesGetAndQueuesNothing() throws {
@@ -1015,7 +1135,8 @@ final class ContextTest: XCTestCase {
 			(sharedKeyBothAssigned(lowestFirst: false), nil, "one"),
 			(sharedKeyFirstUnassigned(), nil, "two"),
 			(sharedKeyFirstUnassigned(), "exp_one", "one"),
-			(sharedKeyAssignedVariantLacksKey(), nil, "two"),
+			(sharedKeyFirstStrictAudienceMismatch(), nil, "two"),
+			(sharedKeyAssignedVariantLacksKey(), nil, "default"),
 		]
 
 		for (experiments, override, expected) in scenarios {
@@ -1029,6 +1150,7 @@ final class ContextTest: XCTestCase {
 			XCTAssertEqual([], loggedExposures())
 
 			XCTAssertEqual(expected, context.getVariableValue("icon", defaultValue: "default"))
+			XCTAssertEqual(1, context.getPendingCount())
 		}
 	}
 
@@ -4133,12 +4255,14 @@ final class ContextV140BehaviourTest: XCTestCase {
 		XCTAssertEqual(true, exposures.first?.assigned)
 	}
 
-	func testVariableReadDoesNotExposeAnAssignmentWithoutVariables() throws {
+	// An override wins the key even onto a variant without variables (as in the Java SDK): it is
+	// exposed once and the read gives the default.
+	func testVariableReadExposesAnOverriddenWinnerWithoutVariablesOnce() throws {
 		let context = makeContext(config(), Promise.value(try contextData()))
 		context.setOverride(experimentName: "exp_test_ab", variant: 7)
 
 		XCTAssertNil(context.getVariableValue("banner.size"))
-		XCTAssertEqual(0, context.getPendingCount())
+		XCTAssertEqual(1, context.getPendingCount())
 		XCTAssertEqual(7, context.getTreatment("exp_test_ab"))
 		XCTAssertEqual(1, context.getPendingCount())
 	}
