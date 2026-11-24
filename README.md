@@ -49,22 +49,25 @@ pod 'ABSmartlySwiftSDK', '~> 1.3'
 To use 1.5.0 through CocoaPods before it is on the trunk, point the pod at the git tag:
 `pod 'ABSmartlySwiftSDK', :git => 'https://github.com/absmartly/swift-sdk.git', :tag => 'v1.5.0'`.
 The dependency pods (and this podspec) declare deployment targets below what current Xcode
-builds: Xcode 27.2 accepts nothing below iOS 15 / macOS 12 / watchOS 9. Raise every pod target to
-your app's platform in the Podfile (use `MACOSX_DEPLOYMENT_TARGET`, `WATCHOS_DEPLOYMENT_TARGET` or
+builds: Xcode 27.2 accepts nothing below iOS 15 / macOS 12 / watchOS 9. Raise pod targets that
+are below your app's platform in the Podfile (use `MACOSX_DEPLOYMENT_TARGET`, `WATCHOS_DEPLOYMENT_TARGET` or
 `TVOS_DEPLOYMENT_TARGET` and your app's version for other platforms):
 
 ```ruby
 post_install do |installer|
   installer.pods_project.targets.each do |target|
     target.build_configurations.each do |config|
-      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
+      if config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'].to_f < 15.0
+        config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
+      end
     end
   end
 end
 ```
 
 With this hook the unchanged 1.x pod and its dependencies built on Xcode 27.2 for iOS 15, macOS 12
-and watchOS 9 (tvOS not tested). Swift Package Manager needs no hook. See
+and watchOS 9 (tvOS not tested; measured with an unconditional raise, which is the same build here
+because every one of these pods declares less than the floor). Swift Package Manager needs no hook. See
 [CocoaPods validation status](docs/cocoapods-validation.md).
 
 Run the following command to update your Xcode project:

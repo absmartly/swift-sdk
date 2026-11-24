@@ -69,6 +69,11 @@ fi
         self.assertIn("requires macOS and Xcode", result.stderr)
         self.assertEqual(commands, [])
 
+    def test_other_non_darwin_hosts_fail_before_invoking_apple_tools(self):
+        result, commands = self.run_validation(platform="FreeBSD")
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(commands, [])
+
     def test_quick_failure_stops_before_full_lint(self):
         result, commands = self.run_validation(quick_status=13)
         self.assertEqual(result.returncode, 13)

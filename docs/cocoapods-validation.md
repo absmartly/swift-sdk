@@ -39,12 +39,18 @@ before building; that is a tooling problem on the validating Mac, not a podspec 
 **Existing pod users can build 1.x on Xcode 27.2 today.** Mac run 3 (same SHA and toolchain)
 installed the **unchanged** podspec from a checkout with trunk dependencies (PromiseKit 6.18.1,
 SwiftyJSON 5.0.2, SwiftAtomics/SwiftAtomicsShims 1.0.2) into a consumer Podfile with the common
-`post_install` hook that raises every pod target to the app's platform:
+`post_install` hook that raises every pod target below the app's platform to it (run 3 set
+them unconditionally; with these pods, all below the floor, that is the same build):
 
 ```ruby
 post_install do |installer|
-  installer.pods_project.targets.each do |t|
-    t.build_configurations.each { |c| c.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0' }
+  installer.pods_project.targets.each do |target|
+    target.build_configurations.each do |config|
+      # Only raise: a pod that already needs a newer OS keeps its own target.
+      if config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'].to_f < 15.0
+        config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
+      end
+    end
   end
 end
 ```
@@ -67,7 +73,14 @@ PromiseKit 6.18.1, the newest 6.x on trunk (iOS 8, macOS 10.10, tvOS 9, watchOS 
 macOS 10.10, tvOS 10, watchOS 3). `pod trunk push` resolves dependencies from trunk only, and a
 podspec cannot depend on a git URL or commit, so no change to this repository alone can make a
 trunk push pass. Linting against locally raised dependency specs (Mac run step C) can at most show
-that the SDK compiles at the floor; it can never stand in for a trunk push.
+that the SDK compiles at the floor; it can never stand in for a trunk push. It has not shown even
+that yet: in run 2 step C failed before building (`No podspec found for SwiftAtomics.podspec`, a
+script naming bug), and in run 3 it built but every platform ended in `BUILD FAILED` with
+`Unable to resolve module dependency: 'PromiseKit' / 'Atomics' / 'SwiftyJSON'` in the SDK target.
+Run 3 included the raised specs with `:path`, so CocoaPods looked for their sources next to the
+spec files and built empty dependency frameworks; the next run uses `:podspec`, which downloads
+the sources from each spec's git tag. Until a step C passes, a fully raised graph is expected,
+not demonstrated, to lint.
 
 ### Options for the owner
 
@@ -83,7 +96,8 @@ that the SDK compiles at the floor; it can never stand in for a trunk push.
    - Vendoring the dependency sources into the `ABSmartly` module would change the public types,
      so it is ruled out.
 
-   Gain: pod users get a lint-validated pod without a Podfile hook. Cost: apps below the raised
+   Expected gain (not yet demonstrated; see step C above): pod users get a lint-validated pod
+   without a Podfile hook. Cost: apps below the raised
    targets cannot take it; the dependency publishing above, before 2026-12-02.
 2. **Lint and publish on an older Xcode** that still accepts the 1.x targets, podspec unchanged.
    Still hits the secondary dependency blocker below and depends on runners keeping that Xcode.
@@ -100,8 +114,8 @@ publication (for option 1, including the dependency pods) before then.
 
 The previously documented failures (SwiftyJSON 5 availability errors on macOS, PromiseKit 6's iOS 8
 target needing the removed `libarclite`) were reported on Xcode 16.3 and 26 and were not re-run
-here. They matter for option 2, and possibly for option 1 if CocoaPods does not lift dependency
-targets to the SDK's raised ones.
+here. They matter for option 2. For option 1 they are superseded: run 2 measured that CocoaPods does
+not lift dependency targets, so the dependency pods need raised trunk releases either way.
 
 ## Released dependency evidence
 
@@ -143,6 +157,13 @@ errors, vendor dependencies into the ABSmartly module, or raise the 1.x minimums
 without the owner choosing option 1.
 
 ## Mac reproduction and acceptance
+
+CocoaPods 1.17.0 on Ruby 4 crashes in its simulator lookup (fourflusher) before building iOS or
+tvOS whenever `xcrun simctl list -j devices` output does not end in a newline: fourflusher appends
+`$INPUT_RECORD_SEPARATOR`, which is nil on Ruby 4 unless `English` is loaded. Until that is fixed
+upstream, iOS/tvOS lint needs a PATH-local `xcrun` wrapper that prints the simctl JSON with a
+trailing newline (as the coordinator's Mac script does); it only affects how the simulator list is
+read, not what is built. macOS and watchOS lint are unaffected.
 
 Use separate clean checkouts for baseline `1dfbec862f6322a3948c8925857422bac369375e` and the
 candidate fix. From each checkout, for **each installed Xcode 16.3, 26 and 27.2 toolchain**, run:
