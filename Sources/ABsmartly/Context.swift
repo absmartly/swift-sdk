@@ -425,36 +425,29 @@ public final class Context: Sendable {
 		treatment(for: experiment, exposing: exposing) != 0
 	}
 
-	/// The value of a variable in the variant this context is assigned to, or `nil` when no running
-	/// experiment defines it. With `exposing` (the default) the experiments read are exposed.
+	/// The value of a variable in the variant of the first experiment defining it (by ascending id)
+	/// that this context is in, or `nil` when there is none or its variant does not define the key.
+	/// With `exposing` (the default) that experiment is exposed; no other experiment is.
 	public func variableValue(_ key: String, exposing: Bool = true) -> JSONValue? {
+		// One critical section: the ready check, the candidates, their assignments and the winner's
+		// exposure all come from one data install.
 		let clock = clock
-		let listed: Result<[DataIndex.Entry], ABsmartlyError> = storage.withLock { state in
+		let result: Result<(JSONValue?, Exposure?), ABsmartlyError> = storage.withLock { state in
 			if let error = state.checkReady(expectNotClosed: true) {
 				return .failure(error)
 			}
-			return .success(state.index.variableExperiments[key] ?? [])
+			return .success(state.variableValue(key, peek: !exposing, now: { clock.millis() }))
 		}
-		guard case .success(let experiments) = listed else {
-			if case .failure(let error) = listed {
-				reportError(error)
-			}
+		switch result {
+		case .failure(let error):
+			reportError(error)
 			return nil
-		}
-		// One critical section per experiment, its exposure delivered before the next is resolved, so
-		// a logger that changes the next experiment (say, overrides it) is seen, as in 1.5.0.
-		for experiment in experiments {
-			let (value, exposure) = storage.withLock {
-				$0.variableValue(key, of: experiment.data.name, peek: !exposing, now: { clock.millis() })
-			}
+		case .success((let value, let exposure)):
 			if let exposure {
 				didQueue(.exposure(exposure))
 			}
-			if let value {
-				return value
-			}
+			return value
 		}
-		return nil
 	}
 
 	/// The value of a variable decoded as `T`, or `defaultValue` when no running experiment defines it

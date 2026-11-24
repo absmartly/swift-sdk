@@ -374,14 +374,15 @@ struct ContextState {
 	}
 
 	/// Looks the assignment up and, unless it is already exposed or the context is closing, marks it
-	/// exposed and queues its exposure, in one critical section. With `requireVariables`, only an
-	/// assignment whose variant has variables is exposed. Returns the exposure queued, if any.
-	mutating func lookupExposing(
-		_ experimentName: String, requireVariables: Bool = false, now: () -> Int64
-	) -> (Assignment, Exposure?) {
+	/// exposed and queues its exposure, in one critical section. Returns the exposure queued, if any.
+	mutating func lookupExposing(_ experimentName: String, now: () -> Int64) -> (Assignment, Exposure?) {
 		let assignment = lookup(experimentName)
-		guard !assignment.exposed, !requireVariables || assignment.variables != nil, !closed, !closing else {
-			return (assignment, nil)
+		return (assignment, expose(assignment, now: now))
+	}
+
+	private mutating func expose(_ assignment: Assignment, now: () -> Int64) -> Exposure? {
+		guard !assignment.exposed, !closed, !closing else {
+			return nil
 		}
 		assignment.exposed = true
 
@@ -392,27 +393,23 @@ struct ContextState {
 			audienceMismatch: assignment.audienceMismatch, ruleOverride: assignment.ruleOverride)
 		exposures.append(exposure)
 		pendingCount += 1
-		return (assignment, exposure)
+		return exposure
 	}
 
-	// Experiments sharing a key are walked in ascending id order, like the JavaScript SDK: each one
-	// visited is exposed (unless peeking), and the first that is assigned, overridden or won by an
-	// assignment rule and whose variant defines the key provides the value. The caller walks them
-	// one at a time, delivering each exposure before resolving the next, as 1.5.0 did.
-
-	/// The value `experimentName` provides for `key`, if any, and the exposure queued for it unless
-	/// peeking.
-	mutating func variableValue(
-		_ key: String, of experimentName: String, peek: Bool, now: () -> Int64
-	) -> (JSONValue?, Exposure?) {
-		let (assignment, exposure) =
-			peek ? (lookup(experimentName), nil) : lookupExposing(experimentName, requireVariables: true, now: now)
-		if let variables = assignment.variables, let value = variables[key],
-			assignment.assigned || assignment.overridden || assignment.ruleOverride
-		{
-			return (value, exposure)
+	/// The value of a variable key shared by several experiments, and the exposure queued for it unless
+	/// peeking. The candidates are the experiments whose variants define the key, by ascending id, as
+	/// in the Java SDK. The winner is the first candidate the unit is in (assigned, overridden or won by
+	/// an assignment rule), and the value is the winner's for the key, or nil when the winner's variant
+	/// does not define it: a later candidate is never used because of the variant the unit got. Only
+	/// the winner is exposed.
+	mutating func variableValue(_ key: String, peek: Bool, now: () -> Int64) -> (JSONValue?, Exposure?) {
+		for candidate in index.variableExperiments[key] ?? [] {
+			let assignment = lookup(candidate.data.name)
+			if assignment.assigned || assignment.overridden || assignment.ruleOverride {
+				return (assignment.variables?[key], peek ? nil : expose(assignment, now: now))
+			}
 		}
-		return (nil, exposure)
+		return (nil, nil)
 	}
 
 	// MARK: Publishing

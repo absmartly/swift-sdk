@@ -120,6 +120,12 @@ import Testing
 		return .object(record)
 	}
 
+	// The one known difference (see docs/plans/swift-2.0.md, "Known 2.0 difference from 1.5.0"):
+	// 1.5.0 types a `boolean` custom field as `Bool(text)`, so "TRUE" is nil; 2.0 gives `false`.
+	static let knownCustomFieldDifferences: [String: JSONValue] = [
+		"custom_fields.flag": ["type": "boolean", "value": false]
+	]
+
 	static let recorded: [JSONValue] = {
 		let url = Fixtures.resources.appendingPathComponent("parity/probe-1.5.0.json")
 		let data = try! Data(contentsOf: url)
@@ -141,9 +147,15 @@ import Testing
 			// tests running in parallel on the cooperative pool.
 			await Task.yield()
 			let actual = try await Self.probe(fixture: fixture, uid: uid)
-			for key in ["peeks", "treatments", "peekVariables", "variables", "variableKeys", "customFields", "events", "published"] {
+			for key in ["peeks", "treatments", "peekVariables", "variables", "variableKeys", "events", "published"] {
 				#expect(actual[key] == expected[key], "\(fixture) uid=\(uid) \(key)")
 			}
+			var expectedFields = expected["customFields"]?.objectValue ?? [:]
+			for (field, value) in Self.knownCustomFieldDifferences where expectedFields[field] != nil {
+				#expect(expectedFields[field] == ["type": "boolean", "value": .null], "\(fixture) uid=\(uid) \(field)")
+				expectedFields[field] = value
+			}
+			#expect(actual["customFields"] == .object(expectedFields), "\(fixture) uid=\(uid) customFields")
 		}
 	}
 }

@@ -373,9 +373,10 @@ which SwiftUI `body` cannot do, and would hop executors on the hottest path. So:
   iOS 18 / macOS 15 and `OSAllocatedUnfairLock` iOS 16, both above the floor; they wrap the same
   primitives.
 - No user code runs under the lock: the event logger, the event streams and the transport are all
-  called after the critical section. There is no recursive locking. A variable shared by several
-  experiments takes one critical section per experiment and delivers each exposure before resolving
-  the next, as 1.5.0 did, so a logger that changes the next experiment (say, overrides it) is seen.
+  called after the critical section. There is no recursive locking. A variable read, including
+  one shared by several experiments, is one critical section: the candidates, their assignments and
+  the winner's exposure come from one data install (only the winner is exposed, so there is no
+  later candidate for a logger to change).
 - Cached assignments are reference types mutated in place under the lock, as in 1.5.0, so a cached
   read neither copies nor writes back. Measured on Linux, release build, 200k cached reads (no rules,
   no audience, already exposed): `treatment` 209 ns/op (1.5.0: 275), peek 155 (257),
@@ -468,7 +469,8 @@ behaviour is exactly 1.5.0's. Each will be fixed in both lines at the same time.
 Behaviour parity is proven, not asserted:
 
 1. **Recorded 1.5.0 output.** `Tools/ParityRecorder` is a small package that depends on swift-sdk
-   at the pinned 1.5.0 commit. It creates with-data contexts over seven fixtures and 25 string
+   at the pinned 1.5.0 commit (`release/1.5.0-prep` at 2b44de4, swift-sdk#14; re-pin to the
+   v1.5.0 tag once it exists). It creates with-data contexts over seven fixtures and 25 string
    UIDs (including ASCII, padded, accented, CJK, emoji and numeric-looking text), recording
    treatments/peeks, variables/key maps, custom fields, event sequence and normalized publish
    content. It writes `Tests/ABsmartlyTests/Resources/parity/*.json`. Timestamps are removed and
@@ -476,7 +478,10 @@ Behaviour parity is proven, not asserted:
    refresh or override/custom-assignment setters, and makes no HTTP requests; separate unit tests
    cover those contracts and headers.
 2. **2.0 replays it.** `ParityTests` runs the same probe on 2.0 and compares its 175 records with
-   the recording, normalizing renamed event/API names.
+   the recording, normalizing renamed event/API names. The only accepted difference is the
+   `boolean` custom field `"TRUE"` (see *Known 2.0 difference from 1.5.0*). The probe disables
+   automatic publishing with a long `publishDelay` on both sides (1.5.0 schedules a publish even
+   for a negative delay).
 3. **cross-sdk-tests.** The companion PR moves the swift wrapper to the 2.0 API and pins the swift
    lane to `feat/swift-2.0`; every scenario the 1.5.0 lane passes must pass on 2.0.
 4. **Ported unit tests.** The 1.x test suite is ported to swift-testing against the new API.
@@ -503,6 +508,15 @@ Behaviour parity is proven, not asserted:
 
 ## Known 2.0 difference from 1.5.0
 
+- A `boolean` custom field whose text is neither `"true"` nor `"false"` (e.g. `"TRUE"`) is
+  `false` in 2.0; 1.5.0 (`release/1.5.0-prep`) restored 1.4.0's `Bool(text)` coercion, which gives
+  no value. `"true"` and `"false"` agree. Open for the owner: align 2.0 with 1.5.0 or keep it.
+- `release/1.5.0-prep` later restored more 1.4.0 behaviour (its commit c2b5841) that 2.0 keeps in
+  its earlier 1.5.0 form: a negative `publishDelay` still schedules the publish in 1.5.0 (2.0:
+  disables automatic publishing), `refresh()` on a failed context fetches again and can recover it
+  in 1.5.0 (2.0: succeeds without fetching), and 1.5.0's `match` drops the pattern/input length
+  limits and nested-quantifier rejection (2.0 keeps them; both keep the timeout). The parity probe
+  does not exercise these. Open for the owner, like the boolean difference above.
 - An integer literal from 2^63 to 2^64−1 inside an audience or rule (e.g. `9223372036854775808`)
   is converted to text as `"9223372036854776000"`. 1.5.0 on Linux prints it as a negative number
   (a Foundation `NSNumber` formatting bug), on Apple platforms as the unsigned value. Only `match`,

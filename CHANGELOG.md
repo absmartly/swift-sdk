@@ -31,6 +31,15 @@ Holdouts come in a later 2.x release.
 
 ### Changed
 - The `X-Agent` header is `absmartly-swift-sdk/2.0.0`, so the collector's `agent` column shows 2.0.0 for 2.x clients.
+- Variable keys shared by several experiments follow 1.5.0's final rule (the Java SDK's). Affects anyone running two or more experiments whose variants define the same key:
+  - The candidates are the experiments whose variants define the key, in ascending id order.
+  - The winner is the first candidate the user is in: assigned, overridden or set by an assignment rule.
+  - Only the winner is exposed. A candidate that was only checked gets no exposure; a later `treatment(for:)` on it still exposes it once.
+  - When the winner's variant does not define the key, `variable(_:default:)` returns the default and `variableValue(_:)` returns `nil`. A later candidate is never used.
+  - `exposing: false` exposes nothing.
+  - A refresh that changes only variant configs (same iteration) keeps an assignment already resolved in the context, including its variables (as in Java).
+
+  Earlier 2.0 pre-releases and the 1.5.0 pre-release on `main` exposed every candidate checked, and fell through to a later candidate when the winner's variant lacked the key. A strict audience mismatch now gives the control variant without an exposure from a variable read.
 
 ### Added
 - Swift 6 language mode with complete strict concurrency; every public type is `Sendable`.
@@ -51,7 +60,7 @@ Holdouts come in a later 2.x release.
 
 ### BREAKING
 - Audiences and assignment-rule conditions always evaluate the configured `application` (its name) and `environment` (its name) attributes, with no opt-in. This changes assignment for running experiments: a unit whose experiment has Audience enforced (strict) and an `environment`/`application` condition currently gets variant 0 (the condition never matched because the SDK did not supply the attribute). After upgrading, that condition matches and the unit is randomised normally. Those experiments are broken today; this fixes them, but the change in assignment is intentional and called out here. System values are applied first and user-set attributes overlay them, so a `setAttribute("environment", …)` (even after the context is created) still wins and invalidates a cached assignment. Values that are `nil` or empty are left out of the evaluation map. These attributes are not sent on the publish payload (the collector already adds them server-side) and are not reported by `getAttributes()`/`getAttribute(name:)`. `app_version`/`applicationVersion` is never injected into audience evaluation; only a user-set `app_version` attribute is evaluated. `ClientConfig.applicationVersion` stays a `String`, so the public API stays backward compatible.
-- A variable key shared by several experiments resolves like the JavaScript SDK. The experiments are walked in ascending id order; `getVariableValue` exposes every experiment it visits (an unassigned one with `assigned: false`), and the value comes from the first experiment that is assigned or overridden and whose variant defines the key. v1.4.0 used the first assigned or overridden experiment even when its variant lacked the key (returning the default) and exposed only that experiment. Callers of a key whose lowest-id experiment's variant lacks it now get a later experiment's value, and more exposures can be queued. `getVariableValue` also exposes an experiment whose audience mismatch in strict mode yields the control variant, as `getTreatment` does.
+- A variable key shared by several experiments: the candidates are the experiments whose variants define it, by ascending id; the first one the user is in (assigned, overridden or set by an assignment rule) wins, and only it is exposed. When its variant lacks the key the default is returned; a later candidate is never used. `peekVariableValue` exposes nothing. v1.4.0 did not count a rule-assigned candidate as the winner. (Final rule from swift-sdk#14, `release/1.5.0-prep`.)
 - `ContextEventHandler` renamed to `ContextPublisher`. Source-compatible: `ContextEventHandler` is a typealias and the `contextEventHandler:` init is kept. Only binary (ABI) consumers are affected.
 - Standardized error messages.
 - Audiences are re-evaluated when attributes change: a `setAttribute` after a treatment was read can change that experiment's assignment (and log a new exposure) when the audience result flips.

@@ -119,7 +119,9 @@ for fixture in fixtures {
 			variableParser: nil, scheduler: nil, client: client)
 		let sdk = try! ABsmartlySDK(config: config)
 		let contextConfig = ContextConfig()
-		contextConfig.publishDelay = -1
+		// No automatic publish during the probe (1.5.0 schedules one even for a negative delay); the
+		// probe publishes once at the end.
+		contextConfig.publishDelay = 3600
 		contextConfig.eventLogger = recorder
 		for unitType in ["session_id", "user_id", "email", "device_id"] {
 			contextConfig.setUnit(unitType: unitType, uid: uid)

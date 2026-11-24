@@ -209,6 +209,13 @@ let raw: JSONValue? = context.variableValue("checkout")
 
 Reading a variable exposes the experiment that provides it. Pass `exposing: false` to peek.
 
+When several experiments define the same variable key, they are checked in ascending experiment id
+order and the first one this context is in (assigned, overridden or set by an assignment rule) wins.
+Only that experiment is exposed. If its variant does not define the key, the read returns the default;
+a later experiment's value is never used. As in the Java SDK, an assignment already resolved in the
+context keeps its variant's variables until the experiment's iteration (or another assignment input)
+changes, so a refresh that changes only variant configs does not replace them.
+
 ### Overrides
 
 Overrides force a variant, for example in QA builds. Set them at creation, one at a time, or several

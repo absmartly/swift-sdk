@@ -97,8 +97,8 @@ extension ContextTests {
 		let context2 = env.context("audience_key_conflict_disjoint_context")
 		context2.setAttribute("age", to: 19)
 		#expect(context2.variable("icon", default: "square") == "circle")
-		// exp_test_ab (id 1) is visited first and exposed with its control variant
-		#expect(context2.pendingEventCount == 2)
+		// exp_test_ab (id 1) is checked first but not assigned (strict mismatch): only the winner is exposed.
+		#expect(context2.pendingEventCount == 1)
 	}
 
 	@Test func getVariableValueQueuesExposureWithAudienceMismatchFalseOnAudienceMatch() async throws {
@@ -132,14 +132,16 @@ extension ContextTests {
 				== expectedBody(exposures: [exposure(1, "exp_test_ab", "session_id", 1, true, true, false, false, false, true)]))
 	}
 
-	@Test func getVariableValueQueuesExposureWithControlVariantOnAudienceMismatchInStrictMode() {
+	// A strict audience mismatch gives the control variant without assigning the unit, so the experiment
+	// does not win the key and is not exposed.
+	@Test func getVariableValueDoesNotQueueExposureOnAudienceMismatchInStrictMode() {
 		let env = ContextEnv()
 		let context = env.context("audience_strict_context")
 		env.log.clear()
 
 		#expect(context.variable("banner.size", default: "small") == "small")
-		#expect(context.pendingEventCount == 1)
-		#expect(env.log.exposures == [exposure(1, "exp_test_ab", "session_id", 0, false, true, false, false, false, true)])
+		#expect(context.pendingEventCount == 0)
+		#expect(env.log.exposures == [])
 	}
 
 	@Test func getVariableValueCallsEventLogger() {
@@ -227,17 +229,45 @@ extension ContextTests {
 		#expect(env.log.exposures == [exposure(1, "exp_one", "session_id", 1, true, true, false, true, false, false)])
 	}
 
-	@Test func getVariableValueSharedKeyFirstUnassignedFallsThroughAndExposesBoth() {
+	@Test func getVariableValueSharedKeyFirstUnassignedLosesAndOnlyTheWinnerIsExposed() {
 		let env = ContextEnv()
 		let context = Self.sharedKeyContext(env, Self.sharedKeyFirstUnassigned())
 
 		#expect(context.variable("icon", default: "default") == "two")
-		#expect(
-			env.log.exposures == [
-				exposure(1, "exp_one", "device_id", 0, false, true, false, false, false, false),
-				exposure(2, "exp_two", "session_id", 1, true, true, false, true, false, false),
-			])
-		#expect(context.pendingEventCount == 2)
+		#expect(env.log.exposures == [exposure(2, "exp_two", "session_id", 1, true, true, false, true, false, false)])
+		#expect(context.pendingEventCount == 1)
+	}
+
+	// exp_one has a strict audience the unit does not match, so it gives the control variant without
+	// being assigned; exp_two is assigned.
+	private static func sharedKeyFirstStrictAudienceMismatch() -> [String] {
+		let one = sharedKeyExperiment(
+			id: 1, name: "exp_one", fullOnVariant: 0, configs: ["{\"icon\":\"zero\"}", "{\"icon\":\"one\"}"]
+		).replacingOccurrences(
+			of: "\"audience\":null",
+			with: "\"audienceStrict\":true,\"audience\":\"{\\\"filter\\\":[{\\\"value\\\":false}]}\"")
+		return [one, sharedKeyExperiment(id: 2, name: "exp_two", configs: [nil, "{\"icon\":\"two\"}"])]
+	}
+
+	@Test func getVariableValueSharedKeyStrictAudienceMismatchLosesAndOnlyTheWinnerIsExposed() {
+		let env = ContextEnv()
+		let context = Self.sharedKeyContext(env, Self.sharedKeyFirstStrictAudienceMismatch())
+		#expect(context.treatment(for: "exp_one", exposing: false) == 0)
+
+		#expect(context.variable("icon", default: "default") == "two")
+		#expect(env.log.exposures == [exposure(2, "exp_two", "session_id", 1, true, true, false, true, false, false)])
+		#expect(context.pendingEventCount == 1)
+	}
+
+	// A candidate that was only checked is not marked exposed: reading its treatment later exposes it once.
+	@Test func sharedKeyLosingCandidateIsExposedByALaterTreatmentRead() {
+		let env = ContextEnv()
+		let context = Self.sharedKeyContext(env, Self.sharedKeyFirstStrictAudienceMismatch())
+
+		#expect(context.variable("icon", default: "default") == "two")
+		#expect(context.treatment(for: "exp_one") == 0)
+		#expect(context.treatment(for: "exp_one") == 0)
+		#expect(env.log.exposures.map(\.name) == ["exp_two", "exp_one"])
 	}
 
 	@Test func getVariableValueSharedKeyFirstUnassignedButOverriddenWins() {
@@ -249,44 +279,157 @@ extension ContextTests {
 		#expect(env.log.exposures == [exposure(1, "exp_one", "device_id", 1, false, true, true, false, false, false)])
 	}
 
-	@Test func getVariableValueSharedKeyAssignedVariantLackingKeyFallsThrough() {
-		let env = ContextEnv()
-		let context = Self.sharedKeyContext(env, Self.sharedKeyAssignedVariantLacksKey())
-
-		#expect(context.variable("icon", default: "default") == "two")
-		#expect(
-			env.log.exposures == [
-				exposure(1, "exp_one", "session_id", 1, true, true, false, true, false, false),
-				exposure(2, "exp_two", "session_id", 1, true, true, false, true, false, false),
-			])
-	}
-
-	// Each experiment's exposure reaches the logger before the next experiment is resolved, as in
-	// 1.5.0, so a logger that overrides the next experiment changes the value and its exposure.
-	@Test func getVariableValueSharedKeyResolvesNextExperimentAfterTheExposureCallback() {
+	// The override wins even onto a variant without the key: the default, never a later candidate's value.
+	@Test func getVariableValueSharedKeyOverrideToAVariantLackingTheKeyGivesTheDefault() {
 		let env = ContextEnv()
 		let context = Self.sharedKeyContext(
 			env,
 			[
 				Self.sharedKeyExperiment(
 					id: 1, name: "exp_one", unitType: "device_id", fullOnVariant: 0,
-					configs: ["{\"icon\":\"zero\"}", "{\"icon\":\"one\"}"]),
-				Self.sharedKeyExperiment(
-					id: 2, name: "exp_two", configs: [nil, "{\"icon\":\"original\"}", "{\"icon\":\"updated\"}"]),
+					configs: ["{\"other\":0}", "{\"icon\":\"one\"}"]),
+				Self.sharedKeyExperiment(id: 2, name: "exp_two", configs: [nil, "{\"icon\":\"two\"}"]),
 			])
-		env.log.setHook { context, event in
-			if case .exposure(let exposure) = event, exposure.name == "exp_one" {
-				context.overrides["exp_two"] = 2
+		context.overrides["exp_one"] = 0
+
+		#expect(context.variable("icon", default: "default") == "default")
+		#expect(env.log.exposures == [exposure(1, "exp_one", "device_id", 0, false, true, true, false, false, false)])
+		#expect(context.pendingEventCount == 1)
+	}
+
+	// An override onto a variant with no variables at all still wins: it is exposed once and the read
+	// gives the default.
+	@Test func getVariableValueSharedKeyOverrideToAVariantWithoutVariablesWinsAndIsExposedOnce() {
+		let env = ContextEnv()
+		let context = Self.sharedKeyContext(env, Self.sharedKeyBothAssigned(lowestFirst: true))
+		context.overrides["exp_one"] = 0
+
+		#expect(context.variable("icon", default: "default") == "default")
+		#expect(context.variable("icon", default: "default") == "default")
+		#expect(env.log.exposures == [exposure(1, "exp_one", "session_id", 0, false, true, true, false, false, false)])
+		#expect(context.pendingEventCount == 1)
+	}
+
+	// A matching assignment rule puts the unit in exp_one even though its unit is missing.
+	@Test func getVariableValueSharedKeyRuleAssignedLowerIdWins() {
+		let rule =
+			"{\\\"rules\\\":[{\\\"name\\\":\\\"all\\\",\\\"type\\\":\\\"assign\\\",\\\"conditions\\\":{\\\"value\\\":true},\\\"environments\\\":[],\\\"variant\\\":1}]}"
+		let one = Self.sharedKeyExperiment(
+			id: 1, name: "exp_one", unitType: "device_id", fullOnVariant: 0,
+			configs: ["{\"icon\":\"zero\"}", "{\"icon\":\"one\"}"]
+		).replacingOccurrences(of: "\"audience\":null", with: "\"audience\":null,\"assignmentRules\":\"\(rule)\"")
+		let env = ContextEnv()
+		let context = Self.sharedKeyContext(
+			env, [one, Self.sharedKeyExperiment(id: 2, name: "exp_two", configs: [nil, "{\"icon\":\"two\"}"])])
+
+		#expect(context.variable("icon", default: "default") == "one")
+		#expect(
+			env.log.exposures == [
+				exposure(1, "exp_one", "device_id", 1, false, true, false, false, false, false, ruleOverride: true)
+			])
+		#expect(context.pendingEventCount == 1)
+	}
+
+	@Test func getVariableValueSharedKeyWinnersVariantLackingKeyGivesTheDefaultAndExposesOnlyTheWinner() {
+		let env = ContextEnv()
+		let context = Self.sharedKeyContext(env, Self.sharedKeyAssignedVariantLacksKey())
+
+		#expect(context.variable("icon", default: "default") == "default")
+		#expect(env.log.exposures == [exposure(1, "exp_one", "session_id", 1, true, true, false, true, false, false)])
+		#expect(context.pendingEventCount == 1)
+	}
+
+	@Test func getVariableValueSharedKeyNoCandidateAssignedGivesTheDefaultAndNoExposure() {
+		let env = ContextEnv()
+		let context = Self.sharedKeyContext(
+			env,
+			[
+				Self.sharedKeyExperiment(
+					id: 1, name: "exp_one", unitType: "device_id", fullOnVariant: 0, configs: [nil, "{\"icon\":\"one\"}"]),
+				Self.sharedKeyExperiment(
+					id: 2, name: "exp_two", unitType: "device_id", fullOnVariant: 0, configs: [nil, "{\"icon\":\"two\"}"]),
+			])
+
+		#expect(context.variable("icon", default: "default") == "default")
+		#expect(env.log.exposures == [])
+		#expect(context.pendingEventCount == 0)
+	}
+
+	// A key the winner defines as null, false, 0 or "" returns that value, not the default and not a
+	// later candidate's value.
+	@Test func getVariableValueSharedKeyFalsyValuesOfTheWinnerAreReturned() {
+		let cases: [(String, JSONValue)] = [
+			("{\"icon\":null}", .null), ("{\"icon\":false}", false), ("{\"icon\":0}", 0), ("{\"icon\":\"\"}", ""),
+		]
+		for (config, expected) in cases {
+			let env = ContextEnv()
+			let context = Self.sharedKeyContext(
+				env,
+				[
+					Self.sharedKeyExperiment(id: 1, name: "exp_one", configs: [nil, config]),
+					Self.sharedKeyExperiment(id: 2, name: "exp_two", configs: [nil, "{\"icon\":\"two\"}"]),
+				])
+
+			#expect(context.variableValue("icon", exposing: false) == expected, "\(config)")
+			#expect(context.variableValue("icon") == expected, "\(config)")
+			#expect(env.log.exposures.map(\.name) == ["exp_one"], "\(config)")
+		}
+	}
+
+	// Concurrent reads of a shared key, interleaved with treatment reads of the losing candidate: the
+	// winner and the loser are each exposed exactly once.
+	@Test func concurrentSharedKeyReadsExposeTheWinnerOnce() {
+		let env = ContextEnv()
+		let context = Self.sharedKeyContext(env, Self.sharedKeyFirstStrictAudienceMismatch())
+		let values = Locked<[String]>([])
+		DispatchQueue.concurrentPerform(iterations: 4) { reader in
+			for _ in 0..<200 {
+				let value = context.variable("icon", default: "default")
+				values.withLock { $0.append(value) }
+				if reader == 0 {
+					_ = context.treatment(for: "exp_one")
+				}
 			}
 		}
 
-		#expect(context.variable("icon", default: "default") == "updated")
-		#expect(
-			env.log.exposures == [
-				exposure(1, "exp_one", "device_id", 0, false, true, false, false, false, false),
-				exposure(2, "exp_two", "session_id", 2, false, true, true, false, false, false),
+		#expect(Set(values.withLock { $0 }) == ["two"])
+		#expect(env.log.exposures.map(\.name).sorted() == ["exp_one", "exp_two"])
+		#expect(context.pendingEventCount == 2)
+	}
+
+	// Owner decision (Q8), as in the Java SDK: a config-only refresh with an unchanged iteration keeps a
+	// cached assignment, including its variant variables. exp_one was resolved before the refresh added
+	// the key to its variant, so it still wins without the key: the default is returned. A context that
+	// never resolved exp_one reads the refreshed config.
+	@Test(arguments: ["none", "peek", "treatment"])
+	func configOnlyRefreshKeepsACachedAssignmentsVariables(resolvedBefore: String) async throws {
+		let env = ContextEnv()
+		let context = Self.sharedKeyContext(
+			env,
+			[
+				Self.sharedKeyExperiment(id: 1, name: "exp_one", configs: [nil, "{\"other\":\"one\"}"]),
+				Self.sharedKeyExperiment(id: 2, name: "exp_two", configs: [nil, "{\"icon\":\"two\"}"]),
 			])
-		#expect(context.treatment(for: "exp_two", exposing: false) == 2)
+		if resolvedBefore == "peek" {
+			#expect(context.treatment(for: "exp_one", exposing: false) == 1)
+		} else if resolvedBefore == "treatment" {
+			#expect(context.treatment(for: "exp_one") == 1)
+		}
+		env.serveNext(
+			ContextFixtures.decode(
+				"{\"experiments\":["
+					+ [
+						Self.sharedKeyExperiment(id: 1, name: "exp_one", configs: [nil, "{\"icon\":\"one\"}"]),
+						Self.sharedKeyExperiment(id: 2, name: "exp_two", configs: [nil, "{\"icon\":\"two\"}"]),
+					].joined(separator: ",") + "]}"))
+		try await context.refresh()
+		env.log.clear()
+
+		let expected = resolvedBefore == "none" ? "one" : "default"
+		#expect(context.variable("icon", default: "default", exposing: false) == expected)
+		#expect(context.variable("icon", default: "default") == expected)
+		#expect(env.log.exposures.map(\.name) == (resolvedBefore == "treatment" ? [] : ["exp_one"]))
+		#expect(context.pendingEventCount == 1)
 	}
 
 	@Test func peekVariableValueSharedKeyMatchesGetAndQueuesNothing() {
@@ -295,7 +438,8 @@ extension ContextTests {
 			(Self.sharedKeyBothAssigned(lowestFirst: false), nil, "one"),
 			(Self.sharedKeyFirstUnassigned(), nil, "two"),
 			(Self.sharedKeyFirstUnassigned(), "exp_one", "one"),
-			(Self.sharedKeyAssignedVariantLacksKey(), nil, "two"),
+			(Self.sharedKeyFirstStrictAudienceMismatch(), nil, "two"),
+			(Self.sharedKeyAssignedVariantLacksKey(), nil, "default"),
 		]
 
 		for (experiments, override, expected) in scenarios {
@@ -310,6 +454,7 @@ extension ContextTests {
 			#expect(env.log.exposures == [])
 
 			#expect(context.variable("icon", default: "default") == expected)
+			#expect(context.pendingEventCount == 1)
 		}
 	}
 

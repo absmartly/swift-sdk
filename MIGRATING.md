@@ -216,7 +216,8 @@ These API-level differences are also worth knowing:
 - `setUnit` throws as well as emitting the `.error` event (1.x only emitted it). The unit is left
   unchanged, as before.
 - `customFieldValue(_:in:)` returns `JSONValue?` for every field type: `number` fields are
-  `.double`, `boolean` fields `.bool`, `json` fields the parsed value (objects included; 1.x returned
+  `.double`, `boolean` fields `.bool` (`true` only for `"true"`; 1.5.0 returns no value for text
+  other than `"true"`/`"false"`, such as `"TRUE"`, where 2.0 returns `false`), `json` fields the parsed value (objects included; 1.x returned
   `[String: JSON]` for objects), text fields `.string`.
 - `client.context(units:...)` (the awaited form) throws when the data cannot be fetched instead of
   returning a failed context. Use `makeContext` to keep the failed context (reads return defaults).
