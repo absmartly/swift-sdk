@@ -7,8 +7,9 @@
   workflow. Xcode 27.2 cannot build pods below iOS 15 / macOS 12 / watchOS 9, and this podspec's
   1.x targets and every dependency pod's are below that floor, so `pod lib lint` / `pod trunk push`
   cannot pass with released dependencies; publishing needs an owner decision
-  (docs/cocoapods-validation.md). Pod users can build the unchanged pod with the Podfile
-  `post_install` hook in the README (measured on iOS, macOS and watchOS). The quick podspec check
+  (docs/cocoapods-validation.md). Pod users can build the unchanged pod with a Podfile
+  `post_install` hook like the README's (an equivalent, unconditional raise was measured on iOS,
+  macOS and watchOS). The quick podspec check
   does not compile dependencies. Deployment targets, dependency types and publication gates are
   unchanged.
 

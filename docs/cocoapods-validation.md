@@ -30,14 +30,14 @@ error: The iOS Simulator deployment target 'IPHONEOS_DEPLOYMENT_TARGET' is set t
 
 So on Xcode 27.2 no dependency change (newer releases, pinned forks or vendored code) can make
 `pod lib lint` pass while the podspec declares the 1.x targets. The iOS lint in that run also
-crashed in CocoaPods' simulator lookup (fourflusher, the simulator picker, failed reading
-`simctl list -j` output; run 2 traced it to a Ruby 4 incompatibility on unterminated output)
-before building; that is a tooling problem on the validating Mac, not a podspec defect.
+crashed in CocoaPods' simulator lookup (fourflusher, the simulator picker) before building, in
+two ways (see "Mac reproduction and acceptance"); that is a tooling problem on the validating Mac, not a podspec defect.
 
 ### Consumers versus lint and trunk
 
-**Existing pod users can build 1.x on Xcode 27.2 today.** Mac run 3 (same SHA and toolchain)
-installed the **unchanged** podspec from a checkout with trunk dependencies (PromiseKit 6.18.1,
+**Existing pod users can build 1.x on Xcode 27.2 today.** Mac run 3 (reported by the coordinator
+as the same SHA and toolchain; its log bundle has the install/build logs but no environment file
+or Podfile) installed the **unchanged** podspec from a checkout with trunk dependencies (PromiseKit 6.18.1,
 SwiftyJSON 5.0.2, SwiftAtomics/SwiftAtomicsShims 1.0.2) into a consumer Podfile with the common
 `post_install` hook that raises every pod target below the app's platform to it (run 3 set
 them unconditionally; with these pods, all below the floor, that is the same build):
@@ -158,12 +158,20 @@ without the owner choosing option 1.
 
 ## Mac reproduction and acceptance
 
-CocoaPods 1.17.0 on Ruby 4 crashes in its simulator lookup (fourflusher) before building iOS or
-tvOS whenever `xcrun simctl list -j devices` output does not end in a newline: fourflusher appends
-`$INPUT_RECORD_SEPARATOR`, which is nil on Ruby 4 unless `English` is loaded. Until that is fixed
-upstream, iOS/tvOS lint needs a PATH-local `xcrun` wrapper that prints the simctl JSON with a
-trailing newline (as the coordinator's Mac script does); it only affects how the simulator list is
-read, not what is built. macOS and watchOS lint are unaffected.
+CocoaPods 1.17.0 (fourflusher 2.3.1) crashed reading the simulator list before building iOS:
+run 1 failed in `JSON.parse` on non-JSON lines in `xcrun simctl list -j devices` output
+(`unexpected token at end of stream 'Install'`), and run 2, with those lines stripped but no
+trailing newline, failed appending the nil `$INPUT_RECORD_SEPARATOR` (`no implicit conversion of
+nil into String`). For iOS/tvOS lint, put `scripts/xcrun-simctl-json.sh` first on `PATH` as
+`xcrun`: for `simctl list ... -j` it prints only the JSON object, ending in a newline, and passes
+every other call through. It changes how the simulator list is read, not what is built.
+
+```bash
+mkdir -p /tmp/xcrun-shim && cp scripts/xcrun-simctl-json.sh /tmp/xcrun-shim/xcrun
+export PATH="/tmp/xcrun-shim:$PATH"
+```
+
+macOS and watchOS lint do not look up a simulator and are unaffected.
 
 Use separate clean checkouts for baseline `1dfbec862f6322a3948c8925857422bac369375e` and the
 candidate fix. From each checkout, for **each installed Xcode 16.3, 26 and 27.2 toolchain**, run:
