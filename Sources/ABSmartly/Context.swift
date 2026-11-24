@@ -1538,8 +1538,11 @@ public final class Context {
 
 	// Only while ready: a loading context schedules its queue once settled, and a failed one keeps it
 	// for a recovering refresh (an automatic flush of a failed context would discard it).
+	// A negative publishDelay disables the automatic publish (as in the Java and JavaScript SDKs):
+	// events wait for an explicit publish() or close().
 	private func setTimeout() {
 		guard state.load(ordering: .acquiring) == Context.readyState else { return }
+		guard publishDelay >= 0 else { return }
 
 		timeoutLock.lock()
 		defer { timeoutLock.unlock() }

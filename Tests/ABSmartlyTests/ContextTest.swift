@@ -4979,17 +4979,6 @@ final class ContextV140BehaviourTest: XCTestCase {
 		XCTAssertEqual(["exp_test_ab"], handler.publishEventReceivedEvent?.exposures.map { $0.name })
 	}
 
-	func testNegativePublishDelaySchedulesPublishAsBefore() throws {
-		let config = self.config()
-		config.publishDelay = -1
-		let context = makeContext(config, Promise.value(try contextData()))
-
-		context.track("goal1", properties: nil)
-
-		XCTAssertEqual(1, scheduler.scheduleAfterExecuteCallsCount)
-		XCTAssertEqual(-1, scheduler.scheduleAfterExecuteReceivedArguments?.after)
-	}
-
 	func testCustomFieldValuesCoercion() throws {
 		let json = """
 			{"experiments": [{"id": 1, "name": "exp", "customFieldValues": [

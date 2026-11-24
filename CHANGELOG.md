@@ -84,6 +84,11 @@ security fixes, from the `release/1.x` branch) for 12 months after 2.0 ships.
   only accepts an integer: the trimmed value when it is 1–18 ASCII digits, otherwise `"0"` (like the
   Java SDK). 1.4.0 always sent `"0"`.
 - Every exposure in the publish payload carries `ruleOverride` (`false` when no assignment rule matched).
+- A negative `ContextConfig.publishDelay` disables the automatic publish, matching the Java and
+  JavaScript SDKs and `main`: exposures and goals stay queued until `publish()` or `close()`, which
+  still send them. 1.4.0 scheduled the publish with the negative delay, so it published right after
+  the first event of each batch (events arriving while that publish was pending joined it). Apps on
+  1.4.0 that set `publishDelay` to `-1` now call `publish()` themselves.
 
 ### Fixed
 - Variable keys shared by several experiments. This affects anyone running two or more experiments
