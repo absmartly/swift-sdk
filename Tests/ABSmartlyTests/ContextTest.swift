@@ -3926,8 +3926,8 @@ final class ContextV140BehaviourTest: XCTestCase {
 		scheduler.scheduleWithFixedDelayAfterRepeatingExecuteReturnValue = ScheduledHandleMock()
 	}
 
-	private func contextData() throws -> ContextData {
-		let path = TestResources.path(forResource: "context", ofType: "json")
+	private func contextData(source: String = "context") throws -> ContextData {
+		let path = TestResources.path(forResource: source, ofType: "json")
 		return try JSONDecoder().decode(ContextData.self, from: Data(contentsOf: URL(fileURLWithPath: path)))
 	}
 
@@ -4524,6 +4524,93 @@ final class ContextV140BehaviourTest: XCTestCase {
 		// An array, not a set: exactly one exposure, attributed to the experiment.
 		let ids = handler.publishEventReceivedInvocations.flatMap { $0.exposures.filter { $0.name == "exp_test_ab" }.map { $0.id } }
 		XCTAssertEqual([1], ids)
+	}
+
+	// A refresh of a failed context still pending when close() succeeds: its late success installs no
+	// data, does not make the context ready or re-arm the timer, logs no `.refresh` and settles.
+	func testRefreshCompletingAfterASuccessfulCloseDoesNotMutateTheContext() throws {
+		let cfg = config()
+		cfg.refreshInterval = 10
+		let context = makeContext(cfg, Promise(error: ABSmartlyError("load failed")))
+		XCTAssertTrue(context.isFailed())
+		let (fetch, fetchSeal) = Promise<ContextData>.pending()
+		provider.getContextDataReturnValue = fetch
+		let refreshed = expectation(description: "refresh settled")
+		_ = context.refresh().ensure { refreshed.fulfill() }
+
+		let closed = expectation(description: "closed")
+		_ = context.close().done { closed.fulfill() }
+		wait(for: [closed], timeout: 2)
+		XCTAssertTrue(context.isClosed())
+		logger.clearInvocations()
+
+		fetchSeal.fulfill(try contextData())
+		wait(for: [refreshed], timeout: 2)
+
+		XCTAssertTrue(context.isClosed())
+		XCTAssertTrue(context.isFailed())
+		XCTAssertNotNil(context.readyError())
+		XCTAssertEqual([], context.getExperiments())
+		XCTAssertEqual(0, scheduler.scheduleWithFixedDelayAfterRepeatingExecuteCallsCount)
+		XCTAssertEqual(0, logger.handleEventContextEventCallsCount)
+	}
+
+	// A refresh landing while close() is still flushing is dropped too: the refreshed data is not
+	// installed and no `.refresh` is logged. When the final publish fails and the context reopens,
+	// a new refresh fetches again.
+	func testRefreshCompletingWhileClosingIsDropped() throws {
+		let context = makeContext(config(), Promise.value(try contextData()))
+		let (fetch, fetchSeal) = Promise<ContextData>.pending()
+		provider.getContextDataReturnValue = fetch
+		let refreshed = expectation(description: "refresh settled")
+		_ = context.refresh().ensure { refreshed.fulfill() }
+
+		context.track("goal", properties: nil)
+		let (finalPublish, finalPublishSeal) = Promise<Void>.pending()
+		handler.publishEventReturnValue = finalPublish
+		let closeFailed = expectation(description: "close failed")
+		_ = context.close().catch { _ in closeFailed.fulfill() }
+		XCTAssertTrue(context.isClosing())
+		logger.clearInvocations()
+
+		fetchSeal.fulfill(try contextData(source: "refreshed"))
+		wait(for: [refreshed], timeout: 2)
+		XCTAssertFalse(context.getExperiments().contains("exp_test_new"))
+		XCTAssertFalse(
+			logger.handleEventContextEventReceivedInvocations.contains {
+				if case .refresh = $0.event { return true }
+				return false
+			})
+
+		finalPublishSeal.reject(ABSmartlyError("publish failed"))
+		wait(for: [closeFailed], timeout: 2)
+		XCTAssertFalse(context.isClosing())
+		XCTAssertFalse(context.isClosed())
+
+		provider.getContextDataReturnValue = Promise.value(try contextData(source: "refreshed"))
+		let refreshedAgain = expectation(description: "refreshed again")
+		_ = context.refresh().done { refreshedAgain.fulfill() }
+		wait(for: [refreshedAgain], timeout: 2)
+		XCTAssertEqual(2, provider.getContextDataCallsCount)
+		XCTAssertTrue(context.getExperiments().contains("exp_test_new"))
+	}
+
+	// A refresh that fails after close() resolved rejects its promise but logs no `.error` event.
+	func testRefreshFailingAfterASuccessfulCloseLogsNoEvent() throws {
+		let context = makeContext(config(), Promise.value(try contextData()))
+		let (fetch, fetchSeal) = Promise<ContextData>.pending()
+		provider.getContextDataReturnValue = fetch
+		let rejected = expectation(description: "refresh rejected")
+		_ = context.refresh().catch { _ in rejected.fulfill() }
+
+		let closed = expectation(description: "closed")
+		_ = context.close().done { closed.fulfill() }
+		wait(for: [closed], timeout: 2)
+		logger.clearInvocations()
+
+		fetchSeal.reject(ABSmartlyError("fetch failed"))
+		wait(for: [rejected], timeout: 2)
+		XCTAssertEqual(0, logger.handleEventContextEventCallsCount)
 	}
 
 	// Failed close does not itself restart refresh; no refresh is in flight in this scenario.

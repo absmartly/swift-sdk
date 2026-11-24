@@ -788,6 +788,16 @@ public final class Context {
 				// so no evaluation or flush sees the new data while the context still reports failed.
 				self.contextLock.lock()
 				self.eventLock.lock()
+				// Close has begun (or completed): the late result is dropped, so a closed context is
+				// never changed or reported refreshed after close() resolved. Checked under eventLock,
+				// which closeIfIdle() holds when it marks the context closed.
+				if self.closed.load(ordering: .acquiring) || self.closing.load(ordering: .acquiring) {
+					self.eventLock.unlock()
+					self.contextLock.unlock()
+					self.refreshing.store(false, ordering: .releasing)
+					seal.fulfill(())
+					return
+				}
 				let previousState = self.state.load(ordering: .acquiring)
 				let winsInitialLoad = previousState == Context.loading
 				// Recovering a failed context: assignments and exposures made while it had no experiment
@@ -828,7 +838,10 @@ public final class Context {
 				self.refreshing.store(false, ordering: .releasing)
 
 				Logger.error("Context refresh failed: \(error.safeLocalizedDescription)")
-				self.deliverOnMain { self.logError(error: error) }
+				// A closed context reports no further events.
+				if !self.closed.load(ordering: .acquiring) && !self.closing.load(ordering: .acquiring) {
+					self.deliverOnMain { self.logError(error: error) }
+				}
 
 				seal.reject(error)
 			}
