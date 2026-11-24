@@ -1144,6 +1144,37 @@ final class ContextTest: XCTestCase {
 	}
 
 	#if DEBUG
+	// A refresh that removes the key from exp_one is started from another thread right after the read
+	// has its candidates. Candidates and assignments come from one data install, so the read returns
+	// exp_one's value (the install it started on), never the default; the next read uses the refresh.
+	func testSharedKeyReadOverlappingARefreshUsesOneDataInstall() throws {
+		let context = try createSharedKeyContext(sharedKeyBothAssigned(lowestFirst: true))
+		let refreshedJSON =
+			"{\"experiments\":["
+			+ [
+				sharedKeyExperiment(id: 1, name: "exp_one", configs: [nil, "{\"other\":\"one\"}"]),
+				sharedKeyExperiment(id: 2, name: "exp_two", configs: [nil, "{\"icon\":\"two\"}"]),
+			].joined(separator: ",") + "]}"
+		provider.getContextDataReturnValue = Promise.value(
+			try JSONDecoder().decode(ContextData.self, from: refreshedJSON.data(using: .utf8)!))
+		let refreshed = expectation(description: "refreshed")
+		Context.setTestHook(.variableCandidatesRead) {
+			Context.setTestHook(.variableCandidatesRead, nil)
+			DispatchQueue.global().async {
+				_ = context.refresh().done { refreshed.fulfill() }
+			}
+			// Gives the refresh time to try to install while this read still holds its candidates.
+			usleep(50_000)
+		}
+		defer { Context.setTestHook(.variableCandidatesRead, nil) }
+
+		XCTAssertEqual("one", context.getVariableValue("icon", defaultValue: "default"))
+		wait(for: [refreshed], timeout: 2)
+		XCTAssertEqual(["exp_one"], loggedExposures().map { $0.name })
+		XCTAssertEqual("two", context.getVariableValue("icon", defaultValue: "default"))
+		XCTAssertEqual(["exp_one", "exp_two"], loggedExposures().map { $0.name })
+	}
+
 	// A warmed read of an already exposed winner with no holdouts attempts no claim, so it stays on
 	// the cached path (the closed/closing checks and the claim are skipped).
 	func testWarmedSharedKeyReadOfAnExposedWinnerAttemptsNoClaim() throws {

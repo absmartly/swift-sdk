@@ -788,9 +788,9 @@ public final class Context {
 				// so no evaluation or flush sees the new data while the context still reports failed.
 				self.contextLock.lock()
 				self.eventLock.lock()
-				// Close has begun (or completed): the late result is dropped, so a closed context is
-				// never changed or reported refreshed after close() resolved. Checked under eventLock,
-				// which closeIfIdle() holds when it marks the context closed.
+				// Close has begun (or completed): this late result is dropped without installing data or
+				// logging. Checked under eventLock, which closeIfIdle() holds when it marks the context
+				// closed.
 				if self.closed.load(ordering: .acquiring) || self.closing.load(ordering: .acquiring) {
 					self.eventLock.unlock()
 					self.contextLock.unlock()
@@ -838,7 +838,6 @@ public final class Context {
 				self.refreshing.store(false, ordering: .releasing)
 
 				Logger.error("Context refresh failed: \(error.safeLocalizedDescription)")
-				// A closed context reports no further events.
 				if !self.closed.load(ordering: .acquiring) && !self.closing.load(ordering: .acquiring) {
 					self.deliverOnMain { self.logError(error: error) }
 				}
@@ -1083,6 +1082,7 @@ public final class Context {
 		case flushObservedNotFailed
 		case closeAwaitedInFlight
 		case variableClaimAttempted
+		case variableCandidatesRead
 	}
 
 	private static var testHooks: [TestHook: () -> Void] = [:]
@@ -1411,26 +1411,28 @@ public final class Context {
 	// candidate is never used because of the variant the unit got. Only the winner is exposed; like
 	// Java, the holdouts covering every candidate visited are exposed too. Peeking exposes nothing.
 	private func resolveVariableValue(_ key: String, defaultValue: JSON?, peek: Bool) -> JSON? {
-		guard let candidates = getVariableExperiments(key) else {
-			return defaultValue
-		}
-
-		let (winner, claimed) = selectVariableAssignment(candidates, expose: !peek)
+		let (winner, claimed) = selectVariableAssignment(key, expose: !peek)
 		if let claimed = claimed {
 			queueClaimed(claimed)
 		}
 		return winner?.variables?[key] ?? defaultValue
 	}
 
-	// Selects and claims in one contextLock section, so setUnit cannot change a candidate in between.
-	// The closed/closing checks and the claim run only where something may be claimed, so a warmed
-	// read of an already exposed winner stays on the cached path; queueClaimed re-checks them.
-	private func selectVariableAssignment(
-		_ candidates: [ExperimentVariables], expose: Bool
-	) -> (Assignment?, ClaimedExposure?) {
+	// Reads the key's candidates, resolves and claims in one contextLock section. Data is installed
+	// under contextLock, so the candidates and their assignments come from the same data, and setUnit
+	// cannot change a candidate in between. The closed/closing checks and the claim run only where
+	// something may be claimed, so a warmed read of an already exposed winner stays on the cached
+	// path; queueClaimed re-checks them.
+	private func selectVariableAssignment(_ key: String, expose: Bool) -> (Assignment?, ClaimedExposure?) {
 		contextLock.lock()
 		defer { contextLock.unlock() }
 
+		guard let candidates = getVariableExperiments(key) else {
+			return (nil, nil)
+		}
+		#if DEBUG
+		Context.runTestHook(.variableCandidatesRead)
+		#endif
 		var claim = ClaimBuilder()
 		var winner: Assignment?
 		var suppressedFallback: Assignment?
