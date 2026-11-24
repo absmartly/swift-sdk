@@ -13,6 +13,11 @@ final class ContextTest: XCTestCase {
 	let clock = FixedClock(1_620_000_000_000)
 
 	override func setUp() async throws {
+		resetMocks()
+	}
+
+	// Fresh mocks, for setUp and for each iteration of a test that loops over scenarios.
+	func resetMocks() {
 		provider = ContextDataProviderMock()
 		handler = ContextEventHandlerMock()
 		logger = ContextEventLoggerMock()
@@ -1108,7 +1113,7 @@ final class ContextTest: XCTestCase {
 			("{\"icon\":null}", JSON(NSNull())), ("{\"icon\":false}", JSON(false)), ("{\"icon\":0}", JSON(0)),
 			("{\"icon\":\"\"}", JSON("")),
 		] {
-			setUp()
+			resetMocks()
 			let context = try createSharedKeyContext([
 				sharedKeyExperiment(id: 1, name: "exp_one", configs: [nil, config]),
 				sharedKeyExperiment(id: 2, name: "exp_two", configs: [nil, "{\"icon\":\"two\"}"]),
@@ -1210,11 +1215,14 @@ final class ContextTest: XCTestCase {
 			].joined(separator: ",") + "]}"
 		let after = try JSONDecoder().decode(ContextData.self, from: afterJSON.data(using: .utf8)!)
 
-		for warm in [true, false] {
-			setUp()
+		// How exp_one is resolved before the refresh: not at all, peeked (unexposed) or read (exposed).
+		for warm in ["none", "peek", "treatment"] {
+			resetMocks()
 			let context = try createSharedKeyContext(before)
-			if warm {
+			if warm == "peek" {
 				XCTAssertEqual(1, context.peekTreatment("exp_one"))
+			} else if warm == "treatment" {
+				XCTAssertEqual(1, context.getTreatment("exp_one"))
 			}
 			provider.getContextDataReturnValue = Promise.value(after)
 			let refreshed = expectation(description: "refreshed")
@@ -1222,10 +1230,10 @@ final class ContextTest: XCTestCase {
 			wait(for: [refreshed], timeout: 2)
 			logger.clearInvocations()
 
-			let expected: JSON = warm ? "default" : "one"
+			let expected: JSON = warm == "none" ? "one" : "default"
 			XCTAssertEqual(expected, context.peekVariableValue("icon", defaultValue: "default"), "warm: \(warm)")
 			XCTAssertEqual(expected, context.getVariableValue("icon", defaultValue: "default"), "warm: \(warm)")
-			XCTAssertEqual(["exp_one"], loggedExposures().map { $0.name }, "warm: \(warm)")
+			XCTAssertEqual(warm == "treatment" ? [] : ["exp_one"], loggedExposures().map { $0.name }, "warm: \(warm)")
 			XCTAssertEqual(1, context.getPendingCount(), "warm: \(warm)")
 		}
 	}
