@@ -4613,6 +4613,30 @@ final class ContextV140BehaviourTest: XCTestCase {
 		XCTAssertEqual(0, logger.handleEventContextEventCallsCount)
 	}
 
+	// A refresh that fails while close() is still flushing logs no `.error` event either.
+	func testRefreshFailingWhileClosingLogsNoError() throws {
+		let context = makeContext(config(), Promise.value(try contextData()))
+		let (fetch, fetchSeal) = Promise<ContextData>.pending()
+		provider.getContextDataReturnValue = fetch
+		let rejected = expectation(description: "refresh rejected")
+		_ = context.refresh().catch { _ in rejected.fulfill() }
+
+		context.track("goal", properties: nil)
+		let (finalPublish, finalPublishSeal) = Promise<Void>.pending()
+		handler.publishEventReturnValue = finalPublish
+		let closed = expectation(description: "closed")
+		_ = context.close().done { closed.fulfill() }
+		XCTAssertTrue(context.isClosing())
+		logger.clearInvocations()
+
+		fetchSeal.reject(ABSmartlyError("fetch failed"))
+		wait(for: [rejected], timeout: 2)
+		XCTAssertEqual(0, logger.handleEventContextEventCallsCount)
+
+		finalPublishSeal.fulfill(())
+		wait(for: [closed], timeout: 2)
+	}
+
 	// Failed close does not itself restart refresh; no refresh is in flight in this scenario.
 	func testFailedCloseDoesNotRestartRefreshTimer() throws {
 		let cfg = config()

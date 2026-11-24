@@ -146,9 +146,10 @@ security fixes, from the `release/1.x` branch) for 12 months after 2.0 ships.
   Swift-specific: the JavaScript SDK does not refresh a failed context at all.
 - No exposures after close; `refresh()` joins an in-flight refresh; `close()` waits for in-flight
   publishes; a pending automatic publish keeps the context alive until it is sent.
-- A refresh still in flight when `close()` starts is discarded when it completes: it installs no
-  data, does not make a failed context ready, and logs no `.refresh` or `.error` event, so nothing
-  changes after `close()` has resolved.
+- A refresh whose fetch completes after `close()` has started is discarded: it installs no data, does
+  not make a failed context ready, and logs no `.refresh` or `.error` event, so its result cannot
+  change the context after `close()` has resolved. A refresh that installed its data before `close()`
+  started is not undone, and its `.refresh` event may still reach the logger after `.close`.
 - Work no longer runs on the main queue (timers, HTTP retries, publish recovery); `ready`, `refresh`,
   `publish`, `close` and `error` events from asynchronously completed work still reach the
   `ContextEventLogger` on the main thread on Apple platforms, as in 1.4.0. As in 1.4.0, events raised
