@@ -21,7 +21,8 @@ public enum ABsmartlyError: Error, Sendable, Hashable {
 	case httpStatus(code: Int, message: String)
 	/// The request failed before a response was received.
 	case transport(String)
-	/// A response, context data or JSON text could not be decoded.
+	/// A response, context data or JSON text could not be decoded. Also used if a publish payload
+	/// could not be encoded, which no `JSONValue` causes (non-finite numbers are sent as null).
 	case decoding(String)
 	/// The operation was cancelled.
 	case cancelled

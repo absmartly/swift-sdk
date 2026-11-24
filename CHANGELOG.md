@@ -32,6 +32,8 @@ release.
 
 ### Changed
 - The `X-Agent` header is `absmartly-swift-sdk/2.0.0`, so the collector's `agent` column shows 2.0.0 for 2.x clients.
+- A NaN or infinite number in a goal property or attribute is published as `null`, as JavaScript's `JSON.stringify` writes it. Affects apps that track such values: the collector now receives the goal or attribute with a `null` value. 1.5.0 could not encode such a batch and re-queued it, so no later publish or `close()` of that context succeeded.
+- `ABsmartlyError` may gain cases in later 2.x releases; a `switch` over it needs a `default` case.
 - Variable keys shared by several experiments follow 1.5.0's final rule (the Java SDK's). Affects anyone running two or more experiments whose variants define the same key:
   - The candidates are the experiments whose variants define the key, in ascending id order.
   - The winner is the first candidate the user is in: assigned, overridden or set by an assignment rule.
@@ -49,8 +51,6 @@ release.
 - Atomic `setOverride(_:for:)`/`setOverrides(_:)` and `setCustomAssignment(_:for:)`/`setCustomAssignments(_:)`; `overrides`/`customAssignments` dictionary properties (a snapshot on read; assigning replaces the whole dictionary); overrides and custom assignments at context creation.
 - `Context.State` and `context.state`.
 - `EventLogger.osLog`. It logs what happened (event kind, experiment or goal name, error kind) publicly and the event's contents (goal properties, attributes, context data, error text) as private data, which the unified log redacts unless the device is set up to show it. The SDK's own diagnostics (malformed configs, custom fields, regex patterns, audiences) do the same: payload text is private.
-- A NaN or infinite number in a goal property or attribute is published as `null`, as JavaScript's `JSON.stringify` writes it. 1.5.0 could not encode such a batch and re-queued it, so no later publish or `close()` succeeded.
-- `ABsmartlyError` may gain cases in later 2.x releases; a `switch` over it needs a `default` case.
 - A `refresh()` that completes while the first fetch is still pending makes the context ready, and every `ready()` caller (waiting or later) succeeds; the first fetch's late result, data or error, is ignored. If the first fetch fails first, the context stays failed and an overlapping refresh does not change it (`refresh()` on a failed context does not recover it, as before).
 
 ### Dependencies
