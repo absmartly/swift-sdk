@@ -86,7 +86,8 @@ import Testing
 	@Test func errorTextIsPrivate() {
 		let secret = "secret-\(UUID().uuidString)"
 		let errors: [ABsmartlyError] = [
-			.transport(secret), .decoding(secret), .invalidConfiguration(secret), .httpStatus(code: 418, message: secret),
+			.transport(secret), .decoding(secret), .invalidConfiguration(secret),
+			.httpStatus(code: 418, message: secret),
 		]
 		for error in errors {
 			#expect(!error.logSummary.contains(secret))
@@ -142,6 +143,30 @@ import Testing
 		let eventEntry = EventLog.entry(.error(env.log.errors.first ?? .notReady))
 		#expect(!eventEntry.summary.contains(secret))
 		#expect(eventEntry.detail == secret)
+	}
+
+	// The refresh and publish failure diagnostics: the error's kind and status are public, its text
+	// private.
+	@Test(arguments: ["refresh", "publish"])
+	func refreshAndPublishFailureTextIsPrivate(operation: String) async {
+		let secret = "token=secret-\(UUID().uuidString)"
+		let env = ContextEnv()
+		let context = env.context()
+		context.track("goal", properties: nil)
+		env.transport.enqueue { _ in throw ABsmartlyError.httpStatus(code: 400, message: secret) }
+		if operation == "refresh" {
+			try? await context.refresh()
+		} else {
+			try? await context.publish()
+		}
+
+		let entries = LogCapture.entries(containing: secret)
+		#expect(entries.count == 1)
+		for entry in entries {
+			let prefix = operation == "refresh" ? "Context refresh failed" : "Publish failed"
+			#expect(entry.summary == "\(prefix): HTTP status 400")
+			#expect(entry.detail == secret)
+		}
 	}
 
 	@Test func contextLoadFailureLogsTheKindPublicly() async {

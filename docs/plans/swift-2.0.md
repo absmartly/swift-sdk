@@ -12,7 +12,7 @@ A customer's iOS team ships Swift 6 apps with strict concurrency. 1.x gets in th
   model is a strict-concurrency diagnostic.
 - `JSON` is SwiftyJSON, which is unmaintained (and does not compile on Linux; 1.5.0 vendors it).
 
-1.5.0 (branch `release/1.5.0-prep`) stays source compatible and adds `async` overloads next to the
+1.5.0 (released; maintained on `release/1.x`) stays source compatible and adds `async` overloads next to the
 PromiseKit API. 2.0 is the modern API: idiomatic Swift, `Sendable` throughout, no third-party
 dependencies, and **the same assignment and event behaviour as 1.5.0**, holdouts aside (see *Holdouts and switchbacks*) (javascript-sdk is the
 reference, cross-sdk-tests the conformance corpus).
