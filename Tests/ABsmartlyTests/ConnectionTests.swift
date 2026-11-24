@@ -289,20 +289,22 @@ import Testing
 		#expect(error == .httpStatus(code: 500, message: HTTPURLResponse.localizedString(forStatusCode: 500)))
 	}
 
-	// A payload that cannot be encoded is a local error: nothing is sent, and it is not reported as an
-	// invalid server response.
-	@Test func publishRejectsAnUnencodablePayloadWithoutSending() async throws {
-		let (connection, transport) = Self.connection(retries: 3)
+	// JSON has no NaN or infinity: they are sent as null, as JavaScript's JSON.stringify does.
+	@Test func publishSendsNonFiniteNumbersAsNull() async throws {
+		let (connection, transport) = Self.connection()
 		var event = Self.event
-		event.goals = [Goal(name: "goal1", achievedAt: 1_620_000_000_000, properties: ["amount": .double(.nan)])]
+		event.goals = [
+			Goal(
+				name: "goal1", achievedAt: 1_620_000_000_000,
+				properties: ["nan": .double(.nan), "inf": .double(.infinity), "ninf": .double(-.infinity), "x": 1.5])
+		]
+		event.attributes = [PublishEvent.Attribute(name: "a", value: [.double(.nan), 2], setAt: 1_620_000_000_000)]
 		let sent = event
-		let error = try await withTimeout { await sdkError { try await connection.publish(sent) } }
-		guard case .encoding(let message) = error else {
-			Issue.record("expected an encoding error, got \(String(describing: error))")
-			return
-		}
-		#expect(!message.isEmpty)
-		#expect(transport.requests.isEmpty)
+		try await withTimeout { try await connection.publish(sent) }
+
+		let body = try #require(transport.publishedBodies.first)
+		#expect(body["goals"]?[0]?["properties"] == ["nan": .null, "inf": .null, "ninf": .null, "x": 1.5])
+		#expect(body["attributes"]?[0]?["value"] == [.null, 2])
 	}
 
 	@Test func publishRejectsOnNetworkError() async throws {

@@ -33,6 +33,26 @@ extension ContextTests {
 				]))
 	}
 
+	// JSON has no NaN or infinity. They are published as null (as JavaScript's JSON.stringify does), so
+	// such a goal or attribute cannot block the queue: the batch is sent and the context closes.
+	@Test func nonFiniteNumbersArePublishedAsNullAndDoNotBlockTheQueue() async throws {
+		let env = ContextEnv()
+		let context = env.context()
+		context.track("nan_goal", properties: ["amount": .double(.nan)])
+		context.setAttribute("ratio", to: Double.infinity)
+		try await context.publish()
+		#expect(context.treatment(for: "exp_test_ab") == 1)
+		try await context.close()
+
+		#expect(env.publishCount == 2)
+		#expect(env.sentEvents.first?["goals"]?[0]?["properties"] == ["amount": .null])
+		#expect(env.sentEvents.first?["attributes"]?[0]?["value"] == .null)
+		#expect(env.lastSentEvent?["exposures"]?[0]?["name"] == "exp_test_ab")
+		#expect(context.pendingEventCount == 0)
+		#expect(context.state == .closed)
+		#expect(env.log.errors == [])
+	}
+
 	@Test func trackCallsEventLogger() {
 		let env = ContextEnv()
 		let context = env.context()

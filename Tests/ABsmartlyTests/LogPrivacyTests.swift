@@ -51,14 +51,25 @@ import Testing
 		Self.expectPrivate(marker, secret: secret)
 	}
 
-	@Test func regexPatternIsPrivate() {
-		let secret = "[secret-\(UUID().uuidString)"
-		_ = ExprEvaluator(vars: [:]).evaluate(ExprValue(["match": [["value": "x"], ["value": .string(secret)]]] as JSONValue))
-		for entry in LogCapture.entries(containing: secret) {
-			#expect(!entry.summary.contains(secret))
+	// Every regex diagnostic: compile failure, nested quantifiers, over-length pattern, timeout.
+	@Test(arguments: ["compile", "nested", "length", "timeout"])
+	func regexPatternIsPrivate(path: String) {
+		let secret = "secret\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))"
+		let (input, pattern): (String, String) =
+			switch path {
+			case "compile": ("x", "[" + secret)
+			case "nested": ("x", "(a+)+" + secret)
+			case "length": ("x", secret + String(repeating: "a", count: 1000))
+			default: (String(repeating: "a", count: 60) + "b", "^(a|aa)+$|" + secret)
+			}
+		_ = ExprEvaluator(vars: [:]).evaluate(
+			ExprValue(["match": [["value": .string(input)], ["value": .string(pattern)]]] as JSONValue))
+		let entries = LogCapture.entries(containing: secret)
+		#expect(entries.count == 1)
+		for entry in entries {
+			#expect(!entry.summary.contains(secret), "\(entry.summary)")
 			#expect(entry.detail?.contains(secret) == true)
 		}
-		#expect(!LogCapture.entries(containing: secret).isEmpty)
 	}
 
 	@Test func audienceIsPrivate() {
@@ -74,7 +85,7 @@ import Testing
 
 	@Test func errorTextIsPrivate() {
 		let secret = "secret-\(UUID().uuidString)"
-		for error in [ABsmartlyError.transport(secret), .decoding(secret), .encoding(secret)] {
+		for error in [ABsmartlyError.transport(secret), .decoding(secret)] {
 			#expect(!error.logSummary.contains(secret))
 			#expect(error.logDetail == secret)
 			let entry = EventLog.entry(.error(error))

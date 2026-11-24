@@ -57,7 +57,6 @@ extension ABsmartlyError {
 		switch self {
 		case .transport: return "transport error"
 		case .decoding: return "decoding error"
-		case .encoding: return "encoding error"
 		default: return description
 		}
 	}
@@ -65,7 +64,7 @@ extension ABsmartlyError {
 	/// The text that can carry payload or request data (an underlying error's description).
 	var logDetail: String? {
 		switch self {
-		case .transport(let message), .decoding(let message), .encoding(let message): return message
+		case .transport(let message), .decoding(let message): return message
 		default: return nil
 		}
 	}

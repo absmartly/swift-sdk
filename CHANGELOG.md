@@ -10,8 +10,9 @@ recorded output); the `X-Agent` header is `absmartly-swift-sdk/2.0.0`. See [MIGR
 
 **2.0.0 does not support holdouts.** Holdout data in the context payload (`holdouts`, `holdoutIds`)
 is ignored, as 1.4.0 ignored it: every unit is assigned and exposed as if no holdout existed, and no
-holdout exposure is published. Apps that rely on holdouts should stay on 1.5.x, which supports them.
-Holdouts come in a later 2.x release.
+holdout exposure is published. Apps that rely on holdouts should stay on 1.5.x, which supports them
+(1.5.0 is released before 2.0.0 and maintained on `release/1.x`). Holdouts come in a later 2.x
+release.
 
 ### BREAKING (everyone moves)
 - Holdouts are not supported (1.5.0 supports them): holdout data is ignored, so a unit a holdout would hold out is assigned and exposed normally, and no holdout exposure is published. Stay on 1.5.x if you use holdouts; they come in a later 2.x release.
@@ -48,7 +49,8 @@ Holdouts come in a later 2.x release.
 - Atomic `setOverride(_:for:)`/`setOverrides(_:)` and `setCustomAssignment(_:for:)`/`setCustomAssignments(_:)`; `overrides`/`customAssignments` dictionary properties (a snapshot on read; assigning replaces the whole dictionary); overrides and custom assignments at context creation.
 - `Context.State` and `context.state`.
 - `EventLogger.osLog`. It logs what happened (event kind, experiment or goal name, error kind) publicly and the event's contents (goal properties, attributes, context data, error text) as private data, which the unified log redacts unless the device is set up to show it. The SDK's own diagnostics (malformed configs, custom fields, regex patterns, audiences) do the same: payload text is private.
-- `ABsmartlyError.encoding`: a publish payload that cannot be encoded (for example a goal property that is NaN or infinite) fails with `.encoding` and sends nothing; `.decoding` is only for data the SDK received or parsed.
+- A NaN or infinite number in a goal property or attribute is published as `null`, as JavaScript's `JSON.stringify` writes it. 1.5.0 could not encode such a batch and re-queued it, so no later publish or `close()` succeeded.
+- `ABsmartlyError` may gain cases in later 2.x releases; a `switch` over it needs a `default` case.
 - A `refresh()` that completes while the first fetch is still pending makes the context ready, and every `ready()` caller (waiting or later) succeeds; the first fetch's late result, data or error, is ignored. If the first fetch fails first, the context stays failed and an overlapping refresh does not change it (`refresh()` on a failed context does not recover it, as before).
 
 ### Dependencies

@@ -339,8 +339,10 @@ extension ContextTests {
 		gate.fulfill(fixture: "context")
 		await pause(0.05)
 
-		#expect(context.contextData == Fixtures.contextData("refreshed"))
-		#expect(env.log.events.filter { if case .ready = $0 { return true } else { return false } }.count == 1)
+		// As in 1.5.0: the winning refresh logs `.ready`, then its own `.refresh`; the late load logs nothing.
+		let refreshed = Fixtures.contextData("refreshed")
+		#expect(context.contextData == refreshed)
+		#expect(env.log.events == [.ready(refreshed), .refresh(refreshed)])
 	}
 
 	@Test func loadFailingFirstKeepsTheContextFailedWhenAnOverlappingRefreshSucceeds() async throws {
@@ -356,6 +358,36 @@ extension ContextTests {
 		refreshGate.fulfill(fixture: "context")
 		try await refreshing.value
 		await #expect(throws: ABsmartlyError.transport("load failed")) { try await context.ready() }
+		#expect(context.state == .failed(.transport("load failed")))
+		#expect(context.contextData == ContextData())
+		#expect(context.treatment(for: "exp_test_ab") == 0)
+	}
+
+	// The refresh completes while the first fetch's `.error` is being delivered, after the failure is
+	// recorded but before the context reports failed: it must not install its data either.
+	@Test func refreshCompletingWhileTheLoadFailureIsDeliveredDoesNotInstall() async throws {
+		let env = ContextEnv()
+		let (context, loadGate) = await env.loadingContext()
+		let refreshGate = env.pendingRequest()
+		let refreshed = Box(false)
+		let refreshing = Task {
+			try await context.refresh()
+			refreshed.value = true
+		}
+		#expect(await eventually(timeout: 5) { env.getCount == 2 })
+		env.log.setHook { _, event in
+			guard case .error = event else { return }
+			refreshGate.fulfill(fixture: "context")
+			let deadline = Date().addingTimeInterval(5)
+			while !refreshed.value && Date() < deadline {
+				usleep(1000)
+			}
+		}
+
+		loadGate.reject(TestError("load failed"))
+		await #expect(throws: ABsmartlyError.transport("load failed")) { try await context.ready() }
+		try await refreshing.value
+		#expect(refreshed.value)
 		#expect(context.state == .failed(.transport("load failed")))
 		#expect(context.contextData == ContextData())
 		#expect(context.treatment(for: "exp_test_ab") == 0)

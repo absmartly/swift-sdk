@@ -76,7 +76,8 @@ struct Connection: Sendable {
 		do {
 			body = try JSONEncoder().encode(event)
 		} catch {
-			throw .encoding(error.safeDescription)
+			// Not expected: every value in a publish event encodes (non-finite numbers as null).
+			throw .decoding(error.safeDescription)
 		}
 		_ = try await send(method: "PUT", url: publishURL, body: body)
 	}

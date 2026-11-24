@@ -19,7 +19,8 @@ experiments, then move to 2.0.
 
 **Using holdouts? Stay on 1.5.x for now.** 2.0.0 does not support holdouts: it ignores holdout
 data in the context payload, so every unit is assigned and exposed as if no holdout existed and no
-holdout exposure is published. 1.5.x supports holdouts; they come to 2.x in a later release.
+holdout exposure is published. 1.5.x supports holdouts (1.5.0 is released before 2.0.0 and is
+maintained on `release/1.x`); they come to 2.x in a later release.
 
 1.x stays supported on the `release/1.x` branch (see [SUPPORT.md](SUPPORT.md)). You cannot use 1.x
 and 2.x in the same app: a Swift package graph holds one major version of a package.
@@ -189,10 +190,11 @@ Delivery threads are unchanged: `exposure`, `goal` and `error` on the calling th
 | `ContextData` (class) | `ContextData` (struct) |
 | `Experiment`, `ExperimentVariant`, `CustomFieldValue` | Same names, now structs with public initializers; `applications` and `customFieldValues` are non-optional (empty when absent) |
 | `Application` | `ExperimentApplication` |
+| `ContextData(experiments:holdouts:)`, `ContextData.holdouts`, `Experiment.holdoutIds`, `Experiment.holdoutType` (1.5.0) | Not in 2.0.0: holdouts are not supported, and the payload's holdout data is ignored. Use `ContextData(experiments:)` |
 | `Exposure`, `PublishEvent` | Same names (structs) |
 | `GoalAchievement` | `Goal` |
 | `Unit`, `Attribute` (publish payload) | `PublishEvent.Unit`, `PublishEvent.Attribute` |
-| `ABSmartlyError` (class, `errorMessage`) | `ABsmartlyError` (enum); `localizedDescription` keeps the 1.x messages |
+| `ABSmartlyError` (class, `errorMessage`) | `ABsmartlyError` (enum); `localizedDescription` keeps the 1.x messages. Later 2.x releases may add cases, so a `switch` over it needs a `default` case |
 
 ## Behaviour notes
 

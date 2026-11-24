@@ -161,6 +161,8 @@ extension JSONValue: Codable {
 		case .null: try container.encodeNil()
 		case .bool(let value): try container.encode(value)
 		case .int(let value): try container.encode(value)
+		// JSON has no NaN or infinity: like JavaScript's `JSON.stringify`, they are written as null.
+		case .double(let value) where !value.isFinite: try container.encodeNil()
 		case .double(let value): try container.encode(value)
 		case .string(let value): try container.encode(value)
 		case .array(let value): try container.encode(value)

@@ -380,7 +380,9 @@ which SwiftUI `body` cannot do, and would hop executors on the hottest path. So:
 - Cached assignments are reference types mutated in place under the lock, as in 1.5.0, so a cached
   read neither copies nor writes back. Measured on Linux, release build, 200k cached reads (no rules,
   no audience, already exposed): `treatment` 209 ns/op (1.5.0: 275), peek 155 (257),
-  `variableValue` 332 (465). A work-counter test (`revalidationCount`) pins that ordinary cached
+  `variableValue` 332 (465). The single-section shared-key read (the 1.5.0 winner rule) costs
+  about 2% on a warmed exposing `variableValue` (411–417 vs 406–407 ns against c19460a, interleaved,
+  same host). A work-counter test (`revalidationCount`) pins that ordinary cached
   reads never re-evaluate rules or audiences.
 - I/O (`ready`, `refresh`, `publish`, `close`) is `async`. Timers (auto-publish, auto-refresh) are
   `Task`s with `Task.sleep`.

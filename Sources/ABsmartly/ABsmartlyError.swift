@@ -3,6 +3,7 @@ import Foundation
 /// Every error the SDK reports, thrown by its `async` APIs and delivered as `.error` events.
 ///
 /// `localizedDescription`/`errorDescription` are the 1.x messages, which the cross-SDK tests match.
+/// Later 2.x releases may add cases, so a `switch` over this type should have a `default` case.
 public enum ABsmartlyError: Error, Sendable, Hashable {
 	/// A required configuration value is missing; the message names it.
 	case invalidConfiguration(String)
@@ -22,9 +23,6 @@ public enum ABsmartlyError: Error, Sendable, Hashable {
 	case transport(String)
 	/// A response, context data or JSON text could not be decoded.
 	case decoding(String)
-	/// The publish payload could not be encoded (for example a goal property that is NaN or
-	/// infinite), so nothing was sent.
-	case encoding(String)
 	/// The operation was cancelled.
 	case cancelled
 }
@@ -41,7 +39,6 @@ extension ABsmartlyError: LocalizedError {
 		case .httpStatus(_, let message): return message
 		case .transport(let message): return message
 		case .decoding(let message): return message
-		case .encoding(let message): return message
 		case .cancelled: return "The operation was cancelled."
 		}
 	}

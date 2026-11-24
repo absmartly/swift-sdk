@@ -402,10 +402,17 @@ struct ContextState {
 	/// does not define it: a later candidate is never used because of the variant the unit got. Only
 	/// the winner is exposed.
 	mutating func variableValue(_ key: String, peek: Bool, now: () -> Int64) -> (JSONValue?, Exposure?) {
-		for candidate in index.variableExperiments[key] ?? [] {
+		guard let candidates = index.variableExperiments[key] else {
+			return (nil, nil)
+		}
+		for candidate in candidates {
 			let assignment = lookup(candidate.data.name)
 			if assignment.assigned || assignment.overridden || assignment.ruleOverride {
-				return (assignment.variables?[key], peek ? nil : expose(assignment, now: now))
+				let value = assignment.variables?[key]
+				if peek || assignment.exposed {
+					return (value, nil)
+				}
+				return (value, expose(assignment, now: now))
 			}
 		}
 		return (nil, nil)

@@ -136,7 +136,9 @@ import Testing
 		#expect(Self.recorded.count == 7 * Self.uidSweep.count)
 	}
 
-	@Test(arguments: [
+	// Serialized: the probes are CPU-bound, and running all seven fixtures at once can starve the
+	// timer-based tests on a small host.
+	@Test(.serialized, arguments: [
 		"context", "audience_context", "audience_strict_context", "audience_key_conflict_disjoint_context", "refreshed",
 		"refreshed_full_on", "parity_rules_context",
 	])
