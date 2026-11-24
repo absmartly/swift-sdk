@@ -8,8 +8,8 @@ let package = Package(
 	name: "ParityRecorder",
 	platforms: [.macOS(.v12)],
 	dependencies: [
-		// release/1.5.0-prep at 2b44de4 (swift-sdk#14), the 1.5.0 release candidate. Re-pin to the v1.5.0 tag once it exists.
-		.package(url: "https://github.com/absmartly/swift-sdk.git", revision: "2b44de40861a92385b1b77f14c8606d68469ce83"),
+		// The released 1.5.0.
+		.package(url: "https://github.com/absmartly/swift-sdk.git", exact: "1.5.0"),
 		.package(url: "https://github.com/mxcl/PromiseKit.git", .upToNextMajor(from: "6.8.4")),
 	],
 	targets: [

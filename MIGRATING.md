@@ -19,7 +19,7 @@ experiments, then move to 2.0.
 
 **Using holdouts? Stay on 1.5.x for now.** 2.0.0 does not support holdouts: it ignores holdout
 data in the context payload, so every unit is assigned and exposed as if no holdout existed and no
-holdout exposure is published. 1.5.x supports holdouts (1.5.0 is released before 2.0.0 and is
+holdout exposure is published. 1.5.x supports holdouts (released, and
 maintained on `release/1.x`); they come to 2.x in a later release.
 
 1.x stays supported on the `release/1.x` branch (see [SUPPORT.md](SUPPORT.md)). You cannot use 1.x

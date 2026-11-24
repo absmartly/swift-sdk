@@ -251,24 +251,26 @@ public final class Context: Sendable {
 					// While the first fetch is still pending, this refresh makes the context ready. Once
 					// that fetch failed (`failure` is set before the error is delivered), the context
 					// stays failed, as `refresh()` on a failed context does.
-					let startup: [CheckedContinuation<Result<Void, ABsmartlyError>, Never>]?? = self.storage.withLock {
-						state in
+					let outcome: RefreshOutcome = self.storage.withLock { state in
 						state.refreshTask = nil
 						if state.failure != nil {
-							return .none
+							return .discarded
 						}
 						let loading = !state.ready
 						state.index = index
 						markReady(&state)
-						guard loading else { return .some(nil) }
+						guard loading else { return .refreshed }
 						let waiters = state.readyWaiters
 						state.readyWaiters = []
-						return .some(waiters)
+						return .wonStartup(waiters)
 					}
-					if case .some(let waiters) = startup {
-						if let waiters {
-							settleReady(data, waiters: waiters, deliverOnMain: true)
-						}
+					switch outcome {
+					case .discarded:
+						break
+					case .refreshed:
+						emit(.refresh(data), onMain: true)
+					case .wonStartup(let waiters):
+						settleReady(data, waiters: waiters, deliverOnMain: true)
 						emit(.refresh(data), onMain: true)
 					}
 					result = .success(())
@@ -285,6 +287,15 @@ public final class Context: Sendable {
 		}
 		let task = try claimed.get()
 		try await task?.value.get()
+	}
+
+	private enum RefreshOutcome {
+		/// The first fetch failed: the context stays failed and the data is not installed.
+		case discarded
+		/// Installed on a ready context.
+		case refreshed
+		/// Installed while the first fetch was pending: the context became ready with this data.
+		case wonStartup([CheckedContinuation<Result<Void, ABsmartlyError>, Never>])
 	}
 
 	/// Publishes the pending exposures and goals now. A failed publish keeps them queued.

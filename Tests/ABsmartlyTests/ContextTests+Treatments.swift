@@ -397,7 +397,7 @@ extension ContextTests {
 		#expect(context.pendingEventCount == 2)
 	}
 
-	// Owner decision (Q8), as in the Java SDK: a config-only refresh with an unchanged iteration keeps a
+	// As in the Java SDK, a config-only refresh with an unchanged iteration keeps a
 	// cached assignment, including its variant variables. exp_one was resolved before the refresh added
 	// the key to its variant, so it still wins without the key: the default is returned. A context that
 	// never resolved exp_one reads the refreshed config.

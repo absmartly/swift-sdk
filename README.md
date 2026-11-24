@@ -24,7 +24,7 @@ platforms (swift-crypto is linked on Linux only).
 Building needs Swift 6.0 or later (Xcode 16 or later).
 
 **Holdouts are not supported in 2.0.0.** Holdout data is ignored: units are assigned and exposed as
-if no holdout existed. Use 1.5.x if you rely on holdouts (1.5.0 is released before 2.0.0 and is
+if no holdout existed. Use 1.5.x if you rely on holdouts (released, and
 maintained on the `release/1.x` branch); they come to 2.x in a later release.
 
 ## Installation

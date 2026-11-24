@@ -471,8 +471,7 @@ behaviour is exactly 1.5.0's. Each will be fixed in both lines at the same time.
 Behaviour parity is proven, not asserted:
 
 1. **Recorded 1.5.0 output.** `Tools/ParityRecorder` is a small package that depends on swift-sdk
-   at the pinned 1.5.0 commit (`release/1.5.0-prep` at 2b44de4, swift-sdk#14; re-pin to the
-   v1.5.0 tag once it exists). It creates with-data contexts over seven fixtures and 25 string
+   at the released `v1.5.0` tag. It creates with-data contexts over seven fixtures and 25 string
    UIDs (including ASCII, padded, accented, CJK, emoji and numeric-looking text), recording
    treatments/peeks, variables/key maps, custom fields, event sequence and normalized publish
    content. It writes `Tests/ABsmartlyTests/Resources/parity/*.json`. Timestamps are removed and
@@ -481,9 +480,8 @@ Behaviour parity is proven, not asserted:
    cover those contracts and headers.
 2. **2.0 replays it.** `ParityTests` runs the same probe on 2.0 and compares its 175 records with
    the recording, normalizing renamed event/API names. The only accepted difference is the
-   `boolean` custom field `"TRUE"` (see *Known 2.0 difference from 1.5.0*). The probe disables
-   automatic publishing with a long `publishDelay` on both sides (1.5.0 schedules a publish even
-   for a negative delay).
+   `boolean` custom field `"TRUE"` (see *Known 2.0 difference from 1.5.0*). Both sides use a
+   negative `publishDelay`, which disables automatic publishing in 2.0 and in released 1.5.0.
 3. **cross-sdk-tests.** The companion PR moves the swift wrapper to the 2.0 API and pins the swift
    lane to `feat/swift-2.0`; every scenario the 1.5.0 lane passes must pass on 2.0.
 4. **Ported unit tests.** The 1.x test suite is ported to swift-testing against the new API.
@@ -511,14 +509,14 @@ Behaviour parity is proven, not asserted:
 ## Known 2.0 difference from 1.5.0
 
 - A `boolean` custom field whose text is neither `"true"` nor `"false"` (e.g. `"TRUE"`) is
-  `false` in 2.0; 1.5.0 (`release/1.5.0-prep`) restored 1.4.0's `Bool(text)` coercion, which gives
+  `false` in 2.0; 1.5.0 restored 1.4.0's `Bool(text)` coercion, which gives
   no value. `"true"` and `"false"` agree. Open for the owner: align 2.0 with 1.5.0 or keep it.
-- `release/1.5.0-prep` later restored more 1.4.0 behaviour (its commit c2b5841) that 2.0 keeps in
-  its earlier 1.5.0 form: a negative `publishDelay` still schedules the publish in 1.5.0 (2.0:
-  disables automatic publishing), `refresh()` on a failed context fetches again and can recover it
-  in 1.5.0 (2.0: succeeds without fetching), and 1.5.0's `match` drops the pattern/input length
-  limits and nested-quantifier rejection (2.0 keeps them; both keep the timeout). The parity probe
-  does not exercise these. Open for the owner, like the boolean difference above.
+- Released 1.5.0 also restored other 1.4.0 behaviour (commit c2b5841) that 2.0 keeps in its
+  earlier form: `refresh()` on a failed context fetches again and can recover it in 1.5.0 (2.0:
+  succeeds without fetching), and 1.5.0's `match` drops the pattern/input length limits and
+  nested-quantifier rejection (2.0 keeps them; both keep the timeout). A negative `publishDelay`
+  disables automatic publishing in both. The parity probe does not exercise these. Open for the
+  owner, like the boolean difference above.
 - An integer literal from 2^63 to 2^64−1 inside an audience or rule (e.g. `9223372036854775808`)
   is converted to text as `"9223372036854776000"`. 1.5.0 on Linux prints it as a negative number
   (a Foundation `NSNumber` formatting bug), on Apple platforms as the unsigned value. Only `match`,

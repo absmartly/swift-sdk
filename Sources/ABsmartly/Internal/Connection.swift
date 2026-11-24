@@ -76,7 +76,7 @@ struct Connection: Sendable {
 		do {
 			body = try JSONEncoder().encode(event)
 		} catch {
-			// Not expected: every value in a publish event encodes (non-finite numbers as null).
+			// Non-finite numbers encode as null; Foundation can still reject, e.g., very deep nesting.
 			throw .decoding(error.safeDescription)
 		}
 		_ = try await send(method: "PUT", url: publishURL, body: body)

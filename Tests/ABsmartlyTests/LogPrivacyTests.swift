@@ -51,7 +51,7 @@ import Testing
 		Self.expectPrivate(marker, secret: secret)
 	}
 
-	// Every regex diagnostic: compile failure, nested quantifiers, over-length pattern, timeout.
+	// Compile failure, nested quantifiers, over-length pattern and timeout.
 	@Test(arguments: ["compile", "nested", "length", "timeout"])
 	func regexPatternIsPrivate(path: String) {
 		let secret = "secret\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))"
@@ -85,13 +85,17 @@ import Testing
 
 	@Test func errorTextIsPrivate() {
 		let secret = "secret-\(UUID().uuidString)"
-		for error in [ABsmartlyError.transport(secret), .decoding(secret)] {
+		let errors: [ABsmartlyError] = [
+			.transport(secret), .decoding(secret), .invalidConfiguration(secret), .httpStatus(code: 418, message: secret),
+		]
+		for error in errors {
 			#expect(!error.logSummary.contains(secret))
 			#expect(error.logDetail == secret)
 			let entry = EventLog.entry(.error(error))
 			#expect(!entry.summary.contains(secret))
 			#expect(entry.detail == secret)
 		}
+		#expect(ABsmartlyError.httpStatus(code: 418, message: secret).logSummary == "HTTP status 418")
 		#expect(ABsmartlyError.notReady.logSummary == "ABsmartly Context is not yet ready.")
 		#expect(ABsmartlyError.notReady.logDetail == nil)
 	}
@@ -113,6 +117,31 @@ import Testing
 			#expect(entry.detail?.contains(secret) == true)
 		}
 		#expect(EventLog.entry(.goal(goal)).summary == "goal 'checkout'")
+	}
+
+	// A custom transport can throw any `ABsmartlyError`, including ones carrying its own text.
+	@Test(arguments: ["invalidConfiguration", "httpStatus"])
+	func customTransportErrorTextIsPrivate(kind: String) async {
+		let secret = "secret-\(UUID().uuidString)"
+		let env = ContextEnv()
+		env.transport.enqueue { _ in
+			throw kind == "httpStatus"
+				? ABsmartlyError.httpStatus(code: 400, message: secret) : ABsmartlyError.invalidConfiguration(secret)
+		}
+		let context = env.client.makeContext(units: Fixtures.units)
+		try? await context.ready()
+
+		let entries = LogCapture.entries(containing: secret)
+		#expect(entries.count == 1)
+		for entry in entries {
+			#expect(entry.summary.hasPrefix("Context initialization failed: "))
+			#expect(!entry.summary.contains(secret))
+			#expect(entry.detail == secret)
+		}
+		#expect(env.log.errors.count == 1)
+		let eventEntry = EventLog.entry(.error(env.log.errors.first ?? .notReady))
+		#expect(!eventEntry.summary.contains(secret))
+		#expect(eventEntry.detail == secret)
 	}
 
 	@Test func contextLoadFailureLogsTheKindPublicly() async {

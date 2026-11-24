@@ -52,20 +52,25 @@ enum Log {
 }
 
 extension ABsmartlyError {
-	/// The error's kind, with SDK-generated text only.
+	/// The error's kind, with SDK-generated text only. Every case that carries a string (which a
+	/// custom transport can set) is named by its kind; that string is `logDetail`.
 	var logSummary: String {
 		switch self {
+		case .invalidConfiguration: return "invalid configuration"
+		case .httpStatus(let code, _): return "HTTP status \(code)"
 		case .transport: return "transport error"
 		case .decoding: return "decoding error"
-		default: return description
+		case .notReady, .closing, .closed, .blankUnitUID, .unitAlreadySet, .cancelled: return description
 		}
 	}
 
-	/// The text that can carry payload or request data (an underlying error's description).
+	/// The caller- or payload-supplied text of the error, logged privately.
 	var logDetail: String? {
 		switch self {
-		case .transport(let message), .decoding(let message): return message
-		default: return nil
+		case .invalidConfiguration(let message), .httpStatus(_, let message), .transport(let message),
+			.decoding(let message):
+			return message
+		case .notReady, .closing, .closed, .blankUnitUID, .unitAlreadySet, .cancelled: return nil
 		}
 	}
 }
