@@ -224,6 +224,26 @@ extension ContextTests {
 		#expect(env.log.errorMessages == ["Unit 'session_id' UID already set."])
 	}
 
+	// Streams cannot recurse, so they see the error a logger's error handler causes, which the
+	// logger itself does not get again (as in 1.5.0, whose guard is the logger's).
+	@Test func streamsSeeErrorsCausedByTheLoggersErrorHandler() async {
+		let env = ContextEnv()
+		let context = env.context()
+		env.log.clear()
+		let stream = context.events
+		env.log.setHook { context, event in
+			if case .error = event { try? context.setUnit("session_id", to: "again") }
+		}
+		try? context.setUnit("session_id", to: "other")
+		try? await context.close()
+		var errors = 0
+		for await event in stream {
+			if case .error = event { errors += 1 }
+		}
+		#expect(errors == 2)
+		#expect(env.log.errors.count == 1)
+	}
+
 	// The guard is per context: an error that context A's error handler causes on context B is
 	// delivered for B.
 	@Test func errorGuardIsPerContext() {

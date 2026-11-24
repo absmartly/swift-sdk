@@ -748,13 +748,17 @@ public final class Context: Sendable {
 		}
 		guard let logger else { return }
 		// While the logger handles an `.error`, a further error it causes on that thread is not
-		// delivered again (it would recurse without bound); it has already gone to the SDK log.
+		// given to the logger again (it would recurse without bound), as in 1.5.0; streams, which
+		// cannot recurse, still see it, and it has already gone to the SDK log.
 		let deliver: @Sendable () -> Void = { [self] in
 			guard case .error = event else {
 				logger.handle(self, event)
 				return
 			}
 			let threadDictionary = Thread.current.threadDictionary
+			if threadDictionary[deliveringErrorKey] != nil {
+				return
+			}
 			threadDictionary[deliveringErrorKey] = true
 			defer { threadDictionary.removeObject(forKey: deliveringErrorKey) }
 			logger.handle(self, event)
@@ -826,12 +830,7 @@ public final class Context: Sendable {
 		emitError(error)
 	}
 
-	// An error raised while the logger is handling this context's `.error` on the same thread (e.g. a
-	// logger reading a value from its error handler before the context is ready) is not delivered.
 	private func emitError(_ error: ABsmartlyError, onMain: Bool = false) {
-		if Thread.current.threadDictionary[deliveringErrorKey] != nil {
-			return
-		}
 		emit(.error(error), onMain: onMain)
 	}
 }
