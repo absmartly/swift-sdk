@@ -67,7 +67,7 @@ end
 
 With this hook the unchanged 1.x pod and its dependencies built on Xcode 27.2 for iOS 15, macOS 12
 and watchOS 9 (tvOS not tested; measured with an unconditional raise, which is the same build here
-because every one of these pods declares less than the floor). Swift Package Manager needs no hook. See
+because every one of these pods declares less than the floor). Swift Package Manager needs no hook (on Xcode 27.2, `swift test` was run on macOS only). See
 [CocoaPods validation status](docs/cocoapods-validation.md).
 
 Run the following command to update your Xcode project:

@@ -89,15 +89,18 @@ fi
 class SimctlJsonWrapperTest(unittest.TestCase):
     WRAPPER = SCRIPT.with_name("xcrun-simctl-json.sh")
 
-    def run_wrapper(self, fake_output, *args, fake_status=0):
+    def run_wrapper(self, fake_output, *args, fake_status=0, fake_stderr=""):
         with tempfile.TemporaryDirectory() as directory:
             fake = Path(directory) / "xcrun"
             trace = Path(directory) / "trace"
             output = Path(directory) / "output"
             output.write_text(fake_output)
+            errors = Path(directory) / "errors"
+            errors.write_text(fake_stderr)
             fake.write_text(
                 "#!/usr/bin/env bash\n"
                 f"printf '%s\\n' \"$*\" > {trace}\n"
+                f"cat {errors} >&2\n"
                 f"cat {output}\n"
                 f"exit {fake_status}\n"
             )
@@ -116,6 +119,13 @@ class SimctlJsonWrapperTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout, '{\n  "devices": {}\n}\n')
         self.assertEqual(called, "simctl list -j devices")
+
+    def test_simctl_stderr_noise_is_removed_too(self):
+        result, _ = self.run_wrapper('{\n  "devices": {}\n}', "simctl", "list", "-j", "devices",
+                                     fake_stderr="Install Started\nwarning: {x}")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, '{\n  "devices": {}\n}\n')
+        self.assertEqual(result.stderr, "")
 
     def test_args_containing_j_but_not_dash_j_pass_through(self):
         result, called = self.run_wrapper("raw", "simctl", "list", "jobs")

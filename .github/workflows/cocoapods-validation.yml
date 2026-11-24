@@ -32,6 +32,14 @@ jobs:
       - name: Select Xcode
         if: matrix.xcode != ''
         run: sudo xcode-select -s "${{ matrix.xcode }}"
+      # CocoaPods 1.17.0's simulator lookup can crash before building iOS/tvOS; see
+      # scripts/xcrun-simctl-json.sh. The wrapper only changes how the simulator list is read.
+      - name: Install simctl JSON wrapper
+        run: |
+          mkdir -p "$RUNNER_TEMP/xcrun-shim"
+          cp scripts/xcrun-simctl-json.sh "$RUNNER_TEMP/xcrun-shim/xcrun"
+          chmod +x "$RUNNER_TEMP/xcrun-shim/xcrun"
+          echo "$RUNNER_TEMP/xcrun-shim" >> "$GITHUB_PATH"
       - name: Full CocoaPods validation
         run: |
           set -o pipefail

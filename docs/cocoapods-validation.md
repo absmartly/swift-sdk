@@ -125,7 +125,7 @@ or a replacement for resolving the CocoaPods spec repository on a Mac:
 | Source | Immutable revision | Relevant declaration |
 | --- | --- | --- |
 | [SwiftyJSON 5.0.2](https://github.com/SwiftyJSON/SwiftyJSON/blob/af76cf3ef710b6ca5f8c05f3a31307d44a3c5828/SwiftyJSON.podspec) | `af76cf3ef710b6ca5f8c05f3a31307d44a3c5828` | macOS 10.9 |
-| SwiftyJSON 5.0.2 (CocoaPods trunk) | trunk spec `SwiftyJSON/5.0.2` | iOS 12, macOS 10.13, tvOS 9, watchOS 4 (differs from the git tag; so with the 1.x targets the resolver picks 5.0.1, which declares macOS 10.9, as Mac run 1 installed) |
+| SwiftyJSON 5.0.2 (CocoaPods trunk) | trunk spec `SwiftyJSON/5.0.2` | iOS 12, macOS 10.13, tvOS 9, watchOS 4 (differs from the git tag; so with the 1.x targets the resolver picks 5.0.1, which declares macOS 10.9, for iOS, macOS and watchOS, as Mac runs 1 and 2 installed; tvOS, where 5.0.2's tvOS 9 fits, got 5.0.2) |
 | [PromiseKit 6.22.1](https://github.com/mxcl/PromiseKit/blob/8a98e31a47854d3180882c8068cc4d9381bf382d/PromiseKit.podspec) | `8a98e31a47854d3180882c8068cc4d9381bf382d` | iOS 8, including CorePromise (GitHub only; see below) |
 | PromiseKit 6.18.1 (CocoaPods trunk) | trunk spec, installed in the Mac run | iOS 8, watchOS 2 (Mac run: `PromiseKit` target built at watchOS 2.0) |
 | SwiftAtomics 1.0.2 (CocoaPods trunk) | trunk spec `SwiftAtomics/1.0.2` | iOS 10, macOS 10.10, tvOS 10, watchOS 3 |
@@ -164,7 +164,8 @@ run 1 failed in `JSON.parse` on non-JSON lines in `xcrun simctl list -j devices`
 trailing newline, failed appending the nil `$INPUT_RECORD_SEPARATOR` (`no implicit conversion of
 nil into String`). For iOS/tvOS lint, put `scripts/xcrun-simctl-json.sh` first on `PATH` as
 `xcrun`: for `simctl list ... -j` it prints only the JSON object, ending in a newline, and passes
-every other call through. It changes how the simulator list is read, not what is built.
+every other call through. It changes how the simulator list is read, not what is built. It is unit-tested
+(`scripts/test-validate-cocoapods.py`) but has not yet been used in a full `pod lib lint` run.
 
 ```bash
 mkdir -p /tmp/xcrun-shim && cp scripts/xcrun-simctl-json.sh /tmp/xcrun-shim/xcrun

@@ -11,15 +11,21 @@
 #      PATH="/tmp/xcrun-shim:$PATH" pod lib lint ...
 real=${REAL_XCRUN:-/usr/bin/xcrun}
 if [ "${1:-}" = simctl ] && [ "${2:-}" = list ] && printf '%s\n' "$@" | grep -qx -- '-j'; then
-  output=$("$real" "$@")
+  # fourflusher reads stdout and stderr together, so both are captured and cleaned.
+  output=$("$real" "$@" 2>&1)
   status=$?
   [ "$status" -eq 0 ] || { printf '%s\n' "$output"; exit "$status"; }
   printf '%s' "$output" | ruby -e '
+    require "json"
     raw = STDIN.read
-    first = raw.index(/^\{/)
     last = raw.rindex(/^\}/)
-    abort("simctl list returned no JSON object:\n" + raw) unless first && last
-    puts raw[first..last]'
+    # The object is the longest suffix ending at the last line-leading "}" that parses as JSON;
+    # noise before it may lack a trailing newline, so try each "{" from the left.
+    json = last && raw.enum_for(:scan, "{").map { Regexp.last_match.begin(0) }.lazy
+      .map { |first| raw[first..last] }
+      .find { |candidate| JSON.parse(candidate) rescue false }
+    abort("simctl list returned no JSON object:\n" + raw) unless json
+    puts json'
   exit $?
 fi
 exec "$real" "$@"
