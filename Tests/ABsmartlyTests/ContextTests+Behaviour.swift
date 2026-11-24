@@ -144,13 +144,11 @@ extension ContextTests {
 	// The real main-queue delivery (Apple platforms' default): background errors reach the logger on
 	// the main queue.
 	@Test func backgroundErrorsRunOnTheMainQueue() async {
-		let key = DispatchSpecificKey<Bool>()
-		DispatchQueue.main.setSpecific(key: key, value: true)
-		defer { DispatchQueue.main.setSpecific(key: key, value: nil) }
+		mainQueueTag.install()
 		let onMain = Box<[Bool]>([])
 		let env = ContextEnv()
 		env.log.setHook { _, event in
-			if case .error = event { onMain.mutate { $0.append(DispatchQueue.getSpecific(key: key) == true) } }
+			if case .error = event { onMain.mutate { $0.append(mainQueueTag.isMain) } }
 		}
 		await Context.$mainThreadDeliveryOverride.withValue(true) {
 			let context = env.context()
@@ -188,13 +186,11 @@ extension ContextTests {
 	// With main delivery on, exposures, goals and misuse errors still reach the logger on the calling
 	// thread, synchronously.
 	@Test func callerEventsStayOnTheCallingThreadWithMainDelivery() {
-		let key = DispatchSpecificKey<Bool>()
-		DispatchQueue.main.setSpecific(key: key, value: true)
-		defer { DispatchQueue.main.setSpecific(key: key, value: nil) }
+		mainQueueTag.install()
 		let seen = Box<[String]>([])
 		let env = ContextEnv()
 		env.log.setHook { _, event in
-			let onMain = DispatchQueue.getSpecific(key: key) == true
+			let onMain = mainQueueTag.isMain
 			switch event {
 			case .exposure: seen.mutate { $0.append("exposure:\(onMain)") }
 			case .goal: seen.mutate { $0.append("goal:\(onMain)") }
@@ -641,4 +637,24 @@ extension ContextTests {
 		#expect(context.attribute("environment") == nil)
 		#expect(context.attribute("application") == nil)
 	}
+}
+
+/// Tags `DispatchQueue.main` once, so a logger can tell whether it runs on the main queue (on Linux
+/// `Thread.isMainThread` is false there). Never removed: other tests may still be delivering.
+private let mainQueueTag = MainQueueTag()
+
+// `@unchecked`: DispatchSpecificKey is only Sendable from Swift 6.1's Dispatch; it is immutable.
+private final class MainQueueTag: @unchecked Sendable {
+	private let key = DispatchSpecificKey<Bool>()
+	private let installed = Locked(false)
+
+	func install() {
+		installed.withLock { done in
+			guard !done else { return }
+			DispatchQueue.main.setSpecific(key: key, value: true)
+			done = true
+		}
+	}
+
+	var isMain: Bool { DispatchQueue.getSpecific(key: key) == true }
 }
