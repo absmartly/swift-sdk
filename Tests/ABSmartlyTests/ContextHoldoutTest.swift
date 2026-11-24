@@ -922,8 +922,8 @@ final class ContextHoldoutTest: XCTestCase {
 		try assertPublished(
 			context,
 			[
-				exposure(1, "exp_detached_variable_winner", 1, unitType: "user_id", fullOn: true),
 				holdoutExposure(11, "holdout_detached_variable", 1, unitType: "user_id"),
+				exposure(1, "exp_detached_variable_winner", 1, unitType: "user_id", fullOn: true),
 			], unitType: "user_id")
 	}
 
@@ -1675,8 +1675,8 @@ final class ContextHoldoutTest: XCTestCase {
 		try assertPublished(
 			context,
 			[
-				exposure(1, "exp_holdout_rules", 1, assigned: false, ruleOverride: true),
 				holdoutExposure(11, "holdout_rules_suppression", 0),
+				exposure(1, "exp_holdout_rules", 1, assigned: false, ruleOverride: true),
 			], attributes: [Attribute("country", value: "US", setAt: now)])
 	}
 
@@ -2066,8 +2066,8 @@ final class ContextHoldoutTest: XCTestCase {
 		try assertPublished(
 			context,
 			[
-				holdoutExposure(11, "holdout_a", 0), exposure(2, "exp_assigned", Self.normalVariant),
-				holdoutExposure(12, "holdout_b", 1),
+				holdoutExposure(11, "holdout_a", 0), holdoutExposure(12, "holdout_b", 1),
+				exposure(2, "exp_assigned", Self.normalVariant),
 			])
 	}
 
@@ -2100,6 +2100,140 @@ final class ContextHoldoutTest: XCTestCase {
 
 		XCTAssertNil(context.getContextData()?.holdouts)
 		XCTAssertEqual(0, context.getTreatment("exp"))
+	}
+
+	#if DEBUG
+	// A read that claims while close() is draining does not queue its exposures; the holdout arm's
+	// claim is released with the experiment's, so after the final publish fails the next read
+	// publishes both.
+	func testHoldoutExposureDroppedByAClosingContextIsExposedAfterAFailedClose() throws {
+		let context = createContext(
+			contextData(
+				[experiment(1, "exp_holdout_out", holdoutIds: [11])],
+				holdouts: [holdout(11, "holdout_a", seeds: Self.holdoutA)]), uid: Self.uidNotHeldOut)
+		context.track("goal1", properties: nil)
+		let (finalPublish, finalPublishSeal) = Promise<Void>.pending()
+		handler.publishEventReturnValue = finalPublish
+
+		let closeFailed = XCTestExpectation(description: "close failed")
+		Context.setTestHook(.exposureClaimed) {
+			Context.setTestHook(.exposureClaimed, nil)
+			_ = context.close().catch { _ in closeFailed.fulfill() }
+		}
+		defer { Context.setTestHook(.exposureClaimed, nil) }
+
+		XCTAssertEqual(0, context.getTreatment("exp_holdout_out"))
+		XCTAssertTrue(context.isClosing())
+		finalPublishSeal.reject(ABSmartlyError("publish failed"))
+		wait(for: [closeFailed], timeout: 2)
+		XCTAssertEqual(1, context.getPendingCount())
+
+		handler.publishEventReturnValue = Promise<Void>.value(())
+		XCTAssertEqual(0, context.getTreatment("exp_holdout_out"))
+		XCTAssertEqual(3, context.getPendingCount())
+		try assertPublishedExposures(
+			context, [exposure(1, "exp_holdout_out", 0), holdoutExposure(11, "holdout_a", 1)])
+	}
+
+	// A held-out unit's only exposure is the holdout's: dropped by a closing context, it is still
+	// published by the next read after the failed close.
+	func testHeldOutUnitsHoldoutExposureDroppedByAClosingContextIsExposedAfterAFailedClose() throws {
+		let context = createContext(
+			contextData(
+				[experiment(1, "exp_holdout_out", holdoutIds: [11])],
+				holdouts: [holdout(11, "holdout_a", seeds: Self.holdoutA)]))
+		context.track("goal1", properties: nil)
+		let (finalPublish, finalPublishSeal) = Promise<Void>.pending()
+		handler.publishEventReturnValue = finalPublish
+
+		let closeFailed = XCTestExpectation(description: "close failed")
+		Context.setTestHook(.exposureClaimed) {
+			Context.setTestHook(.exposureClaimed, nil)
+			_ = context.close().catch { _ in closeFailed.fulfill() }
+		}
+		defer { Context.setTestHook(.exposureClaimed, nil) }
+
+		XCTAssertEqual(0, context.getTreatment("exp_holdout_out"))
+		finalPublishSeal.reject(ABSmartlyError("publish failed"))
+		wait(for: [closeFailed], timeout: 2)
+
+		handler.publishEventReturnValue = Promise<Void>.value(())
+		XCTAssertEqual(0, context.getTreatment("exp_holdout_out"))
+		XCTAssertEqual(2, context.getPendingCount())
+		try assertPublishedExposures(context, [holdoutExposure(11, "holdout_a", 0)])
+	}
+
+	// Claimed before the unit was set, then dropped by a closing context: the release evicts the
+	// missing-unit assignment, so after the failed close the next read resolves the holdout arm with
+	// the unit and publishes its exposure.
+	func testMissingUnitHoldoutAssignmentReleasedByAClosingContextIsReResolved() throws {
+		let context = createContext(
+			contextData(
+				[experiment(1, "exp_holdout_out", holdoutIds: [11])],
+				holdouts: [holdout(11, "holdout_a", seeds: Self.holdoutA)]), uid: nil)
+		context.track("goal1", properties: nil)
+		let (finalPublish, finalPublishSeal) = Promise<Void>.pending()
+		handler.publishEventReturnValue = finalPublish
+
+		let closeFailed = XCTestExpectation(description: "close failed")
+		Context.setTestHook(.exposureClaimed) {
+			Context.setTestHook(.exposureClaimed, nil)
+			context.setUnit(unitType: Self.unitType, uid: Self.uid)
+			_ = context.close().catch { _ in closeFailed.fulfill() }
+		}
+		defer { Context.setTestHook(.exposureClaimed, nil) }
+
+		XCTAssertEqual(0, context.getTreatment("exp_holdout_out"))
+		finalPublishSeal.reject(ABSmartlyError("publish failed"))
+		wait(for: [closeFailed], timeout: 2)
+
+		handler.publishEventReturnValue = Promise<Void>.value(())
+		XCTAssertEqual(0, context.getTreatment("exp_holdout_out"))
+		XCTAssertEqual(2, context.getPendingCount())
+		XCTAssertEqual([holdoutExposure(11, "holdout_a", 0)], try publish(context).exposures)
+	}
+
+	// A recovery between a read's claim and its enqueue drops the stale exposures, including the
+	// holdout arm's claim, so the next read publishes the holdout exposure once.
+	func testHoldoutExposureClaimedBeforeARecoveryIsReExposed() throws {
+		let provider = ContextDataProviderMock()
+		provider.getContextDataReturnValue = Promise<ContextData>.value(
+			contextData(
+				[experiment(1, "exp_holdout_out", holdoutIds: [11])],
+				holdouts: [holdout(11, "holdout_a", seeds: Self.holdoutA)]))
+		let config = ContextConfig()
+		config.setUnit(unitType: Self.unitType, uid: Self.uid)
+		let context = Context(
+			config: config, clock: clock, scheduler: scheduler, handler: handler, provider: provider, logger: logger,
+			parser: DefaultVariableParser(), matcher: AudienceMatcher(),
+			promise: Promise<ContextData>(error: ABSmartlyError("load failed")), application: "website",
+			environment: "production")
+		context.setOverride(experimentName: "exp_holdout_out", variant: 1)
+
+		// Claimed on the failed context (no holdouts yet), then a recovery lands before the enqueue.
+		Context.setTestHook(.exposureClaimed) {
+			Context.setTestHook(.exposureClaimed, nil)
+			let refreshed = XCTestExpectation()
+			_ = context.refresh().done { refreshed.fulfill() }
+			XCTAssertEqual(.completed, XCTWaiter().wait(for: [refreshed], timeout: 2))
+		}
+		defer { Context.setTestHook(.exposureClaimed, nil) }
+
+		XCTAssertEqual(1, context.getTreatment("exp_holdout_out"))
+		XCTAssertEqual(0, context.getPendingCount())
+		XCTAssertEqual(1, context.getTreatment("exp_holdout_out"))
+		XCTAssertEqual(1, context.getTreatment("exp_holdout_out"))
+		XCTAssertEqual(2, context.getPendingCount())
+		try assertPublishedExposures(
+			context,
+			[exposure(1, "exp_holdout_out", 1, assigned: false, overridden: true), holdoutExposure(11, "holdout_a", 0)])
+	}
+	#endif
+
+	func assertPublishedExposures(
+		_ context: Context, _ exposures: [Exposure], file: StaticString = #filePath, line: UInt = #line
+	) throws {
+		XCTAssertEqual(exposures, try publish(context).exposures, file: file, line: line)
 	}
 
 	func loggedEvents() -> [ContextEventLoggerEvent] {

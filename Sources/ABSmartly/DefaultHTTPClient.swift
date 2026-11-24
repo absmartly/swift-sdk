@@ -21,30 +21,21 @@ public class DefaultHTTPResponse: Response {
 
 public class DefaultHTTPClient: HTTPClient {
 	private var config: DefaultHTTPClientConfig = DefaultHTTPClientConfig()
-	private var session: URLSession?
-	private let sessionLock = NSLock()
+	private let session: URLSession
 
 	public init(config: DefaultHTTPClientConfig) {
 		self.config = config
 		let sessionConfig = URLSessionConfiguration.ephemeral
 		sessionConfig.timeoutIntervalForRequest = config.connectionRequestTimeout
 		sessionConfig.timeoutIntervalForResource = config.connectionResourceTimeout
-		sessionConfig.httpMaximumConnectionsPerHost = 4
 		self.session = URLSession(configuration: sessionConfig)
 	}
 
 	deinit {
-		sessionLock.lock()
-		let s = session
-		session = nil
-		sessionLock.unlock()
-		#if canImport(FoundationNetworking)
-		// Skip URLSession invalidation on Linux: swift-corelibs-foundation has a known bug
-		// where invalidateAndCancel/finishTasksAndInvalidate during deinit causes a crash
-		// in the dispatch queue teardown. The session will be cleaned up by ARC.
-		_ = s
-		#else
-		s?.invalidateAndCancel()
+		#if !canImport(FoundationNetworking)
+		// Not on Linux: swift-corelibs-foundation crashes in dispatch queue teardown when a session
+		// is invalidated during deinit; ARC releases it there instead.
+		session.invalidateAndCancel()
 		#endif
 	}
 
@@ -68,20 +59,10 @@ public class DefaultHTTPClient: HTTPClient {
 	{
 		return Self.retry(
 			times: config.retries, delay: config.retryInterval,
-			body: { [weak self] attempt in
+			// Holds the client strongly until the request settles, as in v1.4.0, so a caller that
+			// drops the client mid-request still gets its Promise settled.
+			body: { [self] attempt in
 				return Promise<Response> { seal in
-					guard let self = self else {
-						seal.reject(URLError(.cancelled))
-						return
-					}
-
-					self.sessionLock.lock()
-					let capturedSession = self.session
-					self.sessionLock.unlock()
-					guard let session = capturedSession else {
-						seal.reject(ABSmartlyError("HTTP client is closed"))
-						return
-					}
 
 					guard var components = URLComponents(string: url) else {
 						seal.reject(URLError(.badURL))
@@ -111,7 +92,7 @@ public class DefaultHTTPClient: HTTPClient {
 						request.httpBody = body
 					}
 
-					session.dataTask(
+					self.session.dataTask(
 						with: request,
 						completionHandler: { data, rsp, error in
 							if let data = data, let rsp = rsp as? HTTPURLResponse {
@@ -142,13 +123,7 @@ public class DefaultHTTPClient: HTTPClient {
 			})
 	}
 
-	/// Initiates shutdown: in-flight requests are allowed to finish, new ones are rejected.
-	/// The returned promise resolves once shutdown has been initiated, not when pending tasks settle.
 	public func close() -> Promise<Void> {
-		sessionLock.lock()
-		session?.finishTasksAndInvalidate()
-		session = nil
-		sessionLock.unlock()
 		return Promise<Void>.value(())
 	}
 }

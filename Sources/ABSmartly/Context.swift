@@ -15,17 +15,24 @@ public final class Context {
 	private let logger: ContextEventLogger?
 	private let parser: VariableParser
 	private let matcher: AudienceMatcher
-	private var promise: Promise<ContextData>?
 
 	private var pendingCount = ManagedAtomic<UInt>(0)
 
-	private var ready = ManagedAtomic<Bool>(false)
-	private var failed = ManagedAtomic<Bool>(false)
+	// Loading, ready or failed, published as one value so isReady()/isFailed() never see a
+	// half-made transition (a recovering context stays ready throughout). Changed under contextLock.
+	private static let loading: UInt8 = 0
+	private static let readyState: UInt8 = 1
+	private static let failedState: UInt8 = 2
+	private var state = ManagedAtomic<UInt8>(Context.loading)
 	private var closed = ManagedAtomic<Bool>(false)
 	private var closing = ManagedAtomic<Bool>(false)
 	private var refreshing = ManagedAtomic<Bool>(false)
 
 	private var readyPromise: Promise<Void>?
+	private var readyResolver: Resolver<Void>?
+	// What the initial load's completion handlers hold the context through. A refresh that wins the
+	// initial load empties it, so a provider promise that never settles stops retaining the context.
+	private var initialLoadOwner: ContextOwner?
 	private var refreshPromise: Promise<Void>?
 	private var closePromise: Promise<Void>?
 
@@ -38,18 +45,18 @@ public final class Context {
 	#if DEBUG
 	var afterExperimentLookup: (() -> Void)?
 	#endif
-	private var index: [String: ExperimentVariables] = [:]
-	private var indexVariables: [String: [ExperimentVariables]] = [:]
-	private var customFieldValues: [String: [String: ContextCustomFieldValue]] = [:]
-	private var data: ContextData? = nil
+	// The current context data and its indexes, installed or cleared as one value; nil when there is
+	// no data (still loading, or the load failed).
+	private var prepared: PreparedData? = nil
 	private var failedError: Error? = nil
-
-	// Holdouts with a non-empty split, by id. Guarded by `dataLock`.
-	private var holdoutsById: [Int: Experiment] = [:]
 
 	private var hashedUnits: [String: [UInt8]] = [:]
 	private var assigners: [String: VariantAssigner] = [:]
 	private var assignmentCache: [String: Assignment] = [:]
+	// Incremented when a refresh recovers a failed context. Exposures claimed before that were made
+	// without experiment data and are dropped instead of queued. Written under contextLock and
+	// eventLock, so reading under either is safe.
+	private var dataGeneration = 0
 	// A holdout's arm per (holdout id, covered experiment's unit type), kept across refreshes while the
 	// holdout's iteration is unchanged. Guarded by `contextLock`.
 	private var holdoutAssignments: [HoldoutKey: Assignment] = [:]
@@ -95,7 +102,6 @@ public final class Context {
 		self.logger = logger
 		self.parser = parser
 		self.matcher = matcher
-		self.promise = promise
 
 		var systemAttributes: [String: JSON] = [:]
 		if let application = application, !application.isEmpty {
@@ -135,9 +141,10 @@ public final class Context {
 
 		if promise.isResolved {
 			if let data = promise.value {
-				applyData(data)
+				commitData(prepareData(data))
 				// Mark ready before delivery so a logger's ready handler can read the context.
-				markReady()
+				state.store(Context.readyState, ordering: .releasing)
+				setRefreshTimer()
 				logEvent(event: .ready(data: data))
 				// Goals tracked from inside the ready callback were queued before the
 				// context was ready, so their publish timer could not start then.
@@ -145,52 +152,121 @@ public final class Context {
 					setTimeout()
 				}
 			} else if let error = promise.error {
+				// The context is failed (and ready) by the time the `.error` event is delivered.
 				applyDataFailed(error)
+				state.store(Context.failedState, ordering: .releasing)
 				logError(error: error)
-				failed.store(true, ordering: .releasing)
 			}
 		} else {
-			readyPromise = Promise<Void> { [weak self] seal in
-				guard let self = self else {
-					seal.fulfill(())
+			// Published under promiseLock: the completions below may already run (on another queue)
+			// and clear it before this assignment would otherwise happen.
+			promiseLock.lock()
+			defer { promiseLock.unlock() }
+			// Whichever of the initial load and a refresh makes the context ready first takes this
+			// resolver and settles it, after scheduling queued goals. Set before any completion runs.
+			let (ready, resolver) = Promise<Void>.pending()
+			readyPromise = ready
+			readyResolver = resolver
+			let owner = ContextOwner(self)
+			initialLoadOwner = owner
+
+			// The completion handlers hold the context until the provider's promise settles, so a
+			// caller that keeps only waitUntilReady()'s promise still gets it settled.
+			promise.done(on: DispatchQueue.global()) { data in
+				guard let self = owner.take() else {
+					// Superseded by a refresh, which already made the context ready.
+					#if DEBUG
+					Context.runTestHook(.initialLoadSettled)
+					#endif
 					return
 				}
-
-					// Completion handlers hold the context strongly so a caller that keeps only
-					// waitUntilReady()'s promise still gets it settled.
-					promise.done(on: DispatchQueue.global()) { [self] data in
-						// Mark ready before delivery so a logger's ready handler can read the context.
-						self.applyData(data)
-						self.markReady()
-						self.deliverOnMain { self.logEvent(event: .ready(data: data)) }
-						self.promiseLock.lock()
-						self.readyPromise = nil
-						self.promiseLock.unlock()
-
-						if self.pendingCount.load(ordering: .acquiring) > 0 {
-							self.setTimeout()
-						}
-						seal.fulfill(())
-					}.catch(on: DispatchQueue.global()) { [self] error in
-						self.applyDataFailed(error)
-						Logger.error("Context initialization failed: \(error.safeLocalizedDescription)")
-						self.logError(error: error)
-						self.failed.store(true, ordering: .releasing)
-						self.promiseLock.lock()
-						self.readyPromise = nil
-						self.promiseLock.unlock()
-						seal.reject(error)
-					}
+				#if DEBUG
+				Context.runTestHook(.initialLoadTookContext)
+				#endif
+				// Outside every lock: a VariableParser that calls back into the context must not deadlock.
+				let prepared = self.prepareData(data)
+				self.contextLock.lock()
+				let wins = self.state.load(ordering: .acquiring) == Context.loading
+				if wins {
+					self.commitData(prepared)
+					// Ready before delivery so a logger's ready handler can read the context.
+					// Under eventLock, like track()'s append: with only atomics, track()'s state load
+					// (in setTimeout()) and settleReadiness()'s pendingCount load could both see the
+					// old values (store-load reordering), and neither would schedule the goal. No
+					// deterministic test can force that reordering.
+					self.eventLock.lock()
+					self.state.store(Context.readyState, ordering: .releasing)
+					self.eventLock.unlock()
 				}
+				self.contextLock.unlock()
+				if wins {
+					self.setRefreshTimer()
+					self.deliverOnMain { self.logEvent(event: .ready(data: data)) }
+					self.settleReadiness()
+				}
+				#if DEBUG
+				Context.runTestHook(.initialLoadSettled)
+				#endif
+			}.catch(on: DispatchQueue.global(), policy: .allErrors) { error in
+				// `.allErrors`: PromiseKit's default policy skips cancellation, which would leave
+				// `owner` holding the context and readiness waiters pending forever.
+				guard let self = owner.take() else {
+					// Superseded by a refresh, which already made the context ready.
+					#if DEBUG
+					Context.runTestHook(.initialLoadSettled)
+					#endif
+					return
+				}
+				#if DEBUG
+				Context.runTestHook(.initialLoadTookContext)
+				#endif
+				// The context is failed (and ready) by the time the `.error` event is delivered.
+				self.contextLock.lock()
+				let wins = self.state.load(ordering: .acquiring) == Context.loading
+				if wins {
+					self.applyDataFailed(error)
+					// Under eventLock too (defensive): a failed-state exposure is only queued, under
+					// eventLock, by a thread that already sees the context failed, so the flush's
+					// re-check under eventLock sees it failed either way.
+					self.eventLock.lock()
+					self.state.store(Context.failedState, ordering: .releasing)
+					self.eventLock.unlock()
+				}
+				self.contextLock.unlock()
+				Logger.error("Context initialization failed: \(error.safeLocalizedDescription)")
+				if wins {
+					self.deliverOnMain { self.logError(error: error) }
+					// Goals queued while loading wait for a successful refresh (setTimeout() schedules
+					// nothing on a failed context).
+					self.settleReadiness()
+				}
+				#if DEBUG
+				Context.runTestHook(.initialLoadSettled)
+				#endif
+			}
 			}
 		}
 
+	// Called once, by whichever completion made the context ready (or failed): schedules goals that
+	// were queued while loading, then settles waitUntilReady() callers.
+	private func settleReadiness() {
+		if pendingCount.load(ordering: .acquiring) > 0 {
+			setTimeout()
+		}
+		promiseLock.lock()
+		let resolver = readyResolver
+		readyResolver = nil
+		readyPromise = nil
+		promiseLock.unlock()
+		resolver?.fulfill(())
+	}
+
 	public func isReady() -> Bool {
-		return ready.load(ordering: .acquiring) || failed.load(ordering: .acquiring)
+		return state.load(ordering: .acquiring) != Context.loading
 	}
 
 	public func isFailed() -> Bool {
-		return failed.load(ordering: .acquiring)
+		return state.load(ordering: .acquiring) == Context.failedState
 	}
 
 	public func readyError() -> Error? {
@@ -233,7 +309,7 @@ public final class Context {
 			} else if let ready = currentReadyPromise {
 				_ = ready.done(on: DispatchQueue.global()) { [self] in
 					seal.fulfill(self)
-				}.catch(on: DispatchQueue.global()) { [self] _ in
+				}.catch(on: DispatchQueue.global(), policy: .allErrors) { [self] _ in
 					seal.fulfill(self)
 				}
 			}
@@ -245,18 +321,18 @@ public final class Context {
 
 		dataLock.lock()
 		defer { dataLock.unlock() }
-		return data?.experiments.map { $0.name } ?? []
+		return prepared?.data.experiments.map { $0.name } ?? []
 	}
 
 	public func getCustomFieldKeys() -> Set<String> {
-		guard ensureReady(true) else { return [] }
+		guard ensureReady(false) else { return [] }
 
 		var keys: Set<String> = []
 
 		dataLock.lock()
 		defer { dataLock.unlock() }
 
-		guard let data = data else { return keys }
+		guard let data = prepared?.data else { return keys }
 
 		for experiment in data.experiments {
 			guard let customFieldValues = experiment.customFieldValues else { continue }
@@ -269,13 +345,13 @@ public final class Context {
 		return keys
 	}
 
+	@_disfavoredOverload
 	public func getCustomFieldKeys(experimentName: String) -> [String] {
-		guard ensureReady(true) else { return [] }
 
 		dataLock.lock()
 		defer { dataLock.unlock() }
 
-		guard let experimentCustomFields = customFieldValues[experimentName] else {
+		guard let experimentCustomFields = prepared?.customFieldValues[experimentName] else {
 			return []
 		}
 
@@ -283,21 +359,19 @@ public final class Context {
 	}
 
 	public func getCustomFieldValue(experimentName: String, key: String) -> Any? {
-		guard ensureReady(true) else { return nil }
 
 		dataLock.lock()
 		defer { dataLock.unlock() }
 
-		return customFieldValues[experimentName]?[key]?.value
+		return prepared?.customFieldValues[experimentName]?[key]?.value
 	}
 
 	public func getCustomFieldValueType(experimentName: String, key: String) -> String? {
-		guard ensureReady(true) else { return nil }
 
 		dataLock.lock()
 		defer { dataLock.unlock() }
 
-		return customFieldValues[experimentName]?[key]?.type
+		return prepared?.customFieldValues[experimentName]?[key]?.type
 	}
 
 	public func getContextData() -> ContextData? {
@@ -305,7 +379,7 @@ public final class Context {
 
 		dataLock.lock()
 		defer { dataLock.unlock() }
-		return data
+		return prepared?.data
 	}
 
 	private func putLocked<K, V>(lock: NSRecursiveLock, dict: inout [K: V], key: K, value: V) -> V? {
@@ -314,16 +388,12 @@ public final class Context {
 		return dict.updateValue(value, forKey: key)
 	}
 
-	private func getLocked<K, V>(lock: NSRecursiveLock, dict: [K: V], key: K) -> V? {
+	// The dictionary is read through a closure, inside the lock: passing it by value would copy the
+	// stored property before the lock is taken, racing with writers.
+	private func getLocked<V>(lock: NSLocking, _ read: () -> V?) -> V? {
 		lock.lock()
 		defer { lock.unlock() }
-		return dict[key]
-	}
-
-	private func getLocked<K, V>(lock: NSLock, dict: [K: V], key: K) -> V? {
-		lock.lock()
-		defer { lock.unlock() }
-		return dict[key]
+		return read()
 	}
 
 	public func setOverride(experimentName: String, variant: Int) {
@@ -331,7 +401,7 @@ public final class Context {
 	}
 
 	public func getOverride(experimentName: String) -> Int? {
-		return getLocked(lock: contextLock, dict: overrides, key: experimentName)
+		return getLocked(lock: contextLock) { overrides[experimentName] }
 	}
 
 	public func setOverrides(_ overrides: [String: Int]) {
@@ -345,7 +415,7 @@ public final class Context {
 	}
 
 	public func getCustomAssignment(experimentName: String) -> Int? {
-		return getLocked(lock: contextLock, dict: cassignments, key: experimentName)
+		return getLocked(lock: contextLock) { cassignments[experimentName] }
 	}
 
 	public func setCustomAssignments(_ assignments: [String: Int]) {
@@ -355,12 +425,12 @@ public final class Context {
 	}
 
 	public func getUnit(unitType: String) -> String? {
-		return getLocked(lock: contextLock, dict: unitValues, key: unitType).map { $0.string ?? $0.stringValue }
+		return getLocked(lock: contextLock) { unitValues[unitType] }.map { $0.string ?? $0.stringValue }
 	}
 
 	/// The UID as it was set: a JSON string or a JSON number.
 	public func getUnitValue(unitType: String) -> JSON? {
-		return getLocked(lock: contextLock, dict: unitValues, key: unitType)
+		return getLocked(lock: contextLock) { unitValues[unitType] }
 	}
 
 	public func getUnitValues() -> [String: JSON] {
@@ -374,10 +444,12 @@ public final class Context {
 	}
 
 	/// Sets a unit whose UID is a number; see `ContextConfig.setUnit(unitType:uid:)`.
+	@_disfavoredOverload
 	public func setUnit(unitType: String, uid: Int) {
 		setUnit(unitType: unitType, value: JSON(uid))
 	}
 
+	@_disfavoredOverload
 	public func setUnit(unitType: String, uid: Double) {
 		setUnit(unitType: unitType, value: JSON(uid))
 	}
@@ -385,6 +457,7 @@ public final class Context {
 	/// Sets a unit from a JSON value. Only strings and numbers are accepted. An invalid UID
 	/// (blank, not a string or number, or a change to an already set unit) or a closed context
 	/// leaves the unit unchanged and logs an `.error` event.
+	@_disfavoredOverload
 	public func setUnit(unitType: String, value: JSON) {
 		guard ensureNotClosed() else { return }
 		do {
@@ -416,7 +489,7 @@ public final class Context {
 		defer { contextLock.unlock() }
 
 		if let previous = unitValues[unitType], !Self.sameUID(previous, stored) {
-			throw ABSmartlyError("Unit '\(unitType)' UID already set.")
+			throw ABSmartlyError("Unit '\(unitType)' already set.")
 		}
 
 		unitValues[unitType] = stored
@@ -427,6 +500,33 @@ public final class Context {
 		assignmentCache = assignmentCache.filter { _, assignment in
 			assignment.unitType != unitType || assignment.exposed.load(ordering: .acquiring)
 				|| !(assignment.ruleMissingUnit || assignment.holdoutMissingUnit)
+		}
+	}
+
+	// Undoes an exposure claim whose exposure was not queued. Under contextLock, so setUnit sees the
+	// claim and its release together: a missing-unit split kept across setUnit only because it
+	// looked exposed is dropped once its unit is known, so the next read re-resolves it with the
+	// unit. Takes contextLock without holding eventLock (refresh takes them in that order).
+	private func releaseUnqueuedExposure(_ assignment: Assignment?, arms: [Assignment]) {
+		contextLock.lock()
+		defer { contextLock.unlock() }
+		releaseUnqueuedArms(arms)
+		guard let assignment = assignment else { return }
+		assignment.exposed.store(false, ordering: .releasing)
+		if assignment.ruleMissingUnit || assignment.holdoutMissingUnit, let unitType = assignment.unitType, units[unitType] != nil,
+			assignmentCache[assignment.name] === assignment
+		{
+			assignmentCache[assignment.name] = nil
+		}
+	}
+
+	// Undoes the claim of holdout arms whose exposures were not queued, so another read can expose them.
+	private func releaseUnqueuedArms(_ arms: [Assignment]) {
+		guard !arms.isEmpty else { return }
+		contextLock.lock()
+		defer { contextLock.unlock() }
+		for arm in arms {
+			arm.exposed.store(false, ordering: .releasing)
 		}
 	}
 
@@ -498,77 +598,99 @@ public final class Context {
 	public func getTreatment(_ experimentName: String) -> Int {
 		guard ensureReady(true) else { return 0 }
 
-		let (assignment, claimed) = getAssignmentClaimingExposure(experimentName)
-		if claimed {
-			triggerExposures(assignment)
-		}
-
-		return assignment.variant
-	}
-
-	// A held-out experiment publishes no exposure of its own (an override or a matching rule still
-	// does); every holdout covering it publishes its own, once per epoch, from the arms pinned when
-	// the assignment was resolved. All of them are queued before the logger hears of any, so a logger
-	// that closes the context cannot flush between them.
-	private func triggerExposures(_ assignment: Assignment) {
-		var queued: [(Assignment, name: String)] = []
-		if !assignment.suppressed || assignment.overridden || assignment.ruleOverride {
-			queued.append((assignment, assignment.name))
-		}
-		for holdout in assignment.holdouts ?? [] {
-			if let arm = holdout.arm,
-				arm.exposed.compareExchange(expected: false, desired: true, ordering: .acquiringAndReleasing).0
-			{
-				// Named by the definition the assignment was resolved with, as in JavaScript.
-				queued.append((arm, holdout.definition.name))
-			}
-		}
-		queueExposures(queued)
+		return getAssignmentExposing(experimentName).variant
 	}
 
 	// Looks the assignment up and marks it exposed in one `contextLock` section, so `setUnit` cannot
-	// evict it in between and let a later call expose a second, different variant. `claimed` is true
-	// when this call marked it exposed and must queue the exposure; with `requireVariables`, only an
-	// assignment whose variant has variables is claimed. An already-exposed assignment returns as
-	// soon as it is found.
-	private func getAssignmentClaimingExposure(
-		_ experimentName: String, requireVariables: Bool = false
-	) -> (Assignment, claimed: Bool) {
+	// evict it in between and let a later call expose a second, different variant. Return only the
+	// assignment on the hot path; build and queue an exposure only for a new claim.
+	private func getAssignmentExposing(_ experimentName: String) -> Assignment {
+		let (assignment, claimed) = claimExposure(experimentName)
+		if let claimed = claimed {
+			queueClaimed(claimed)
+		}
+		return assignment
+	}
+
+	@inline(__always)
+	private func claimExposure(_ experimentName: String) -> (Assignment, ClaimedExposure?) {
 		contextLock.lock()
 		defer { contextLock.unlock() }
 
 		let assignment = lookupAssignment(experimentName)
-		guard !assignment.exposed.load(ordering: .acquiring),
-			!requireVariables || assignment.variables != nil,
-			!closed.load(ordering: .acquiring), !closing.load(ordering: .acquiring)
-		else {
-			return (assignment, false)
+		if assignment.exposed.load(ordering: .acquiring) || closed.load(ordering: .acquiring)
+			|| closing.load(ordering: .acquiring)
+		{
+			return (assignment, nil)
 		}
-		let claimed = assignment.exposed.compareExchange(
-			expected: false, desired: true, ordering: .acquiringAndReleasing
-		).0
-		return (assignment, claimed)
+		var claim = ClaimBuilder()
+		claimLocked(assignment, into: &claim)
+		return (assignment, claim.build(generation: dataGeneration))
 	}
 
-	private func queueExposures(_ assignments: [(Assignment, name: String)]) {
-		guard !assignments.isEmpty else { return }
-		let exposures = assignments.map { assignment, name in
-			Exposure(
-				assignment.id, name, assignment.unitType, assignment.variant,
-				clock.millis(), assignment.assigned, assignment.eligible,
-				assignment.overridden, assignment.fullOn, assignment.custom, assignment.audienceMismatch,
-				ruleOverride: assignment.ruleOverride)
+	// The lookup, the claim and the exposure's construction all happen in one contextLock section, so
+	// the exposure reads the assignment's fields consistently with any refresh; the generation lets
+	// the queue drop it if a recovery happened in between. Every write to `exposed` (these claims and
+	// the releases) holds contextLock, so a store after the check is an exclusive claim.
+	//
+	// A held-out experiment publishes no exposure of its own (an override or a matching rule still
+	// does); every holdout covering it publishes its own, once per epoch, from the arms pinned when
+	// the assignment was resolved.
+	private func claimLocked(_ assignment: Assignment, into claim: inout ClaimBuilder) {
+		guard !assignment.exposed.load(ordering: .acquiring) else { return }
+		assignment.exposed.store(true, ordering: .releasing)
+		claim.assignment = assignment
+		if !assignment.suppressed || assignment.overridden || assignment.ruleOverride {
+			claim.exposures.append(makeExposure(assignment, name: assignment.name))
 		}
+		claimHoldoutArmsLocked(assignment, into: &claim)
+	}
 
-		do {
-			eventLock.lock()
-			defer { eventLock.unlock() }
-
-			self.exposures.append(contentsOf: exposures)
-			pendingCount.wrappingIncrement(by: UInt(exposures.count), ordering: .releasing)
+	private func claimHoldoutArmsLocked(_ assignment: Assignment, into claim: inout ClaimBuilder) {
+		for holdout in assignment.holdouts ?? [] {
+			if let arm = holdout.arm, !arm.exposed.load(ordering: .acquiring) {
+				arm.exposed.store(true, ordering: .releasing)
+				claim.arms.append(arm)
+				// Named by the definition the assignment was resolved with, as in JavaScript.
+				claim.exposures.append(makeExposure(arm, name: holdout.definition.name))
+			}
 		}
+	}
 
-		for exposure in exposures {
+	private func makeExposure(_ assignment: Assignment, name: String) -> Exposure {
+		return Exposure(
+			assignment.id, name, assignment.unitType, assignment.variant,
+			clock.millis(), assignment.assigned, assignment.eligible,
+			assignment.overridden, assignment.fullOn, assignment.custom, assignment.audienceMismatch,
+			ruleOverride: assignment.ruleOverride)
+	}
+
+	// All of a claim's exposures are queued before the logger hears of any, so a logger that closes
+	// the context cannot flush between them.
+	private func queueClaimed(_ claimed: ClaimedExposure) {
+		#if DEBUG
+		Context.runTestHook(.exposureClaimed)
+		#endif
+		guard !claimed.exposures.isEmpty else { return }
+		eventLock.lock()
+		// Made before a recovery replaced the data it came from: drop it, the rebuilt assignment
+		// will be exposed by the next read.
+		if claimed.generation != dataGeneration {
+			eventLock.unlock()
+			releaseUnqueuedArms(claimed.arms)
+			return
+		}
+		guard !closed.load(ordering: .acquiring), !closing.load(ordering: .acquiring) else {
+			eventLock.unlock()
+			// Not queued, so not exposed: a read after a failed close can still expose it.
+			releaseUnqueuedExposure(claimed.assignment, arms: claimed.arms)
+			return
+		}
+		exposures.append(contentsOf: claimed.exposures)
+		pendingCount.wrappingIncrement(by: UInt(claimed.exposures.count), ordering: .releasing)
+		eventLock.unlock()
+
+		for exposure in claimed.exposures {
 			logEvent(event: .exposure(exposure: exposure))
 		}
 
@@ -587,7 +709,7 @@ public final class Context {
 		dataLock.lock()
 		defer { dataLock.unlock() }
 
-		return indexVariables.mapValues { $0.map({ $0.data.name }) }
+		return (prepared?.indexVariables ?? [:]).mapValues { $0.map({ $0.data.name }) }
 	}
 
 	public func getVariableValue(_ key: String, defaultValue: JSON? = nil) -> JSON? {
@@ -608,13 +730,14 @@ public final class Context {
 		let achievement: GoalAchievement = GoalAchievement(
 			goalName, achievedAt: clock.millis(), properties: properties)
 
-		do {
-			eventLock.lock()
-			defer { eventLock.unlock() }
-
-			achievements.append(achievement)
-			pendingCount.wrappingIncrement(by: 1, ordering: .releasing)
+		eventLock.lock()
+		guard !closed.load(ordering: .acquiring), !closing.load(ordering: .acquiring) else {
+			eventLock.unlock()
+			return
 		}
+		achievements.append(achievement)
+		pendingCount.wrappingIncrement(by: 1, ordering: .releasing)
+		eventLock.unlock()
 
 		logEvent(event: .goal(goal: achievement))
 
@@ -642,11 +765,6 @@ public final class Context {
 			return Promise<Void>(error: error)
 		}
 
-		// A failed context stays failed: refresh is a no-op that succeeds (JS context.ts _refresh).
-		if isFailed() {
-			return Promise<Void>.value(())
-		}
-
 		promiseLock.lock()
 		defer { promiseLock.unlock() }
 
@@ -662,15 +780,67 @@ public final class Context {
 
 			// Held strongly until the fetch settles, so the returned promise always settles.
 			self.provider.getContextData().done(on: DispatchQueue.global()) { [self] data in
-				self.setData(data)
+				// Outside every lock: a VariableParser that calls back into the context must not deadlock.
+				let prepared = self.prepareData(data)
+				// A context whose first load failed (or is still loading) becomes ready once a refresh
+				// succeeds, so events queued from the refreshed data are published instead of
+				// discarded. Data, error and state change together under contextLock and eventLock,
+				// so no evaluation or flush sees the new data while the context still reports failed.
+				self.contextLock.lock()
+				self.eventLock.lock()
+				// Close has begun (or completed): this late result is dropped without installing data or
+				// logging. Checked under eventLock, which closeIfIdle() holds when it marks the context
+				// closed.
+				if self.closed.load(ordering: .acquiring) || self.closing.load(ordering: .acquiring) {
+					self.eventLock.unlock()
+					self.contextLock.unlock()
+					self.refreshing.store(false, ordering: .releasing)
+					seal.fulfill(())
+					return
+				}
+				let previousState = self.state.load(ordering: .acquiring)
+				let winsInitialLoad = previousState == Context.loading
+				// Recovering a failed context: assignments and exposures made while it had no experiment
+				// data (e.g. an override, with no experiment id or variables) are discarded, as v1.4.0
+				// discarded every event of a failed context. The next read rebuilds the assignment from
+				// the new data and exposes it once, correctly attributed. Goals are kept.
+				if previousState == Context.failedState {
+					self.assignmentCache = [:]
+					self.dataGeneration += 1
+					let dropped = self.exposures.count
+					self.exposures = []
+					if dropped > 0 {
+						self.pendingCount.wrappingDecrement(by: UInt(dropped), ordering: .releasing)
+					}
+				}
+				self.commitData(prepared)
+				self.state.store(Context.readyState, ordering: .releasing)
+				self.eventLock.unlock()
+				self.contextLock.unlock()
+				self.setRefreshTimer()
+				if winsInitialLoad {
+					// The initial load's late result is ignored: stop it retaining the context.
+					self.promiseLock.lock()
+					let owner = self.initialLoadOwner
+					self.initialLoadOwner = nil
+					self.promiseLock.unlock()
+					owner?.release()
+					self.deliverOnMain { self.logEvent(event: .ready(data: data)) }
+					self.settleReadiness()
+				} else if self.pendingCount.load(ordering: .acquiring) > 0 {
+					self.setTimeout()
+				}
 				self.refreshing.store(false, ordering: .releasing)
 				self.deliverOnMain { self.logEvent(event: .refresh(data: data)) }
 				seal.fulfill(())
-			}.catch(on: DispatchQueue.global()) { [self] error in
+			}.catch(on: DispatchQueue.global(), policy: .allErrors) { [self] error in
+				// `.allErrors`: a cancelled fetch must still clear `refreshing` and settle the promise.
 				self.refreshing.store(false, ordering: .releasing)
 
 				Logger.error("Context refresh failed: \(error.safeLocalizedDescription)")
-				self.logError(error: error)
+				if !self.closed.load(ordering: .acquiring) && !self.closing.load(ordering: .acquiring) {
+					self.deliverOnMain { self.logError(error: error) }
+				}
 
 				seal.reject(error)
 			}
@@ -695,32 +865,63 @@ public final class Context {
 		promiseLock.unlock()
 
 		clearRefreshTimer()
+		// The final flush below sends what a pending automatic publish would have.
+		clearTimeout()
 
-		// Wait for publishes already in flight (a failed one re-queues its events)
-		// before deciding whether a final flush is needed.
-		// The closures hold the context strongly: once close() starts, the final flush must
-		// complete even if the caller drops its last reference (e.g. close() from deinit).
-		awaitInFlightPublishes().done(on: DispatchQueue.global()) { [self] in
-			if self.pendingCount.load(ordering: .acquiring) > 0 {
-				self.flush().done(on: DispatchQueue.global()) { [self] in
-					self.closed.store(true, ordering: .releasing)
-					self.closing.store(false, ordering: .releasing)
-					self.deliverOnMain { self.logEvent(event: .close) }
-					seal.fulfill(())
-				}.catch(on: DispatchQueue.global()) { [self] error in
-					// Stay open so the requeued events can be retried via publish()/close().
-					self.closing.store(false, ordering: .releasing)
-					seal.reject(error)
-				}
-			} else {
-				self.closed.store(true, ordering: .releasing)
-				self.closing.store(false, ordering: .releasing)
-				self.deliverOnMain { self.logEvent(event: .close) }
-				seal.fulfill(())
-			}
+		// Nothing queued or in flight: close now, as v1.4.0 did, so isClosed() is true and `.close`
+		// has been logged when close() returns. As in v1.4.0, that `.close` reaches the logger on
+		// the thread that called close().
+		if closeIfIdle() {
+			logEvent(event: .close)
+			seal.fulfill(())
+			return newClosePromise
 		}
 
+		// The closures hold the context strongly: once close() starts, the final flush must
+		// complete even if the caller drops its last reference (e.g. close() from deinit).
+		finishClose(seal)
 		return newClosePromise
+	}
+
+	// Marks the context closed if nothing is queued or in flight, deciding and marking in one
+	// eventLock section: a flush drains and registers its in-flight barrier under the same lock, so
+	// close can never report success while a publish that may re-queue its events is running.
+	private func closeIfIdle() -> Bool {
+		eventLock.lock()
+		defer { eventLock.unlock() }
+		guard inFlightPublishes.isEmpty && pendingCount.load(ordering: .acquiring) == 0 else { return false }
+		closed.store(true, ordering: .releasing)
+		closing.store(false, ordering: .releasing)
+		return true
+	}
+
+	// Waits for publishes in flight (a failed one re-queues its events), flushes what is queued and
+	// repeats until the context is idle, then closes it. A failed final flush reopens the context so
+	// the re-queued events can be retried via publish()/close().
+	private func finishClose(_ seal: Resolver<Void>) {
+		_ = awaitInFlightPublishes().done(on: DispatchQueue.global()) { [self] in
+			#if DEBUG
+			Context.runTestHook(.closeAwaitedInFlight)
+			#endif
+			if self.closeIfIdle() {
+				self.deliverOnMain { self.logEvent(event: .close) }
+				seal.fulfill(())
+				return
+			}
+			self.flush().done(on: DispatchQueue.global()) { [self] in
+				self.finishClose(seal)
+			}.catch(on: DispatchQueue.global(), policy: .allErrors) { [self] error in
+				// Failed close does not itself re-arm refresh (cross-SDK contract). A successful
+				// refresh completing after this rejection can still restart the timer.
+				self.closing.store(false, ordering: .releasing)
+				// Reopened with the batch re-queued: schedule the usual automatic publish for it, so it
+				// is retried even if the app does not call publish() or close() again.
+				if self.pendingCount.load(ordering: .acquiring) > 0 {
+					self.setTimeout()
+				}
+				seal.reject(error)
+			}
+		}
 	}
 
 	private func awaitInFlightPublishes() -> Promise<Void> {
@@ -741,6 +942,9 @@ public final class Context {
 		clearTimeout()
 
 		if !isFailed() {
+			#if DEBUG
+			Context.runTestHook(.flushObservedNotFailed)
+			#endif
 			var eventCount = pendingCount.load(ordering: .acquiring)
 			if eventCount > 0 {
 				var localExposures: [Exposure] = []
@@ -753,6 +957,15 @@ public final class Context {
 				do {
 					eventLock.lock()
 					defer { eventLock.unlock() }
+
+					// The context failed after the check above: discard instead of draining, so
+					// exposures made without experiment data are never sent (see the failed branch).
+					if isFailed() {
+						exposures = []
+						achievements = []
+						pendingCount.store(0, ordering: .releasing)
+						return Promise<Void>.value(())
+					}
 
 					eventCount = pendingCount.load(ordering: .acquiring)
 					if eventCount > 0 {
@@ -779,9 +992,9 @@ public final class Context {
 				}
 
 				if eventCount > 0 {
-					// The units and attributes are read under `contextLock`, but the publisher is called
-					// after releasing it, so a publisher that waits on the context (or a refresh, which
-					// installs data under `contextLock`) cannot deadlock.
+					// Units and attributes are snapshotted under contextLock; the handler is called
+					// after releasing it, so a handler that waits on another thread which reads the
+					// context cannot deadlock (v1.4.0 held no lock there either).
 					contextLock.lock()
 					localUnits = units.map {
 						let hashBytes = getUnitHash($0.key, $0.value)
@@ -806,7 +1019,9 @@ public final class Context {
 					// Held strongly until the publish settles, so a failure is never reported as success.
 					let publishPromise = handler.publish(event: event).done(on: DispatchQueue.global()) { [self] in
 						self.deliverOnMain { self.logEvent(event: .publish(event: event)) }
-					}.recover(on: DispatchQueue.global()) { [self] error -> Promise<Void> in
+					}.recover(on: DispatchQueue.global(), policy: .allErrors) { [self] error -> Promise<Void> in
+						// .allErrors: a cancelled publish must re-queue its events too, or they are lost
+						// and close() never settles.
 						self.eventLock.lock()
 						self.exposures.insert(contentsOf: localExposures, at: 0)
 						self.achievements.insert(contentsOf: localAchievements, at: 0)
@@ -814,10 +1029,10 @@ public final class Context {
 						self.eventLock.unlock()
 
 						Logger.error("Publish failed: \(error.safeLocalizedDescription)")
-						self.logError(error: error)
+						self.deliverOnMain { self.logError(error: error) }
 						throw error
 					}
-					publishPromise.ensure(on: DispatchQueue.global()) { [weak self] in
+					_ = publishPromise.ensure(on: DispatchQueue.global()) { [weak self] in
 						if let self = self {
 							self.eventLock.lock()
 							self.inFlightPublishes[publishId] = nil
@@ -829,7 +1044,16 @@ public final class Context {
 				}
 			}
 		} else {
+			#if DEBUG
+			Context.runTestHook(.flushObservedFailed)
+			#endif
 			eventLock.lock()
+			// Recovery and this decision are serialized: a flush that observed the old failed
+			// state must not discard events queued after recovery.
+			if !isFailed() {
+				eventLock.unlock()
+				return flush()
+			}
 			defer { eventLock.unlock() }
 
 			exposures = []
@@ -840,9 +1064,47 @@ public final class Context {
 		return Promise<Void>.value(())
 	}
 
+	#if DEBUG
+	// Test hooks, compiled into debug builds only, that let tests interleave lifecycle steps
+	// deterministically: `flushObservedFailed` runs after a flush has seen the context failed and
+	// before it takes `eventLock`; `initialLoadSettled` runs after the initial load's completion has
+	// been handled (whether it was applied or superseded by a refresh); `exposureClaimed` runs after
+	// a read claimed an exposure and before it is queued; `initialLoadTookContext` runs after the
+	// initial load's completion took its context reference and before it checks the state;
+	// `flushObservedNotFailed` runs after a flush has seen the context not failed and before it
+	// takes `eventLock`; `closeAwaitedInFlight` runs after close() waited for in-flight publishes
+	// and before it decides whether the context is idle.
+	enum TestHook: Hashable {
+		case flushObservedFailed
+		case initialLoadSettled
+		case exposureClaimed
+		case initialLoadTookContext
+		case flushObservedNotFailed
+		case closeAwaitedInFlight
+		case variableClaimAttempted
+		case variableCandidatesRead
+	}
+
+	private static var testHooks: [TestHook: () -> Void] = [:]
+	private static let testHooksLock = NSLock()
+
+	static func setTestHook(_ hook: TestHook, _ body: (() -> Void)?) {
+		testHooksLock.lock()
+		defer { testHooksLock.unlock() }
+		testHooks[hook] = body
+	}
+
+	private static func runTestHook(_ hook: TestHook) {
+		testHooksLock.lock()
+		let body = testHooks[hook]
+		testHooksLock.unlock()
+		body?()
+	}
+	#endif
+
 	private func checkReady(_ expectNotClosed: Bool) throws {
 		if !isReady() {
-			throw ABSmartlyError("ABsmartly Context is not yet ready.")
+			throw ABSmartlyError("ABSmartly Context is not yet ready.")
 		}
 		if expectNotClosed {
 			try checkNotClosed()
@@ -851,10 +1113,10 @@ public final class Context {
 
 	private func checkNotClosed() throws {
 		if isClosed() {
-			throw ABSmartlyError("ABsmartly Context is finalized.")
+			throw ABSmartlyError("ABSmartly Context is closed.")
 		}
 		if isClosing() {
-			throw ABSmartlyError("ABsmartly Context is finalizing.")
+			throw ABSmartlyError("ABSmartly Context is closing.")
 		}
 	}
 
@@ -982,7 +1244,7 @@ public final class Context {
 	}
 
 	private func getExperiment(_ experimentName: String) -> ExperimentVariables? {
-		return getLocked(lock: dataLock, dict: index, key: experimentName)
+		return getLocked(lock: dataLock) { prepared?.index[experimentName] }
 	}
 
 	private func getAssignment(_ experimentName: String) -> Assignment {
@@ -1142,39 +1404,64 @@ public final class Context {
 		return assignment
 	}
 
-	// Experiments sharing a key are walked in ascending id order, like the JavaScript SDK: each
-	// one visited is exposed (unless peeking), and the first that is assigned, overridden or won by
-	// an assignment rule and whose variant defines the key provides the value. A held-out unit reads
-	// the first held-out experiment's control value, not the default, when nothing else wins.
+	// Experiments sharing a key are candidates in ascending id order, as in the Java SDK. The winner
+	// is the first candidate the unit is in (assigned, overridden or won by an assignment rule); when
+	// there is none, the first held-out candidate supplies its control value. The value is the
+	// winner's for the key, or the default when the winner's variant does not define it: a later
+	// candidate is never used because of the variant the unit got. Only the winner is exposed; like
+	// Java, the holdouts covering every candidate visited are exposed too. Peeking exposes nothing.
 	private func resolveVariableValue(_ key: String, defaultValue: JSON?, peek: Bool) -> JSON? {
-		guard let keyExperimentVariables = getVariableExperiments(key) else {
-			return defaultValue
+		let (winner, claimed) = selectVariableAssignment(key, expose: !peek)
+		if let claimed = claimed {
+			queueClaimed(claimed)
 		}
+		return winner?.variables?[key] ?? defaultValue
+	}
 
-		var suppressedFallback: [String: JSON]?
-		for experimentVariables in keyExperimentVariables {
-			let (assignment, claimed) =
-				peek
-				? (getAssignment(experimentVariables.data.name), false)
-				: getAssignmentClaimingExposure(experimentVariables.data.name, requireVariables: true)
-			if let variables = assignment.variables {
-				if claimed {
-					triggerExposures(assignment)
-				}
+	// Reads the key's candidates, resolves and claims in one contextLock section. Data is installed
+	// under contextLock, so the candidates and their assignments come from the same data, and setUnit
+	// cannot change a candidate in between. The closed/closing checks and the claim run only where
+	// something may be claimed, so a warmed read of an already exposed winner stays on the cached
+	// path; queueClaimed re-checks them.
+	private func selectVariableAssignment(_ key: String, expose: Bool) -> (Assignment?, ClaimedExposure?) {
+		contextLock.lock()
+		defer { contextLock.unlock() }
 
-				if let value = variables[key], assignment.assigned || assignment.overridden || assignment.ruleOverride {
-					return value
-				}
-
-				if assignment.suppressed && !assignment.overridden && !assignment.ruleOverride
-					&& suppressedFallback == nil
-				{
-					suppressedFallback = variables
-				}
+		guard let candidates = getVariableExperiments(key) else {
+			return (nil, nil)
+		}
+		#if DEBUG
+		Context.runTestHook(.variableCandidatesRead)
+		#endif
+		var claim = ClaimBuilder()
+		var winner: Assignment?
+		var suppressedFallback: Assignment?
+		for candidate in candidates {
+			let assignment = lookupAssignment(candidate.data.name)
+			if expose, assignment.holdouts != nil, canClaimLocked() {
+				claimHoldoutArmsLocked(assignment, into: &claim)
+			}
+			if assignment.assigned || assignment.overridden || assignment.ruleOverride {
+				winner = assignment
+				break
+			}
+			if assignment.suppressed && suppressedFallback == nil {
+				suppressedFallback = assignment
 			}
 		}
 
-		return suppressedFallback?[key] ?? defaultValue
+		winner = winner ?? suppressedFallback
+		if expose, let winner = winner, !winner.exposed.load(ordering: .acquiring), canClaimLocked() {
+			claimLocked(winner, into: &claim)
+		}
+		return (winner, claim.build(generation: dataGeneration))
+	}
+
+	private func canClaimLocked() -> Bool {
+		#if DEBUG
+		Context.runTestHook(.variableClaimAttempted)
+		#endif
+		return !closed.load(ordering: .acquiring) && !closing.load(ordering: .acquiring)
 	}
 
 	// Arm 0 always holds the experiment out. In a 3-arm holdout, arm 1 holds out only an experiment
@@ -1193,7 +1480,7 @@ public final class Context {
 	// unit is missing. `live` is the holdout's current definition; when not given it is looked up, as
 	// `holdout` may predate a refresh. The caller holds `contextLock`.
 	private func getHoldoutAssignment(_ holdout: Experiment, unitType: String, live: Experiment? = nil) -> Assignment? {
-		let live = live ?? getLocked(lock: dataLock, dict: holdoutsById, key: holdout.id) ?? holdout
+		let live = live ?? getLocked(lock: dataLock, { prepared?.holdoutsById[holdout.id] }) ?? holdout
 
 		let key = HoldoutKey(id: live.id, unitType: unitType)
 		if let cached = holdoutAssignments[key], cached.iteration == live.iteration {
@@ -1221,7 +1508,7 @@ public final class Context {
 	}
 
 	private func getVariableExperiments(_ experimentName: String) -> [ExperimentVariables]? {
-		return getLocked(lock: dataLock, dict: indexVariables, key: experimentName)
+		return getLocked(lock: dataLock) { prepared?.indexVariables[experimentName] }
 	}
 
 	private func getUnitHash(_ unitType: String, _ unitUID: String) -> [UInt8] {
@@ -1249,8 +1536,12 @@ public final class Context {
 		return variantAssigner
 	}
 
+	// Only while ready: a loading context schedules its queue once settled, and a failed one keeps it
+	// for a recovering refresh (an automatic flush of a failed context would discard it).
+	// A negative publishDelay disables the automatic publish (as in the Java and JavaScript SDKs):
+	// events wait for an explicit publish() or close().
 	private func setTimeout() {
-		guard isReady() else { return }
+		guard state.load(ordering: .acquiring) == Context.readyState else { return }
 		guard publishDelay >= 0 else { return }
 
 		timeoutLock.lock()
@@ -1263,7 +1554,7 @@ public final class Context {
 					after: publishDelay,
 					execute: { [self] in
 						// flush() already reports the failure as one `.error` event.
-						self.flush().catch(on: DispatchQueue.global()) { error in
+						self.flush().catch(on: DispatchQueue.global(), policy: .allErrors) { error in
 							Logger.error("Auto-flush failed: \(error.safeLocalizedDescription)")
 						}
 					})
@@ -1290,12 +1581,8 @@ public final class Context {
 				after: refreshInterval, repeating: refreshInterval,
 				execute: { [weak self] in
 					guard let self = self else { return }
-					self.refresh()
-						.done { }
-						.catch { error in
-							Logger.error("Auto-refresh failed: \(error.safeLocalizedDescription)")
-							self.logError(error: error)
-						}
+					// refresh() already logs the failure and reports it as one `.error` event.
+					self.refresh().catch(on: DispatchQueue.global(), policy: .allErrors) { _ in }
 				})
 		}
 	}
@@ -1308,16 +1595,25 @@ public final class Context {
 	}
 
 	internal func setData(_ data: ContextData) {
-		applyData(data)
-		markReady()
-	}
-
-	private func markReady() {
-		ready.store(true, ordering: .releasing)
+		commitData(prepareData(data))
+		contextLock.lock()
+		_ = state.compareExchange(expected: Context.loading, desired: Context.readyState, ordering: .acquiringAndReleasing)
+		contextLock.unlock()
 		setRefreshTimer()
 	}
 
-	private func applyData(_ data: ContextData) {
+	private struct PreparedData {
+		let data: ContextData
+		let index: [String: ExperimentVariables]
+		let indexVariables: [String: [ExperimentVariables]]
+		let customFieldValues: [String: [String: ContextCustomFieldValue]]
+		// Holdouts with a non-empty split, by id.
+		let holdoutsById: [Int: Experiment]
+	}
+
+	// Builds the indexes for new context data. Runs the configured VariableParser, so it is called
+	// without holding any lock; commitData publishes the result.
+	private func prepareData(_ data: ContextData) -> PreparedData {
 		var index: [String: ExperimentVariables] = [:]
 		var indexVariables: [String: [ExperimentVariables]] = [:]
 		var customFieldValues: [String: [String: ContextCustomFieldValue]] = [:]
@@ -1374,24 +1670,22 @@ public final class Context {
 
 					if let customValue = customFieldValue.value {
 						if fieldType.starts(with: "json") {
-							// An object goes through the configured VariableParser; other JSON is a `JSON`.
-							do {
-								let json = try JSON(data: Data(customValue.utf8), options: .fragmentsAllowed)
-								switch json.type {
-								case .dictionary:
-									value.value = parser.parse(experimentName: experiment.name, config: customValue)
-								case .null:
-									value.value = nil
-								default:
-									value.value = json
-								}
-							} catch {
-								let truncated = customValue.count > 100 ? "\(customValue.prefix(100))..." : customValue
-								Logger.error("Failed to parse JSON custom field '\(fieldName)' for experiment '\(experiment.name)': \(error.safeLocalizedDescription). Original value: '\(truncated)'")
+							// Objects and invalid JSON go through the configured VariableParser; other valid JSON is
+							// kept as `JSON`; `null` is nil.
+							let parsed = try? JSON(data: Data(customValue.utf8), options: .fragmentsAllowed)
+							switch parsed?.type {
+							case .array?, .number?, .string?, .bool?:
+								value.value = parsed
+							case .null?:
 								value.value = nil
+							default:
+								if parsed == nil {
+									Logger.error("Invalid JSON in custom field '\(fieldName)' of experiment '\(experiment.name)'.")
+								}
+								value.value = parser.parse(experimentName: experiment.name, config: customValue)
 							}
 						} else if fieldType.starts(with: "boolean") {
-							value.value = customValue == "true"
+							value.value = Bool(customValue)
 						} else if fieldType.starts(with: "number") {
 							value.value = Double(customValue)
 						} else {
@@ -1407,17 +1701,22 @@ public final class Context {
 			customFieldValues[experiment.name] = experimentCustomFieldValues
 		}
 
-		// Installed under `contextLock` (then `dataLock`, the order assignment lookups use), so a refresh
-		// lands between assignment resolutions, never inside one: an assignment never pairs one data
-		// install's holdout definitions with another's arms.
+		return PreparedData(
+			data: data, index: index, indexVariables: indexVariables, customFieldValues: customFieldValues,
+			holdoutsById: holdoutsById)
+	}
+
+	// Publishes prepared data and clears a previous load failure in one dataLock section, so
+	// readyError() is only cleared together with the recovered data. Installed under `contextLock`
+	// (then `dataLock`, the order assignment lookups use), so a refresh lands between assignment
+	// resolutions, never inside one: an assignment never pairs one data install's holdout definitions
+	// with another's arms.
+	private func commitData(_ prepared: PreparedData) {
 		contextLock.lock()
 		defer { contextLock.unlock() }
 		dataLock.lock()
-		self.data = data
-		self.holdoutsById = holdoutsById
-		self.index = index
-		self.indexVariables = indexVariables
-		self.customFieldValues = customFieldValues
+		self.prepared = prepared
+		self.failedError = nil
 		dataLock.unlock()
 	}
 
@@ -1425,17 +1724,16 @@ public final class Context {
 		dataLock.lock()
 		defer { dataLock.unlock() }
 
-		index = [:]
-		indexVariables = [:]
-		customFieldValues = [:]
-		holdoutsById = [:]
-		data = ContextData()
+		prepared = nil
 		failedError = error
 	}
 
-	// ready/refresh/publish/close events reach the logger on the main thread, as in v1.4.0, so
-	// loggers may touch UIKit; the work itself stays off the main thread and never waits for the
-	// delivery. `.error` stays synchronous so it is seen before the context reports failed.
+	// ready/refresh/publish/close and `.error` events from asynchronously completed work reach the
+	// logger on the main thread, as in v1.4.0, so loggers may touch UIKit; the work itself stays off
+	// the main thread and never waits for the delivery. Events from work that completes concurrently
+	// (e.g. an initial load and a refresh finishing together) are not ordered relative to each other. Events for data that was already loaded (or
+	// already failed) when the context was created, and errors from misuse, are logged
+	// synchronously on the calling thread, as in v1.4.0.
 	// On Linux, where nothing may service the main queue, events use the completing thread.
 	#if canImport(Darwin)
 	private static var deliversEventsOnMainThreadValue = true
@@ -1482,6 +1780,51 @@ public final class Context {
 		threadDictionary[key] = true
 		defer { threadDictionary.removeObject(forKey: key) }
 		logEvent(event: .error(error: error))
+	}
+}
+
+private struct ClaimedExposure {
+	// The newly claimed assignment (nil when only holdout arms were claimed), its own exposure (unless
+	// held out) and one per newly claimed holdout arm.
+	let assignment: Assignment?
+	let exposures: [Exposure]
+	let arms: [Assignment]
+	let generation: Int
+}
+
+private struct ClaimBuilder {
+	var assignment: Assignment?
+	var exposures: [Exposure] = []
+	var arms: [Assignment] = []
+
+	// nil when nothing was claimed.
+	func build(generation: Int) -> ClaimedExposure? {
+		if assignment == nil && arms.isEmpty {
+			return nil
+		}
+		return ClaimedExposure(assignment: assignment, exposures: exposures, arms: arms, generation: generation)
+	}
+}
+
+// Holds a context strongly until taken or released; the initial load's completions go through it.
+private final class ContextOwner {
+	private let lock = NSLock()
+	private var context: Context?
+
+	init(_ context: Context) {
+		self.context = context
+	}
+
+	func take() -> Context? {
+		lock.lock()
+		defer { lock.unlock() }
+		let taken = context
+		context = nil
+		return taken
+	}
+
+	func release() {
+		_ = take()
 	}
 }
 

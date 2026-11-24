@@ -1,7 +1,14 @@
 import Foundation
 import PromiseKit
 
-/// Deprecated: Use DefaultContextPublisher instead.
-@available(*, deprecated, renamed: "DefaultContextPublisher")
-public class DefaultContextEventHandler: DefaultContextPublisher {
+public class DefaultContextEventHandler: ContextEventHandler {
+	private let client: Client
+
+	public init(client: Client) {
+		self.client = client
+	}
+
+	public func publish(event: PublishEvent) -> Promise<Void> {
+		return client.publish(event: event)
+	}
 }

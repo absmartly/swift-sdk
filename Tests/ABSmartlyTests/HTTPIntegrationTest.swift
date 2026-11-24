@@ -17,7 +17,7 @@ import XCTest
 /// makes genuine TCP/HTTP requests so this verifies the actual wire contract.
 ///
 /// Wire contract under test:
-///   - GET  /context?application=<app>&environment=<env>  (no auth headers on GET)
+///   - GET  /context?application=<app>&environment=<env>  (same headers as the PUT)
 ///   - PUT  /context  with X-API-Key / X-Application / X-Environment /
 ///          X-Application-Version / X-Agent / Content-Type headers and a JSON
 ///          body containing hashed, units, publishedAt (+ goals/exposures).
@@ -141,7 +141,7 @@ final class HTTPIntegrationTest: XCTestCase {
 /// request, and replies 200 with a small JSON body. Just enough to exercise the
 /// SDK's real URLSession client; not a general-purpose server.
 /// Built on POSIX sockets rather than Network.framework so it also runs on Linux.
-private final class LocalHTTPServer {
+final class LocalHTTPServer {
 	struct Request {
 		let method: String
 		let path: String

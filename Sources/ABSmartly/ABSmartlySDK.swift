@@ -1,37 +1,38 @@
 import Foundation
 import PromiseKit
 
-public final class ABsmartlySDK {
+public final class ABSmartlySDK {
 	private var client: Client?
 	private let closeLock = NSLock()
 	private let contextDataProvider: ContextDataProvider
-	private let contextEventHandler: ContextPublisher
+	private let contextEventHandler: ContextEventHandler
 	private let contextEventLogger: ContextEventLogger?
 	private let variableParser: VariableParser
 	private let scheduler: Scheduler
 
-	public init(config: ABsmartlyConfig) throws {
+	public init(config: ABSmartlyConfig) throws {
 		contextEventLogger = config.contextEventLogger
 		variableParser = config.variableParser ?? DefaultVariableParser()
 		scheduler = config.scheduler ?? DefaultScheduler()
 		client = config.client
 
-		if config.contextDataProvider == nil || config.contextPublisher == nil {
+		if config.contextDataProvider == nil || config.contextEventHandler == nil {
 			guard let client = client else {
 				throw ABSmartlyError("Missing Client instance")
 			}
 
 			contextDataProvider = config.contextDataProvider ?? DefaultContextDataProvider(client: client)
-			contextEventHandler = config.contextPublisher ?? DefaultContextPublisher(client: client)
+			contextEventHandler = config.contextEventHandler ?? DefaultContextEventHandler(client: client)
 		} else {
-			guard let provider = config.contextDataProvider, let handler = config.contextPublisher else {
-				throw ABSmartlyError("Missing contextDataProvider or contextPublisher")
+			guard let provider = config.contextDataProvider, let handler = config.contextEventHandler else {
+				throw ABSmartlyError("Missing contextDataProvider or contextEventHandler")
 			}
 			contextDataProvider = provider
 			contextEventHandler = handler
 		}
 	}
 
+	@_disfavoredOverload
 	public convenience init(
 		endpoint: String,
 		apiKey: String,
@@ -80,9 +81,9 @@ public final class ABsmartlySDK {
 			httpClient: DefaultHTTPClient(config: httpClientConfig)
 		)
 
-		let sdkConfig = ABsmartlyConfig(
+		let sdkConfig = ABSmartlyConfig(
 			contextDataProvider: contextDataProvider,
-			contextPublisher: contextEventHandler,
+			contextEventHandler: contextEventHandler,
 			contextEventLogger: contextEventLogger,
 			variableParser: variableParser,
 			scheduler: scheduler,
@@ -136,8 +137,8 @@ public final class ABsmartlySDK {
 	}
 }
 
-@available(*, deprecated, message: "Use ABsmartlySDK instead")
-public typealias AbsmartlySDK = ABsmartlySDK
+/// `ABSmartlySDK` under the spelling other A/B Smartly SDKs use.
+public typealias ABsmartlySDK = ABSmartlySDK
 
-@available(*, deprecated, message: "Use ABsmartlySDK instead")
-public typealias ABSmartlySDK = ABsmartlySDK
+@available(*, deprecated, message: "Use ABSmartlySDK instead")
+public typealias AbsmartlySDK = ABSmartlySDK

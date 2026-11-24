@@ -21,8 +21,13 @@ jobs:
             runs-on: macos-latest
             xcode: ""
     runs-on: ${{ matrix.runs-on }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
 
       - name: Select Xcode
         if: matrix.xcode != ''
@@ -37,6 +42,25 @@ jobs:
       - name: Run tests
         run: swift test
 
+      # Build for every Apple platform the package supports, so an availability regression fails CI.
+      # Current Xcode cannot target the package's watchOS 3 minimum (its dependencies are clamped
+      # to watchOS 5), so watchOS is built at 5.0; iOS and tvOS build at the package minimums.
+      - name: Build for iOS, tvOS, visionOS and watchOS
+        if: matrix.name == 'latest'
+        run: |
+          xcodebuild build -scheme ABSmartly -destination "generic/platform=iOS" -quiet
+          xcodebuild build -scheme ABSmartly -destination "generic/platform=tvOS" -quiet
+          xcodebuild build -scheme ABSmartly -destination "generic/platform=visionOS" -quiet
+          xcodebuild build -scheme ABSmartly -destination "generic/platform=watchOS" -quiet \
+            WATCHOS_DEPLOYMENT_TARGET=5.0
+
+      # Structural podspec validation (no build). A full `pod lib lint`, and so `pod trunk push`, does
+      # not pass on Xcode 16.3 or 26: the SwiftyJSON 5 pod (macOS 10.9) fails availability checks
+      # while CocoaPods builds the dependencies. See the 1.5.0 CHANGELOG.
+      - name: Lint podspec (quick)
+        if: matrix.name == 'latest'
+        run: pod spec lint ABSmartlySwiftSDK.podspec --quick --allow-warnings
+
       # The Example app references this checkout as a local package and has its own lockfile.
       # Resolve strictly from it, so a lockfile that no longer satisfies Package.swift fails CI.
       - name: Resolve Example app packages from its lockfile
@@ -45,13 +69,24 @@ jobs:
             -onlyUsePackageVersionsFromResolvedFile
 
   test-linux:
-    name: test (linux, swift-6.1)
+    name: test (linux, swift-${{ matrix.swift }})
+    strategy:
+      fail-fast: false
+      matrix:
+        # The oldest toolchain the README promises for Linux, and the one macOS CI also covers.
+        swift: ["5.10", "6.1"]
     runs-on: ubuntu-latest
-    container: swift:6.1
+    timeout-minutes: 30
+    container:
+      image: swift:${{ matrix.swift }}
+      # Only the 6.1 job runs ThreadSanitizer, which re-executes itself with ASLR disabled via
+      # personality(2); the default container seccomp profile blocks that on current runner images
+      # ("CHECK failed: tsan_platform_linux.cpp ... personality"), aborting before any test runs.
+      options: ${{ matrix.swift == '6.1' && '--security-opt seccomp=unconfined' || '' }}
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
 
@@ -63,3 +98,20 @@ jobs:
 
       - name: Run tests
         run: swift test
+
+      # Optimized builds compile out the DEBUG-only lifecycle test hooks; the rest must still pass.
+      - name: Run tests (release)
+        run: swift test -c release
+
+      # The context lifecycle is lock-based; ThreadSanitizer catches races the assertions cannot.
+      - name: Run concurrency and lifecycle tests under ThreadSanitizer
+        if: matrix.swift == '6.1'
+        run: swift test --sanitize=thread --filter 'ConcurrencyTests|ContextTest|ContextV140BehaviourTest|AsyncAPITest|DefaultClientTest|ContextHoldoutTest'
+
+      # Toolchains 5.9+ read Package@swift-5.9.swift; also build from the tools-version 5.3
+      # Package.swift that older toolchains use, so a change to it alone cannot go unnoticed.
+      - name: Build with Package.swift only
+        if: matrix.swift == '6.1'
+        run: |
+          rm Package@swift-5.9.swift
+          swift build
