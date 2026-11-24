@@ -50,8 +50,9 @@ To use 1.5.0 through CocoaPods before it is on the trunk, point the pod at the g
 `pod 'ABSmartlySwiftSDK', :git => 'https://github.com/absmartly/swift-sdk.git', :tag => 'v1.5.0'`.
 On current Xcode the dependency pods do not build at their own deployment targets: SwiftyJSON 5
 (macOS 10.9) fails on macOS, and PromiseKit 6 (iOS 8) needs `libarclite`, which Xcode 26 no longer
-ships. Raise their deployment targets in your Podfile's `post_install` hook, or use Swift Package
-Manager.
+ships. Use Swift Package Manager on these toolchains. A Podfile `post_install` target override
+is a per-app workaround, not a consumer fix shipped by this SDK. Compatible dependency fixes
+are still needed; see [CocoaPods validation status and Mac commands](docs/cocoapods-validation.md).
 
 Run the following command to update your Xcode project:
 ```

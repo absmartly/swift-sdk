@@ -1,0 +1,43 @@
+name: CocoaPods validation (manual)
+
+# Diagnostic until the compatible dependency fixes described in docs/cocoapods-validation.md
+# are available. Not a required/green packaging gate, and never publishes to trunk.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Full lint (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Xcode 16.3
+            runner: macos-15
+            xcode: /Applications/Xcode_16.3.app
+          - name: current Xcode
+            runner: macos-latest
+            xcode: ''
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Select Xcode
+        if: matrix.xcode != ''
+        run: sudo xcode-select -s "${{ matrix.xcode }}"
+      - name: Full CocoaPods validation
+        run: |
+          set -o pipefail
+          bash scripts/validate-cocoapods.sh 2>&1 | tee cocoapods-validation.log
+      - name: Save validation evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cocoapods-${{ strategy.job-index }}
+          path: cocoapods-validation.log
+          if-no-files-found: warn

@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Maintenance
+- Document the CocoaPods dependency investigation and add a full-lint Mac script and manual
+  diagnostic CI workflow. No consumer fix is implemented: compatible upstream dependency fixes
+  or an owner-approved distribution plan are still needed. The quick podspec check does not
+  compile dependencies. Deployment targets, dependency types and publication gates are unchanged.
+
 ## 1.5.0
 
 1.5.0 is source compatible with 1.4.0: code written against 1.4.0 compiles unchanged, with the same
