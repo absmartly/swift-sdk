@@ -51,7 +51,9 @@ import Testing
 				env.lastSentEvent
 					== expectedBody(
 						units: units,
-						exposures: [exposure(1, "exp_test_holdout", "session_id", 1, true, true, false, false, false, false)]))
+						exposures: [
+							exposure(1, "exp_test_holdout", "session_id", 1, true, true, false, false, false, false)
+						]))
 		}
 	}
 }

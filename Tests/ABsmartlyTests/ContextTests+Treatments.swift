@@ -13,7 +13,9 @@ extension ContextTests {
 		let context = env.context(data: data)
 
 		for experiment in data.experiments {
-			#expect(context.treatment(for: experiment.name, exposing: false) == ContextFixtures.expectedVariants[experiment.name])
+			#expect(
+				context.treatment(for: experiment.name, exposing: false)
+					== ContextFixtures.expectedVariants[experiment.name])
 		}
 		#expect(context.treatment(for: "no_found", exposing: false) == 0)
 		#expect(context.pendingEventCount == 0)
@@ -129,7 +131,9 @@ extension ContextTests {
 		#expect(env.publishCount == 1)
 		#expect(
 			env.lastSentEvent
-				== expectedBody(exposures: [exposure(1, "exp_test_ab", "session_id", 1, true, true, false, false, false, true)]))
+				== expectedBody(exposures: [
+					exposure(1, "exp_test_ab", "session_id", 1, true, true, false, false, false, true)
+				]))
 	}
 
 	// A strict audience mismatch gives the control variant without assigning the unit, so the experiment
@@ -345,9 +349,11 @@ extension ContextTests {
 			env,
 			[
 				Self.sharedKeyExperiment(
-					id: 1, name: "exp_one", unitType: "device_id", fullOnVariant: 0, configs: [nil, "{\"icon\":\"one\"}"]),
+					id: 1, name: "exp_one", unitType: "device_id", fullOnVariant: 0,
+					configs: [nil, "{\"icon\":\"one\"}"]),
 				Self.sharedKeyExperiment(
-					id: 2, name: "exp_two", unitType: "device_id", fullOnVariant: 0, configs: [nil, "{\"icon\":\"two\"}"]),
+					id: 2, name: "exp_two", unitType: "device_id", fullOnVariant: 0,
+					configs: [nil, "{\"icon\":\"two\"}"]),
 			])
 
 		#expect(context.variable("icon", default: "default") == "default")
@@ -524,19 +530,24 @@ extension ContextTests {
 	}
 
 	@Test func getTreatmentStartsPublishTimeoutAfterExposure() async {
-		let env = ContextEnv()
-		let context = env.context(options: Context.Options(publishDelay: 0.05))
+		let clock = TestClock()
+		let env = ContextEnv(clock: clock)
+		let context = env.context(options: Context.Options(publishDelay: 5))
 
 		_ = context.treatment(for: "exp_test_ab")
 		_ = context.treatment(for: "exp_test_abc")
 
 		#expect(context.pendingEventCount == 2)
+		#expect(await clock.waitForSleepers())
+		clock.advance(by: 4.9)
 		#expect(env.publishCount == 0)
 
 		// One timer for both exposures: a single publish.
+		#expect(clock.sleeperCount == 1)
+		clock.advance(by: 0.1)
 		#expect(await eventually(timeout: 5) { env.publishCount == 1 })
 		#expect(context.pendingEventCount == 0)
-		await pause(0.1)
+		clock.advance(by: 600)
 		#expect(env.publishCount == 1)
 	}
 
@@ -624,7 +635,9 @@ extension ContextTests {
 		#expect(env.publishCount == 1)
 		#expect(
 			env.lastSentEvent
-				== expectedBody(exposures: [exposure(1, "exp_test_ab", "session_id", 1, true, true, false, false, false, true)]))
+				== expectedBody(exposures: [
+					exposure(1, "exp_test_ab", "session_id", 1, true, true, false, false, false, true)
+				]))
 	}
 
 	@Test func getTreatmentQueuesExposureWithAudienceMismatchTrueAndControlVariantOnAudienceMismatchInStrictMode()
@@ -640,7 +653,9 @@ extension ContextTests {
 		#expect(env.publishCount == 1)
 		#expect(
 			env.lastSentEvent
-				== expectedBody(exposures: [exposure(1, "exp_test_ab", "session_id", 0, false, true, false, false, false, true)]))
+				== expectedBody(exposures: [
+					exposure(1, "exp_test_ab", "session_id", 0, false, true, false, false, false, true)
+				]))
 	}
 
 	@Test func getTreatmentCallsEventLogger() {

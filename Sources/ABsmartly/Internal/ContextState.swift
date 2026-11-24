@@ -335,13 +335,15 @@ struct ContextState {
 					if let unitType = data.unitType, let uid = units[unitType] {
 						let assigner = assigner(unitType, uid)
 						let eligible =
-							assigner.assign(data.trafficSplit, seedHi: data.trafficSeedHi, seedLo: data.trafficSeedLo) == 1
+							assigner.assign(data.trafficSplit, seedHi: data.trafficSeedHi, seedLo: data.trafficSeedLo)
+							== 1
 						if eligible {
 							if let custom = customAssignments[experimentName] {
 								assignment.variant = custom
 								assignment.custom = true
 							} else {
-								assignment.variant = assigner.assign(data.split, seedHi: data.seedHi, seedLo: data.seedLo)
+								assignment.variant = assigner.assign(
+									data.split, seedHi: data.seedHi, seedLo: data.seedLo)
 							}
 						} else {
 							assignment.eligible = false
@@ -424,7 +426,8 @@ struct ContextState {
 	mutating func publishUnits() -> [PublishEvent.Unit] {
 		var result: [PublishEvent.Unit] = []
 		for (unitType, uid) in units {
-			result.append(PublishEvent.Unit(type: unitType, uid: String(decoding: unitHash(unitType, uid), as: UTF8.self)))
+			result.append(
+				PublishEvent.Unit(type: unitType, uid: String(decoding: unitHash(unitType, uid), as: UTF8.self)))
 		}
 		return result
 	}

@@ -156,13 +156,20 @@ public final class ABsmartlyClient: Sendable {
 	}
 }
 
-/// Milliseconds since the Unix epoch.
+/// The time source of a context: event timestamps and the publish and refresh timers.
 protocol Clock: Sendable {
+	/// Milliseconds since the Unix epoch.
 	func millis() -> Int64
+	/// Suspends for `seconds`; throws `CancellationError` when the task is cancelled.
+	func sleep(seconds: TimeInterval) async throws
 }
 
 struct SystemClock: Clock {
 	func millis() -> Int64 {
 		Int64(Date().timeIntervalSince1970 * 1000)
+	}
+
+	func sleep(seconds: TimeInterval) async throws {
+		try await Task.sleep(nanoseconds: UInt64(max(0, min(seconds, 1e9)) * 1_000_000_000))
 	}
 }

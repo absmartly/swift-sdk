@@ -176,7 +176,8 @@ extension ContextTests {
 	}
 
 	@Test func refreshClearsAssignmentCacheForTrafficSplitChange() async throws {
-		try await refreshChangesAssignment("exp_test_not_eligible", before: 0, fixture: "refreshed_traffic_split", after: 2)
+		try await refreshChangesAssignment(
+			"exp_test_not_eligible", before: 0, fixture: "refreshed_traffic_split", after: 2)
 	}
 
 	@Test func refreshClearsAssignmentCacheForExperimentIdChange() async throws {

@@ -121,7 +121,9 @@ struct DataIndex: Sendable {
 						let truncated = text.count > 100 ? "\(text.prefix(100))..." : text
 						Log.error(
 							"Failed to parse a JSON custom field.",
-							detail: "Field '\(name)' of experiment '\(experiment.name)': \(error). Original value: '\(truncated)'")
+							detail:
+								"Field '\(name)' of experiment '\(experiment.name)': \(error). Original value: '\(truncated)'"
+						)
 					}
 				} else if type.hasPrefix("boolean") {
 					value = .bool(text == "true")

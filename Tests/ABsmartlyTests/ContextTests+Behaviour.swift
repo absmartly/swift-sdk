@@ -478,7 +478,8 @@ extension ContextTests {
 	// mismatch (strict) yields the control variant 0.
 	private static func strictAudienceData(filter: String) -> ContextData {
 		let audience = "{\"filter\":\(filter)}"
-		let escapedAudience = audience
+		let escapedAudience =
+			audience
 			.replacingOccurrences(of: "\\", with: "\\\\")
 			.replacingOccurrences(of: "\"", with: "\\\"")
 		return ContextFixtures.decode(
@@ -507,7 +508,8 @@ extension ContextTests {
 		let context = systemContext(env, filter: Self.environmentIsProduction)
 
 		#expect(context.treatment(for: "exp_test_ab") == 1)
-		#expect(env.log.exposures == [exposure(1, "exp_test_ab", "session_id", 1, true, true, false, false, false, false)])
+		#expect(
+			env.log.exposures == [exposure(1, "exp_test_ab", "session_id", 1, true, true, false, false, false, false)])
 		#expect(context.variable("banner.size", default: "default") == "large")
 	}
 
@@ -516,7 +518,8 @@ extension ContextTests {
 		let context = systemContext(env, filter: #"[{"eq":[{"var":"application"},{"value":"website"}]}]"#)
 
 		#expect(context.treatment(for: "exp_test_ab") == 1)
-		#expect(env.log.exposures == [exposure(1, "exp_test_ab", "session_id", 1, true, true, false, false, false, false)])
+		#expect(
+			env.log.exposures == [exposure(1, "exp_test_ab", "session_id", 1, true, true, false, false, false, false)])
 	}
 
 	@Test func strictAudienceMismatchOnOtherEnvironment() {
@@ -524,7 +527,8 @@ extension ContextTests {
 		let context = systemContext(env, filter: Self.environmentIsStaging)
 
 		#expect(context.treatment(for: "exp_test_ab") == 0)
-		#expect(env.log.exposures == [exposure(1, "exp_test_ab", "session_id", 0, false, true, false, false, false, true)])
+		#expect(
+			env.log.exposures == [exposure(1, "exp_test_ab", "session_id", 0, false, true, false, false, false, true)])
 	}
 
 	// A user-set attribute wins over the configured value, even set after creation, and invalidates
@@ -541,7 +545,8 @@ extension ContextTests {
 		// The cached assignment is invalidated and re-evaluated: staging now matches → 1.
 		#expect(context.treatment(for: "exp_test_ab", exposing: false) == 1)
 		#expect(context.treatment(for: "exp_test_ab") == 1)
-		#expect(env.log.exposures == [exposure(1, "exp_test_ab", "session_id", 1, true, true, false, false, false, false)])
+		#expect(
+			env.log.exposures == [exposure(1, "exp_test_ab", "session_id", 1, true, true, false, false, false, false)])
 	}
 
 	// A user value also loses the match once it overrides a configured value that matched.
@@ -554,7 +559,8 @@ extension ContextTests {
 		context.setAttribute("environment", to: "staging")
 
 		#expect(context.treatment(for: "exp_test_ab") == 0)
-		#expect(env.log.exposures == [exposure(1, "exp_test_ab", "session_id", 0, false, true, false, false, false, true)])
+		#expect(
+			env.log.exposures == [exposure(1, "exp_test_ab", "session_id", 0, false, true, false, false, false, true)])
 	}
 
 	@Test func audienceConditionMatchesConfiguredEnvironment() {
@@ -567,10 +573,12 @@ extension ContextTests {
 	// `environment` does not match.
 	@Test func missingEnvironmentConfigLeavesKeyOut() {
 		let env = ContextEnv()
-		let context = env.directContext(data: Self.strictAudienceData(filter: Self.environmentIsProduction), environment: nil)
+		let context = env.directContext(
+			data: Self.strictAudienceData(filter: Self.environmentIsProduction), environment: nil)
 
 		#expect(context.treatment(for: "exp_test_ab") == 0)
-		#expect(env.log.exposures == [exposure(1, "exp_test_ab", "session_id", 0, false, true, false, false, false, true)])
+		#expect(
+			env.log.exposures == [exposure(1, "exp_test_ab", "session_id", 0, false, true, false, false, false, true)])
 	}
 
 	// A `null` filter on a missing environment matches, confirming the key is absent (not null/"").
@@ -618,7 +626,8 @@ extension ContextTests {
 		let context = systemContext(env, filter: Self.appVersionIs123)
 
 		#expect(context.treatment(for: "exp_test_ab") == 0)
-		#expect(env.log.exposures == [exposure(1, "exp_test_ab", "session_id", 0, false, true, false, false, false, true)])
+		#expect(
+			env.log.exposures == [exposure(1, "exp_test_ab", "session_id", 0, false, true, false, false, false, true)])
 	}
 
 	@Test func userSetAppVersionIsEvaluated() {

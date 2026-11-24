@@ -9,7 +9,8 @@ import Testing
 	}
 
 	static func experiment(_ fields: String) throws -> Experiment {
-		try #require(try decode(#"{"experiments":[{"name":"exp"\#(fields.isEmpty ? "" : ",")\#(fields)}]}"#).experiments.first)
+		try #require(
+			try decode(#"{"experiments":[{"name":"exp"\#(fields.isEmpty ? "" : ",")\#(fields)}]}"#).experiments.first)
 	}
 
 	@Test func publishUnitRemainsDecodableInsideCustomerModels() throws {
@@ -172,7 +173,8 @@ import Testing
 
 	@Test func nullKnownFieldsTakeTheirDefaults() throws {
 		let fields = [
-			"id", "unitType", "iteration", "seedHi", "seedLo", "split", "trafficSeedHi", "trafficSeedLo", "trafficSplit",
+			"id", "unitType", "iteration", "seedHi", "seedLo", "split", "trafficSeedHi", "trafficSeedLo",
+			"trafficSplit",
 			"fullOnVariant", "applications", "variants", "audienceStrict", "audience", "customFieldValues",
 			"assignmentRules",
 		].map { "\"\($0)\":null" }.joined(separator: ",")
@@ -416,7 +418,9 @@ import Testing
 				== #"{"assigned":false,"audienceMismatch":false,"custom":false,"eligible":true,"exposedAt":5,"fullOn":false,"id":0,"name":"missing","overridden":false,"ruleOverride":true,"variant":0}"#
 		)
 		let goal = Goal(name: "g", achievedAt: 1, properties: [:])
-		#expect(String(decoding: try encoder.encode(goal), as: UTF8.self) == #"{"achievedAt":1,"name":"g","properties":{}}"#)
+		#expect(
+			String(decoding: try encoder.encode(goal), as: UTF8.self) == #"{"achievedAt":1,"name":"g","properties":{}}"#
+		)
 	}
 
 	@Test func publishedBodyFromAContextMatches1x() async throws {

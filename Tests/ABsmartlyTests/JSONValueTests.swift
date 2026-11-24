@@ -4,7 +4,7 @@ import Testing
 @testable import ABsmartly
 
 /// Types a literal as a `JSONValue` (collection literals cannot be passed to `JSONValue(_:)`).
-private func J(_ value: JSONValue) -> JSONValue { value }
+private func json(_ value: JSONValue) -> JSONValue { value }
 
 @Suite struct JSONValueTests {
 	static func decode(_ text: String) throws -> JSONValue {
@@ -26,68 +26,80 @@ private func J(_ value: JSONValue) -> JSONValue { value }
 	// MARK: - Equality
 
 	@Test func numberEquality() {
-		#expect(J(1) == J(1))
+		#expect(json(1) == json(1))
 		#expect(JSONValue.int(2) == JSONValue.double(2.0))
-		#expect(J(9_234_567_890) == J(9_234_567_890))
-		#expect(J(-1.5) == J(-1.5))
-		#expect(!(J(1) == J(2)))
+		#expect(json(9_234_567_890) == json(9_234_567_890))
+		#expect(json(-1.5) == json(-1.5))
+		#expect(!(json(1) == json(2)))
 		#expect(!(JSONValue.int(1) == JSONValue.double(1.5)))
-		#expect(J(1) != J(2))
+		#expect(json(1) != json(2))
 		#expect(!(JSONValue.int(1) != JSONValue.double(1.0)))
 	}
 
 	@Test func parsedValuesCompareLikeLiterals() throws {
 		let parsed = try JSONValue(parsing: "[1, 2.5, true, false, \"a\"]")
-		guard case .int = try #require(parsed[0]) else { Issue.record("1 is an int"); return }
-		guard case .double = try #require(parsed[1]) else { Issue.record("2.5 is a double"); return }
-		guard case .bool = try #require(parsed[2]) else { Issue.record("true is a bool"); return }
-		guard case .bool = try #require(parsed[3]) else { Issue.record("false is a bool"); return }
-		#expect(parsed[0] == J(1))
-		#expect(parsed[2] == J(true))
+		guard case .int = try #require(parsed[0]) else {
+			Issue.record("1 is an int")
+			return
+		}
+		guard case .double = try #require(parsed[1]) else {
+			Issue.record("2.5 is a double")
+			return
+		}
+		guard case .bool = try #require(parsed[2]) else {
+			Issue.record("true is a bool")
+			return
+		}
+		guard case .bool = try #require(parsed[3]) else {
+			Issue.record("false is a bool")
+			return
+		}
+		#expect(parsed[0] == json(1))
+		#expect(parsed[2] == json(true))
 		#expect(!(parsed[2] == parsed[0]))
-		#expect(!(parsed[3] == J(0)))
-		#expect(parsed[4] == J("a"))
+		#expect(!(parsed[3] == json(0)))
+		#expect(parsed[4] == json("a"))
 	}
 
 	@Test func boolIsNotANumber() {
-		#expect(J(true) == .bool(true))
-		#expect(J(false) == .bool(false))
-		#expect(J(1) == .int(1))
-		#expect(J(0) == .int(0))
-		#expect(!J(true).isNumber)
-		#expect(J(1).isNumber)
+		#expect(json(true) == .bool(true))
+		#expect(json(false) == .bool(false))
+		#expect(json(1) == .int(1))
+		#expect(json(0) == .int(0))
+		#expect(!json(true).isNumber)
+		#expect(json(1).isNumber)
 
-		#expect(!(J(true) == J(1)))
-		#expect(!(J(1) == J(true)))
-		#expect(!(J(false) == J(0)))
-		#expect(J(true) != J(1))
+		#expect(!(json(true) == json(1)))
+		#expect(!(json(1) == json(true)))
+		#expect(!(json(false) == json(0)))
+		#expect(json(true) != json(1))
 		#expect(JSONValue.double(1) != .bool(true))
-		#expect(J(true).intValue == nil)
-		#expect(J(1).boolValue == nil)
+		#expect(json(true).intValue == nil)
+		#expect(json(1).boolValue == nil)
 	}
 
 	@Test func boolComparisons() {
-		#expect(J(true) == J(true))
-		#expect(!(J(true) == J(false)))
+		#expect(json(true) == json(true))
+		#expect(!(json(true) == json(false)))
 	}
 
 	@Test func stringComparisons() {
-		#expect(J("abc") == J("abc"))
-		#expect(!(J("abc") == J("abd")))
-		#expect(!(J("1") == J(1)))
-		#expect(!(J("true") == J(true)))
+		#expect(json("abc") == json("abc"))
+		#expect(!(json("abc") == json("abd")))
+		#expect(!(json("1") == json(1)))
+		#expect(!(json("true") == json(true)))
 	}
 
 	@Test func nullAndContainers() {
 		#expect(JSONValue.null == nil)
-		#expect(!(JSONValue.null == J(0)))
+		#expect(!(JSONValue.null == json(0)))
 		#expect(!(JSONValue.null == ""))
 		#expect(!(JSONValue.null == false))
-		#expect(J([1, "a", true]) == J([1, "a", true]))
-		#expect(!(J([1, 2]) == J([2, 1])))
-		#expect(J(["a": 1, "b": [true]]) == J(["b": [true], "a": 1]))
-		#expect(!(J(["a": 1]) == J(["a": 2])))
-		#expect(J([JSONValue.int(1)]) == J([JSONValue.double(1)]))
+		#expect(json([1, "a", true]) == json([1, "a", true]))
+		#expect(!(json([1, 2]) == json([2, 1])))
+		#expect(json(["a": 1, "b": [true]]) == json(["b": [true], "a": 1]))
+		#expect(!(json(["a": 1]) == json(["a": 2])))
+		#expect(json([JSONValue.int(1)]) == json([JSONValue.double(1)]))
 	}
 
 	// MARK: - Codable
@@ -118,10 +130,22 @@ private func J(_ value: JSONValue) -> JSONValue { value }
 	@Test func boolAndNumberStayDistinctWhenDecoded() throws {
 		let decoded = try Self.decode("[true, 1, false, 0, 1.0]")
 		let array = try #require(decoded.arrayValue)
-		guard case .bool(true) = array[0] else { Issue.record("true: \(array[0])"); return }
-		guard case .int(1) = array[1] else { Issue.record("1: \(array[1])"); return }
-		guard case .bool(false) = array[2] else { Issue.record("false: \(array[2])"); return }
-		guard case .int(0) = array[3] else { Issue.record("0: \(array[3])"); return }
+		guard case .bool(true) = array[0] else {
+			Issue.record("true: \(array[0])")
+			return
+		}
+		guard case .int(1) = array[1] else {
+			Issue.record("1: \(array[1])")
+			return
+		}
+		guard case .bool(false) = array[2] else {
+			Issue.record("false: \(array[2])")
+			return
+		}
+		guard case .int(0) = array[3] else {
+			Issue.record("0: \(array[3])")
+			return
+		}
 		// A whole floating-point literal is read as an integer by JSONDecoder; it still equals 1.
 		#expect(array[4] == 1)
 		#expect(try Self.encode(.bool(true)) == "true")
@@ -261,8 +285,14 @@ private func J(_ value: JSONValue) -> JSONValue { value }
 		#expect(string == .string("s"))
 		#expect(array == .array([.int(1), .string("a"), .null]))
 		#expect(object == .object(["k": .array([.bool(true)])]))
-		guard case .int = int else { Issue.record("an integer literal is .int"); return }
-		guard case .double = double else { Issue.record("a float literal is .double"); return }
+		guard case .int = int else {
+			Issue.record("an integer literal is .int")
+			return
+		}
+		guard case .double = double else {
+			Issue.record("a float literal is .double")
+			return
+		}
 	}
 
 	@Test func duplicateDictionaryLiteralKeysKeepTheLast() {
@@ -393,8 +423,8 @@ private func J(_ value: JSONValue) -> JSONValue { value }
 		#expect(JSONValue.double(2.5).description == "2.5")
 		#expect(JSONValue.string("a/b").description == #""a/b""#)
 		#expect(JSONValue.string("q\"").description == #""q\"""#)
-		#expect(J(["b": 1, "a": [true, nil]]).description == #"{"a":[true,null],"b":1}"#)
-		#expect("\(J([1, "x"]))" == #"[1,"x"]"#)
+		#expect(json(["b": 1, "a": [true, nil]]).description == #"{"a":[true,null],"b":1}"#)
+		#expect("\(json([1, "x"]))" == #"[1,"x"]"#)
 		#expect(JSONValue.int(9_007_199_254_740_993).description == "9007199254740993")
 	}
 

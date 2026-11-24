@@ -1,3 +1,8 @@
+import Foundation
+import Testing
+
+@testable import ABsmartly
+
 #if canImport(Darwin)
 	import Darwin
 #elseif canImport(Glibc)
@@ -5,10 +10,6 @@
 #elseif canImport(Musl)
 	import Musl
 #endif
-import Foundation
-import Testing
-
-@testable import ABsmartly
 
 #if canImport(FoundationNetworking)
 	import FoundationNetworking
@@ -205,7 +206,8 @@ import Testing
 		#expect(agent != nil, "X-Agent header must be present")
 		#expect(!(agent ?? "").isEmpty, "X-Agent header must be non-empty")
 		let contentType = put.header("Content-Type") ?? ""
-		#expect(contentType.contains("application/json"), "Content-Type should be application/json, got '\(contentType)'")
+		#expect(
+			contentType.contains("application/json"), "Content-Type should be application/json, got '\(contentType)'")
 
 		// Body JSON fields.
 		let json = try JSONDecoder().decode(JSONValue.self, from: Data(put.body.utf8))
@@ -385,7 +387,8 @@ private final class LocalHTTPServer: @unchecked Sendable {
 
 		let contentLength = Int(headers["content-length"] ?? "0") ?? 0
 		guard data.distance(from: headerEnd.upperBound, to: data.endIndex) >= contentLength else { return nil }
-		let bodyData = data.subdata(in: headerEnd.upperBound..<data.index(headerEnd.upperBound, offsetBy: contentLength))
+		let bodyData = data.subdata(
+			in: headerEnd.upperBound..<data.index(headerEnd.upperBound, offsetBy: contentLength))
 
 		let target = URLComponents(string: requestParts[1])
 		var query: [String: String] = [:]

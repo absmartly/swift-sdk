@@ -52,9 +52,15 @@ final class FakeTransport: Transport, @unchecked Sendable {
 	}
 }
 
+/// A clock whose time stands still: timestamps are `value`, and a timer with a positive delay never
+/// fires (a zero delay fires at once, as `Task.sleep(0)` does). Tests that exercise a timer use
+/// `TestClock`.
 struct FixedClock: Clock {
 	let value: Int64
 	func millis() -> Int64 { value }
+	func sleep(seconds: TimeInterval) async throws {
+		try await TestClock.sleepZeroOrForever(seconds)
+	}
 }
 
 final class MutableClock: Clock, @unchecked Sendable {
@@ -63,6 +69,82 @@ final class MutableClock: Clock, @unchecked Sendable {
 	init(_ value: Int64) { self.value = value }
 	func millis() -> Int64 { lock.withLock { value } }
 	func set(_ newValue: Int64) { lock.withLock { value = newValue } }
+	func sleep(seconds: TimeInterval) async throws {
+		try await TestClock.sleepZeroOrForever(seconds)
+	}
+}
+
+/// A manual clock for the publish and refresh timers: a timer sleeps until the test advances the
+/// clock past its deadline, so timer tests need no wall-clock waits. Timestamps stay `millis`.
+final class TestClock: Clock, @unchecked Sendable {
+	private struct Sleeper {
+		let id: Int
+		let deadline: TimeInterval
+		let continuation: CheckedContinuation<Void, any Error>
+	}
+
+	private let lock = NSLock()
+	private let fixedMillis: Int64
+	private var now: TimeInterval = 0
+	private var nextID = 0
+	private var sleepers: [Sleeper] = []
+
+	init(millis: Int64 = Fixtures.now) { fixedMillis = millis }
+
+	func millis() -> Int64 { fixedMillis }
+
+	/// The number of timers currently waiting.
+	var sleeperCount: Int { lock.withLock { sleepers.count } }
+
+	func sleep(seconds: TimeInterval) async throws {
+		if seconds <= 0 {
+			try Task.checkCancellation()
+			return
+		}
+		let id = lock.withLock { () -> Int in
+			nextID += 1
+			return nextID
+		}
+		try await withTaskCancellationHandler {
+			try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
+				let resumeNow: Bool = lock.withLock {
+					if Task.isCancelled { return true }
+					sleepers.append(Sleeper(id: id, deadline: now + max(0, seconds), continuation: continuation))
+					return false
+				}
+				if resumeNow { continuation.resume(throwing: CancellationError()) }
+			}
+		} onCancel: {
+			let sleeper: Sleeper? = lock.withLock {
+				guard let index = sleepers.firstIndex(where: { $0.id == id }) else { return nil }
+				return sleepers.remove(at: index)
+			}
+			sleeper?.continuation.resume(throwing: CancellationError())
+		}
+	}
+
+	/// Moves time forward by `seconds`, waking every timer whose deadline has passed.
+	func advance(by seconds: TimeInterval) {
+		let due: [Sleeper] = lock.withLock {
+			now += seconds
+			let due = sleepers.filter { $0.deadline <= now }
+			sleepers.removeAll { $0.deadline <= now }
+			return due
+		}
+		for sleeper in due {
+			sleeper.continuation.resume()
+		}
+	}
+
+	/// Waits until `count` timers are sleeping (they start asynchronously).
+	func waitForSleepers(_ count: Int = 1, timeout: TimeInterval = 5) async -> Bool {
+		await eventually(timeout: timeout) { sleeperCount >= count }
+	}
+
+	/// A zero delay returns at once; any other suspends until the task is cancelled.
+	static func sleepZeroOrForever(_ seconds: TimeInterval) async throws {
+		try await TestClock().sleep(seconds: seconds <= 0 ? 0 : .infinity)
+	}
 }
 
 /// Records every event a logger receives, in order.
@@ -154,7 +236,8 @@ struct Harness {
 
 	/// A ready context from the given fixture (pre-fetched path).
 	func context(
-		_ fixture: String = "context", units: [UnitType: String] = Fixtures.units, attributes: [String: JSONValue] = [:],
+		_ fixture: String = "context", units: [UnitType: String] = Fixtures.units,
+		attributes: [String: JSONValue] = [:],
 		overrides: [String: Int] = [:], customAssignments: [String: Int] = [:], options: Context.Options? = nil
 	) -> Context {
 		client.context(

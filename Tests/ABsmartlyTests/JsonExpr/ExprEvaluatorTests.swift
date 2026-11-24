@@ -177,7 +177,9 @@ import Testing
 		#expect(evaluator.extractVar("f/y/0") == 10)
 	}
 
-	@Test(.enabled(if: countsConversions), arguments: [10, 10_000]) func firstAttributeMatchSkipsRemainingConversions(size: Int) {
+	@Test(.enabled(if: countsConversions), arguments: [10, 10_000]) func firstAttributeMatchSkipsRemainingConversions(
+		size: Int
+	) {
 		let roles = JSONValue.array(["admin"] + Array(repeating: "guest", count: size - 1))
 		let evaluator = ExprEvaluator(vars: ["roles": roles])
 		let count = Locked(0)
@@ -187,7 +189,8 @@ import Testing
 		#expect(count.withLock { $0 } == 2)
 	}
 
-	@Test(.enabled(if: countsConversions), arguments: [10, 10_000]) func nestedAttributePathAndMatchSkipUnvisitedSubtrees(size: Int) {
+	@Test(.enabled(if: countsConversions), arguments: [10, 10_000])
+	func nestedAttributePathAndMatchSkipUnvisitedSubtrees(size: Int) {
 		let unused = JSONValue.array(Array(repeating: ["unused": [1, 2, 3]], count: size))
 		let roles = JSONValue.array([["name": "admin"], unused])
 		let evaluator = ExprEvaluator(vars: ["profiles": [["roles": roles], unused]])
@@ -198,7 +201,9 @@ import Testing
 		#expect(count.withLock { $0 } == 3)
 	}
 
-	@Test(.enabled(if: countsConversions), arguments: [10, 10_000]) func nestedAttributeEqualityStopsAtFirstUnequalLeaf(size: Int) {
+	@Test(.enabled(if: countsConversions), arguments: [10, 10_000]) func nestedAttributeEqualityStopsAtFirstUnequalLeaf(
+		size: Int
+	) {
 		let values = JSONValue.array([0] + Array(repeating: 2, count: size - 1))
 		let literal = ExprValue.array([1] + Array(repeating: 2, count: size - 1))
 		let evaluator = ExprEvaluator(vars: ["profile": ["values": values]])

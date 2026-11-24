@@ -28,7 +28,9 @@ import Testing
 			return .object(result)
 		case .array(let items):
 			let mapped = items.map(normalise)
-			let isUnits = !mapped.isEmpty && mapped.allSatisfy { $0.objectValue.map { Set($0.keys) == ["type", "uid"] } ?? false }
+			let isUnits =
+				!mapped.isEmpty
+				&& mapped.allSatisfy { $0.objectValue.map { Set($0.keys) == ["type", "uid"] } ?? false }
 			if isUnits {
 				return .array(mapped.sorted { ($0["type"]?.stringValue ?? "") < ($1["type"]?.stringValue ?? "") })
 			}
@@ -138,10 +140,13 @@ import Testing
 
 	// Serialized: the probes are CPU-bound, and running all seven fixtures at once can starve the
 	// timer-based tests on a small host.
-	@Test(.serialized, arguments: [
-		"context", "audience_context", "audience_strict_context", "audience_key_conflict_disjoint_context", "refreshed",
-		"refreshed_full_on", "parity_rules_context",
-	])
+	@Test(
+		.serialized,
+		arguments: [
+			"context", "audience_context", "audience_strict_context", "audience_key_conflict_disjoint_context",
+			"refreshed",
+			"refreshed_full_on", "parity_rules_context",
+		])
 	func matches150(fixture: String) async throws {
 		for expected in Self.recorded where expected["fixture"]?.stringValue == fixture {
 			let uid = try #require(expected["uid"]?.stringValue)

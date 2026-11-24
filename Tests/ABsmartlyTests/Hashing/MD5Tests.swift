@@ -17,7 +17,10 @@ import Testing
 		("special characters açb↓c", "4PIrO7lKtTxOcj2eMYlG7A"),
 		("The quick brown fox jumps over the lazy dog", "nhB9nTcrtoJr2B01QqQZ1g"),
 		("The quick brown fox jumps over the lazy dog and eats a pie", "iM-8ECRrLUQzixl436y96A"),
-		("Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.", "24m7XOq4f5wPzCqzbBicLA"),
+		(
+			"Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.",
+			"24m7XOq4f5wPzCqzbBicLA"
+		),
 	]
 
 	private func hash(_ input: String) -> String {
@@ -85,7 +88,10 @@ import Testing
 	}
 
 	@Test func hashLoremIpsum() {
-		#expect(hash("Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.") == "24m7XOq4f5wPzCqzbBicLA")
+		#expect(
+			hash(
+				"Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum."
+			) == "24m7XOq4f5wPzCqzbBicLA")
 	}
 
 	@Test func hashBytesReturnsUTF8OfStringHash() {
@@ -96,7 +102,9 @@ import Testing
 
 	@Test func hashBytesConsistentWithHash() {
 		for testCase in testCases {
-			#expect(Hashing.hashUnit(testCase.input) == Array(testCase.expected.utf8), "hashBytes mismatch for input: \(testCase.input)")
+			#expect(
+				Hashing.hashUnit(testCase.input) == Array(testCase.expected.utf8),
+				"hashBytes mismatch for input: \(testCase.input)")
 		}
 	}
 }

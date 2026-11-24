@@ -1,7 +1,6 @@
+import ABsmartly
 import Foundation
 import Testing
-
-import ABsmartly
 
 // Every code example in README.md and MIGRATING.md, compiled (and where it can run offline, run).
 // The README quotes these snippets verbatim; keep the two in sync. Uses only the public API.

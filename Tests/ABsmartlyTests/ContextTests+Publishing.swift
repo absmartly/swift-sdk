@@ -80,18 +80,23 @@ extension ContextTests {
 	}
 
 	@Test func trackStartsPublishTimeoutAfterAchievement() async {
-		let env = ContextEnv()
-		let context = env.context(options: Context.Options(publishDelay: 0.05))
+		let clock = TestClock()
+		let env = ContextEnv(clock: clock)
+		let context = env.context(options: Context.Options(publishDelay: 5))
 
 		context.track("goal1", properties: ["amount": 125, "hours": 245])
 		context.track("goal2", properties: ["tries": 7])
 
 		#expect(context.pendingEventCount == 2)
+		#expect(await clock.waitForSleepers())
+		#expect(clock.sleeperCount == 1)
+		clock.advance(by: 4.9)
 		#expect(env.publishCount == 0)
 
+		clock.advance(by: 0.1)
 		#expect(await eventually(timeout: 5) { env.publishCount == 1 })
 		#expect(context.pendingEventCount == 0)
-		await pause(0.1)
+		clock.advance(by: 60)
 		#expect(env.publishCount == 1)
 	}
 
@@ -99,7 +104,8 @@ extension ContextTests {
 	// publish() and close() still send the events.
 	@Test(arguments: [-1.0, -0.5, 0.0])
 	func negativePublishDelayDisablesAutomaticPublishing(delay: Double) async throws {
-		let env = ContextEnv()
+		let clock = TestClock()
+		let env = ContextEnv(clock: clock)
 		let context = env.context(options: Context.Options(publishDelay: delay))
 		if delay == 0 {
 			context.track("goal", properties: nil)
@@ -110,14 +116,17 @@ extension ContextTests {
 		}
 		_ = context.treatment(for: "exp_test_ab")
 		context.track("goal1", properties: nil)
-		await pause(0.2)
+		// No timer is started at all.
+		#expect(clock.sleeperCount == 0)
+		clock.advance(by: 600)
 		#expect(env.publishCount == 0)
 		#expect(context.pendingEventCount == 2)
 
 		try await context.publish()
 		#expect(env.publishCount == 1)
 		context.track("goal2", properties: nil)
-		await pause(0.2)
+		#expect(clock.sleeperCount == 0)
+		clock.advance(by: 600)
 		#expect(env.publishCount == 1)
 		try await context.close()
 		#expect(env.publishCount == 2)
@@ -328,12 +337,15 @@ extension ContextTests {
 	}
 
 	@Test func closeStopsRefreshTimer() async throws {
-		let env = ContextEnv()
-		let context = env.context(options: Context.Options(publishDelay: -1, refreshInterval: 0.05))
+		let clock = TestClock()
+		let env = ContextEnv(clock: clock)
+		let context = env.context(options: Context.Options(publishDelay: -1, refreshInterval: 60))
 		#expect(context.state == .ready)
+		#expect(await clock.waitForSleepers())
 
 		try await context.close()
-		await pause(0.15)
+		#expect(await eventually(timeout: 5) { clock.sleeperCount == 0 })
+		clock.advance(by: 600)
 		#expect(env.getCount == 0)
 	}
 
@@ -487,15 +499,19 @@ extension ContextTests {
 	}
 
 	@Test func failedAutoPublishLogsOneError() async {
-		let env = ContextEnv()
-		let context = env.context(options: Context.Options(publishDelay: 0.01))
+		let clock = TestClock()
+		let env = ContextEnv(clock: clock)
+		let context = env.context(options: Context.Options(publishDelay: 5))
 
 		env.failNextRequest("publish failure")
 		context.track("goal1", properties: nil)
+		#expect(await clock.waitForSleepers())
+		clock.advance(by: 5)
 
 		#expect(await eventually(timeout: 5) { !env.log.errors.isEmpty })
-		// Let the timer's own failure handling finish before counting.
-		await pause(0.1)
+		// A failed automatic publish re-queues its events without starting another timer.
+		#expect(await eventually(timeout: 5) { context.pendingEventCount == 1 })
+		clock.advance(by: 600)
 		#expect(env.publishCount == 1)
 		#expect(env.log.errorMessages == ["publish failure"])
 	}
@@ -589,15 +605,19 @@ extension ContextTests {
 	}
 
 	@Test func setTimeoutNoRaceCondition() async {
-		let env = ContextEnv()
-		let context = env.context(options: Context.Options(publishDelay: 0.05))
+		let clock = TestClock()
+		let env = ContextEnv(clock: clock)
+		let context = env.context(options: Context.Options(publishDelay: 5))
 
 		_ = context.treatment(for: "exp_test_ab")
 		context.track("goal1", properties: nil)
 
 		// One timer for both: they go out in a single publish.
+		#expect(await clock.waitForSleepers())
+		#expect(clock.sleeperCount == 1)
+		clock.advance(by: 5)
 		#expect(await eventually(timeout: 5) { env.publishCount == 1 })
-		await pause(0.1)
+		clock.advance(by: 600)
 		#expect(env.publishCount == 1)
 		#expect(env.lastSentEvent?["exposures"]?.arrayValue?.count == 1)
 		#expect(env.lastSentEvent?["goals"]?.arrayValue?.count == 1)
@@ -613,13 +633,16 @@ extension ContextTests {
 	}
 
 	@Test func goalTrackedInsideSynchronousReadyCallbackIsScheduled() async {
-		let env = ContextEnv(options: Context.Options(publishDelay: 0.05))
+		let clock = TestClock()
+		let env = ContextEnv(options: Context.Options(publishDelay: 5), clock: clock)
 		env.log.setHook { context, event in
 			if case .ready = event { context.track("goal_in_ready", properties: nil) }
 		}
 		let context = env.context()
 
 		#expect(context.pendingEventCount == 1)
+		#expect(await clock.waitForSleepers())
+		clock.advance(by: 5)
 		#expect(await eventually(timeout: 5) { env.publishCount == 1 })
 		#expect(env.lastSentEvent == expectedBody(goals: [goal("goal_in_ready", nil)]))
 	}
@@ -640,8 +663,9 @@ extension ContextTests {
 	}
 
 	@Test func trackThenDropContextStillPublishes() async {
-		let env = ContextEnv()
-		var context: Context? = env.context(options: Context.Options(publishDelay: 0.05))
+		let clock = TestClock()
+		let env = ContextEnv(clock: clock)
+		var context: Context? = env.context(options: Context.Options(publishDelay: 5))
 		// `var` (Swift 6.0 has no `weak let`), cleared below so newer compilers see it mutated.
 		weak var weakContext = context
 		context!.track("goal1", properties: nil)
@@ -649,6 +673,8 @@ extension ContextTests {
 		#expect(weakContext != nil, "a pending publish keeps the context alive")
 		weakContext = nil
 
+		#expect(await clock.waitForSleepers())
+		clock.advance(by: 5)
 		#expect(await eventually(timeout: 5) { env.publishCount == 1 })
 		#expect(env.lastSentEvent?["goals"]?.arrayValue?.compactMap { $0["name"]?.stringValue } == ["goal1"])
 	}

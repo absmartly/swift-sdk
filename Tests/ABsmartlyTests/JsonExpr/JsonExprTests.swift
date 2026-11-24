@@ -3,10 +3,10 @@ import Testing
 @testable import ABsmartly
 
 @Suite struct JsonExprTests {
-	static let John: [String: JSONValue] = ["age": 20, "language": "en-US", "returning": false]
-	static let Terry: [String: JSONValue] = ["age": 20, "language": "en-GB", "returning": true]
-	static let Kate: [String: JSONValue] = ["age": 50, "language": "es-ES", "returning": false]
-	static let Maria: [String: JSONValue] = ["age": 52, "language": "pt-PT", "returning": true]
+	static let john: [String: JSONValue] = ["age": 20, "language": "en-US", "returning": false]
+	static let terry: [String: JSONValue] = ["age": 20, "language": "en-GB", "returning": true]
+	static let kate: [String: JSONValue] = ["age": 50, "language": "es-ES", "returning": false]
+	static let maria: [String: JSONValue] = ["age": 52, "language": "pt-PT", "returning": true]
 
 	static func unaryOp(_ op: String, _ arg: ExprValue) -> ExprValue {
 		[op: arg]
@@ -24,16 +24,16 @@ import Testing
 		["value": value]
 	}
 
-	static let AgeTwentyAndUS: ExprValue = [
+	static let ageTwentyAndUS: ExprValue = [
 		binaryOp("eq", varFor("age"), valueFor(20)),
 		binaryOp("eq", varFor("language"), valueFor("en-US")),
 	]
-	static let AgeOverFifty: ExprValue = [binaryOp("gte", varFor("age"), valueFor(50))]
-	static let AgeTwentyAndUS_Or_AgeOverFifty: ExprValue = [["or": [AgeTwentyAndUS, AgeOverFifty]]]
-	static let Returning: ExprValue = [varFor("returning")]
-	static let Returning_And_AgeTwentyAndUS_Or_AgeOverFifty: ExprValue = [Returning, AgeTwentyAndUS_Or_AgeOverFifty]
-	static let NotReturning_And_Spanish: ExprValue = [
-		unaryOp("not", Returning), binaryOp("eq", varFor("language"), valueFor("es-ES")),
+	static let ageOverFifty: ExprValue = [binaryOp("gte", varFor("age"), valueFor(50))]
+	static let ageTwentyAndUSOrAgeOverFifty: ExprValue = [["or": [ageTwentyAndUS, ageOverFifty]]]
+	static let returningExpr: ExprValue = [varFor("returning")]
+	static let returningAndAgeTwentyAndUSOrAgeOverFifty: ExprValue = [returningExpr, ageTwentyAndUSOrAgeOverFifty]
+	static let notReturningAndSpanish: ExprValue = [
+		unaryOp("not", returningExpr), binaryOp("eq", varFor("language"), valueFor("es-ES")),
 	]
 
 	private func eval(_ expr: ExprValue, _ vars: [String: JSONValue]) -> Bool {
@@ -41,44 +41,44 @@ import Testing
 	}
 
 	@Test func ageTwentyAsUSEnglish() {
-		#expect(eval(Self.AgeTwentyAndUS, Self.John))
-		#expect(!eval(Self.AgeTwentyAndUS, Self.Terry))
-		#expect(!eval(Self.AgeTwentyAndUS, Self.Kate))
-		#expect(!eval(Self.AgeTwentyAndUS, Self.Maria))
+		#expect(eval(Self.ageTwentyAndUS, Self.john))
+		#expect(!eval(Self.ageTwentyAndUS, Self.terry))
+		#expect(!eval(Self.ageTwentyAndUS, Self.kate))
+		#expect(!eval(Self.ageTwentyAndUS, Self.maria))
 	}
 
 	@Test func ageOverFifty() {
-		#expect(!eval(Self.AgeOverFifty, Self.John))
-		#expect(!eval(Self.AgeOverFifty, Self.Terry))
-		#expect(eval(Self.AgeOverFifty, Self.Kate))
-		#expect(eval(Self.AgeOverFifty, Self.Maria))
+		#expect(!eval(Self.ageOverFifty, Self.john))
+		#expect(!eval(Self.ageOverFifty, Self.terry))
+		#expect(eval(Self.ageOverFifty, Self.kate))
+		#expect(eval(Self.ageOverFifty, Self.maria))
 	}
 
 	@Test func ageTwentyAndUS_Or_AgeOverFifty() {
-		#expect(eval(Self.AgeTwentyAndUS_Or_AgeOverFifty, Self.John))
-		#expect(!eval(Self.AgeTwentyAndUS_Or_AgeOverFifty, Self.Terry))
-		#expect(eval(Self.AgeTwentyAndUS_Or_AgeOverFifty, Self.Kate))
-		#expect(eval(Self.AgeTwentyAndUS_Or_AgeOverFifty, Self.Maria))
+		#expect(eval(Self.ageTwentyAndUSOrAgeOverFifty, Self.john))
+		#expect(!eval(Self.ageTwentyAndUSOrAgeOverFifty, Self.terry))
+		#expect(eval(Self.ageTwentyAndUSOrAgeOverFifty, Self.kate))
+		#expect(eval(Self.ageTwentyAndUSOrAgeOverFifty, Self.maria))
 	}
 
 	@Test func returning() {
-		#expect(!eval(Self.Returning, Self.John))
-		#expect(eval(Self.Returning, Self.Terry))
-		#expect(!eval(Self.Returning, Self.Kate))
-		#expect(eval(Self.Returning, Self.Maria))
+		#expect(!eval(Self.returningExpr, Self.john))
+		#expect(eval(Self.returningExpr, Self.terry))
+		#expect(!eval(Self.returningExpr, Self.kate))
+		#expect(eval(Self.returningExpr, Self.maria))
 	}
 
 	@Test func returning_And_AgeTwentyAndUS_Or_AgeOverFifty() {
-		#expect(!eval(Self.Returning_And_AgeTwentyAndUS_Or_AgeOverFifty, Self.John))
-		#expect(!eval(Self.Returning_And_AgeTwentyAndUS_Or_AgeOverFifty, Self.Terry))
-		#expect(!eval(Self.Returning_And_AgeTwentyAndUS_Or_AgeOverFifty, Self.Kate))
-		#expect(eval(Self.Returning_And_AgeTwentyAndUS_Or_AgeOverFifty, Self.Maria))
+		#expect(!eval(Self.returningAndAgeTwentyAndUSOrAgeOverFifty, Self.john))
+		#expect(!eval(Self.returningAndAgeTwentyAndUSOrAgeOverFifty, Self.terry))
+		#expect(!eval(Self.returningAndAgeTwentyAndUSOrAgeOverFifty, Self.kate))
+		#expect(eval(Self.returningAndAgeTwentyAndUSOrAgeOverFifty, Self.maria))
 	}
 
 	@Test func notReturning_And_Spanish() {
-		#expect(!eval(Self.NotReturning_And_Spanish, Self.John))
-		#expect(!eval(Self.NotReturning_And_Spanish, Self.Terry))
-		#expect(eval(Self.NotReturning_And_Spanish, Self.Kate))
-		#expect(!eval(Self.NotReturning_And_Spanish, Self.Maria))
+		#expect(!eval(Self.notReturningAndSpanish, Self.john))
+		#expect(!eval(Self.notReturningAndSpanish, Self.terry))
+		#expect(eval(Self.notReturningAndSpanish, Self.kate))
+		#expect(!eval(Self.notReturningAndSpanish, Self.maria))
 	}
 }

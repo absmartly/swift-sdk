@@ -1,10 +1,11 @@
 import Foundation
-#if canImport(FoundationNetworking)
-	import FoundationNetworking
-#endif
 import Testing
 
 @testable import ABsmartly
+
+#if canImport(FoundationNetworking)
+	import FoundationNetworking
+#endif
 
 @Suite struct ConnectionTests {
 	static let endpoint = URL(string: "https://test.absmartly.io/v1")!
@@ -356,7 +357,10 @@ import Testing
 		let (connection, transport) = Self.connection(
 			apiKey: "test-key", application: "website", environment: "production", applicationVersion: "1004")
 		_ = try await withTimeout { try await connection.fetchContextData() }
-		try await withTimeout { try await connection.publish(PublishEvent(units: [], publishedAt: 0, exposures: [], goals: [], attributes: [])) }
+		try await withTimeout {
+			try await connection.publish(
+				PublishEvent(units: [], publishedAt: 0, exposures: [], goals: [], attributes: []))
+		}
 
 		let get = try #require(transport.requests.first { $0.method == "GET" })
 		#expect(Self.query(get.url) == ["application": "website", "environment": "production"])
@@ -370,7 +374,8 @@ import Testing
 		let agent = try #require(headers["X-Agent"])
 		#expect(
 			agent.range(
-				of: "^absmartly-[a-z0-9]+-sdk/[0-9]+\\.[0-9]+\\.[0-9]+([-+][0-9A-Za-z.+-]*)?$", options: .regularExpression)
+				of: "^absmartly-[a-z0-9]+-sdk/[0-9]+\\.[0-9]+\\.[0-9]+([-+][0-9A-Za-z.+-]*)?$",
+				options: .regularExpression)
 				!= nil, "\(agent)")
 		#expect(transport.publishes.first?.headers == headers)
 		#expect(headers.count == 6)
@@ -444,7 +449,11 @@ import Testing
 			}
 			let error = try await withTimeout {
 				await sdkError {
-					if method == "GET" { _ = try await connection.fetchContextData() } else { try await connection.publish(Self.event) }
+					if method == "GET" {
+						_ = try await connection.fetchContextData()
+					} else {
+						try await connection.publish(Self.event)
+					}
 				}
 			}
 			guard case .transport = error else {
@@ -465,10 +474,16 @@ import Testing
 				}
 				let error = try await withTimeout {
 					await sdkError {
-						if method == "GET" { _ = try await connection.fetchContextData() } else { try await connection.publish(Self.event) }
+						if method == "GET" {
+							_ = try await connection.fetchContextData()
+						} else {
+							try await connection.publish(Self.event)
+						}
 					}
 				}
-				#expect(error == .httpStatus(code: status, message: HTTPURLResponse.localizedString(forStatusCode: status)), "\(method)")
+				#expect(
+					error == .httpStatus(code: status, message: HTTPURLResponse.localizedString(forStatusCode: status)),
+					"\(method)")
 				#expect(transport.requests.count == attempts, "\(method) \(status) retries=\(retries)")
 			}
 		}

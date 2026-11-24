@@ -66,14 +66,14 @@ import Testing
 		("1e-9", .skipped),
 		("4.9e-324", .skipped),
 		("1.0000000000000002", .skipped),
-		("2147483648", outOfRangeOr(2147483648)),
-		("4294967297", outOfRangeOr(4294967297)),
-		("-2147483649", outOfRangeOr(-2147483649)),
-		("9007199254740993", outOfRangeOr(9007199254740992)),
-		("9007199254740992.5", outOfRangeOr(9007199254740992)),
+		("2147483648", outOfRangeOr(2_147_483_648)),
+		("4294967297", outOfRangeOr(4_294_967_297)),
+		("-2147483649", outOfRangeOr(-2_147_483_649)),
+		("9007199254740993", outOfRangeOr(9_007_199_254_740_992)),
+		("9007199254740992.5", outOfRangeOr(9_007_199_254_740_992)),
 		("9223372036854775807", .selected(-1)),
 		("9223372036854775808", .selected(-1)),
-		("-9223372036854775809", outOfRangeOr(-9223372036854775808)),
+		("-9223372036854775809", outOfRangeOr(-9_223_372_036_854_775_808)),
 		("18446744073709551616", .selected(-1)),
 		("1e20", .selected(-1)),
 		("99999999999999999999", .selected(-1)),
@@ -100,7 +100,9 @@ import Testing
 		case nil: actual = .unparseable
 		case .some(nil): actual = .skipped
 		case .some(.assign(let variant)?): actual = .selected(variant)
-		case .some(.split?): Issue.record("unexpected split"); return
+		case .some(.split?):
+			Issue.record("unexpected split")
+			return
 		}
 		#expect(actual == outcome, "\(literal)")
 	}
@@ -170,7 +172,9 @@ import Testing
 
 	@Test(arguments: table)
 	func parse(_ percentages: String, _ expected: [Double]?) {
-		let escaped = percentages.unicodeScalars.map { $0.isASCII && $0.value >= 0x20 ? String($0) : "\\u{\(String($0.value, radix: 16))}" }.joined()
+		let escaped = percentages.unicodeScalars.map {
+			$0.isASCII && $0.value >= 0x20 ? String($0) : "\\u{\(String($0.value, radix: 16))}"
+		}.joined()
 		#expect(AudienceMatcher.parseSplitPercentages(.string(percentages)) == expected, "\(escaped)")
 	}
 }
@@ -214,30 +218,32 @@ import Testing
 @Suite struct NumberLiteralParityTests {
 	// What 1.5.0's evaluator did with each literal from parsed JSON: its string form, whether it
 	// matches "^-", whether "x-0x" contains it, whether it is > 0, and semver_eq against "0".
-	static let table: [(literal: String, string: String, negativeMatch: Bool, inString: Bool, gtZero: Bool, semverZero: Bool?)] = [
-		("-0", "0", false, true, false, true),
-		("-0.0", "-0", true, true, false, true),
-		("-0e0", "-0", true, true, false, true),
-		("-0.0e5", "-0", true, true, false, true),
-		("0.0", "0", false, true, false, true),
-		("-1e-400", "-0", true, true, false, true),
-		("1e-400", "0", false, true, false, true),
-		("-5e-324", "-0", true, true, false, nil),
-		("4.9e-324", "0", false, true, true, true),
-		("1.0", "1", false, false, true, false),
-		("1e2", "100", false, false, true, false),
-		("1E+3", "1000", false, false, true, false),
-		("100.000", "100", false, false, true, false),
-		("1.5", "1.5", false, false, true, false),
-		("0.1", "0.1", false, false, true, false),
-		("1e-7", "0.0000001", false, false, true, false),
-		("2.5e-5", "0.000025", false, false, true, false),
-		("1e18", "1000000000000000000", false, false, true, false),
-		("1e19", "10000000000000000000", false, false, true, false),
-		("123456789012345678", "123456789012345678", false, false, true, false),
-		("9007199254740993", largeIntegerText, false, false, true, false),
-		("9223372036854775807", "9223372036854775807", false, false, true, false),
-	] + linuxOnlyRows
+	static let table:
+		[(literal: String, string: String, negativeMatch: Bool, inString: Bool, gtZero: Bool, semverZero: Bool?)] =
+			[
+				("-0", "0", false, true, false, true),
+				("-0.0", "-0", true, true, false, true),
+				("-0e0", "-0", true, true, false, true),
+				("-0.0e5", "-0", true, true, false, true),
+				("0.0", "0", false, true, false, true),
+				("-1e-400", "-0", true, true, false, true),
+				("1e-400", "0", false, true, false, true),
+				("-5e-324", "-0", true, true, false, nil),
+				("4.9e-324", "0", false, true, true, true),
+				("1.0", "1", false, false, true, false),
+				("1e2", "100", false, false, true, false),
+				("1E+3", "1000", false, false, true, false),
+				("100.000", "100", false, false, true, false),
+				("1.5", "1.5", false, false, true, false),
+				("0.1", "0.1", false, false, true, false),
+				("1e-7", "0.0000001", false, false, true, false),
+				("2.5e-5", "0.000025", false, false, true, false),
+				("1e18", "1000000000000000000", false, false, true, false),
+				("1e19", "10000000000000000000", false, false, true, false),
+				("123456789012345678", "123456789012345678", false, false, true, false),
+				("9007199254740993", largeIntegerText, false, false, true, false),
+				("9223372036854775807", "9223372036854775807", false, false, true, false),
+			] + linuxOnlyRows
 
 	#if canImport(Darwin)
 		// Measured in the macOS CI lanes: Apple NumberFormatter rounds this NSNumber through Double.
@@ -250,12 +256,16 @@ import Testing
 	// decimal for them. Apple Foundation may return an integer instead (not measured). 2.0 uses the
 	// same parser as 1.5.0, so on each platform it matches 1.5.0 on that platform.
 	#if os(Linux)
-		static let linuxOnlyRows: [(literal: String, string: String, negativeMatch: Bool, inString: Bool, gtZero: Bool, semverZero: Bool?)] = [
-			("-9223372036854775808", "-9223372036854776000", true, false, false, nil),
-			("-9223372036854775809", "-9223372036854776000", true, false, false, nil),
-		]
+		static let linuxOnlyRows:
+			[(literal: String, string: String, negativeMatch: Bool, inString: Bool, gtZero: Bool, semverZero: Bool?)] =
+				[
+					("-9223372036854775808", "-9223372036854776000", true, false, false, nil),
+					("-9223372036854775809", "-9223372036854776000", true, false, false, nil),
+				]
 	#else
-		static let linuxOnlyRows: [(literal: String, string: String, negativeMatch: Bool, inString: Bool, gtZero: Bool, semverZero: Bool?)] = []
+		static let linuxOnlyRows:
+			[(literal: String, string: String, negativeMatch: Bool, inString: Bool, gtZero: Bool, semverZero: Bool?)] =
+				[]
 	#endif
 
 	@Test(arguments: table)

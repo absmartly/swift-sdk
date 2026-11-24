@@ -18,7 +18,8 @@ import Testing
 		LogCapture.install()
 		#expect(evaluate("null", [:]) == nil)
 		#expect(evaluate("{}", [:]) == nil)
-		let errors = LogCapture.messages(containing: "Audience: 'null'") + LogCapture.messages(containing: "Audience: '{}'")
+		let errors =
+			LogCapture.messages(containing: "Audience: 'null'") + LogCapture.messages(containing: "Audience: '{}'")
 		#expect(errors == [])
 	}
 

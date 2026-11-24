@@ -20,7 +20,9 @@ public final class Context: Sendable {
 		/// Receives this context's events; the client's `eventLogger` when nil.
 		public var eventLogger: EventLogger?
 
-		public init(publishDelay: TimeInterval = 0.1, refreshInterval: TimeInterval = 0, eventLogger: EventLogger? = nil) {
+		public init(
+			publishDelay: TimeInterval = 0.1, refreshInterval: TimeInterval = 0, eventLogger: EventLogger? = nil
+		) {
 			self.publishDelay = publishDelay
 			self.refreshInterval = refreshInterval
 			self.eventLogger = eventLogger
@@ -209,10 +211,11 @@ public final class Context: Sendable {
 		// A refresh that lands after close() must not re-arm the timer close() cleared.
 		guard !state.closed, !state.closing, refreshInterval > 0, state.refreshTimer == nil else { return }
 		let interval = refreshInterval
+		let clock = clock
 		state.refreshTimer = Task { [weak self] in
 			while !Task.isCancelled {
 				do {
-					try await Task.sleep(nanoseconds: Self.nanoseconds(interval))
+					try await clock.sleep(seconds: interval)
 				} catch {
 					return
 				}
@@ -420,17 +423,13 @@ public final class Context: Sendable {
 		// reference are still published.
 		state.publishTimer = Task { [self] in
 			do {
-				try await Task.sleep(nanoseconds: Self.nanoseconds(delay))
+				try await clock.sleep(seconds: delay)
 			} catch {
 				return
 			}
 			// flush() already reports a failure as one `.error` event.
 			_ = await self.flush()
 		}
-	}
-
-	private static func nanoseconds(_ seconds: TimeInterval) -> UInt64 {
-		UInt64(max(0, min(seconds, 1e9)) * 1_000_000_000)
 	}
 
 	/// The number of exposures and goals waiting to be published.
@@ -776,7 +775,9 @@ public final class Context: Sendable {
 		}
 	}
 
-	private var deliveringErrorKey: String { "com.absmartly.Context.deliveringError.\(ObjectIdentifier(self).hashValue)" }
+	private var deliveringErrorKey: String {
+		"com.absmartly.Context.deliveringError.\(ObjectIdentifier(self).hashValue)"
+	}
 
 	#if canImport(Darwin)
 		private static let mainThreadDelivery = Locked(true)

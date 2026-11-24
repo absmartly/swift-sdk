@@ -37,7 +37,8 @@ import Testing
 	@Test func customAssignmentDefaultSubscriptMayReadTheContext() {
 		let context = Harness().context()
 		let finished = Self.completes {
-			context.customAssignments["exp_test_ab", default: context.treatment(for: "exp_test_abc", exposing: false)] += 1
+			context.customAssignments[
+				"exp_test_ab", default: context.treatment(for: "exp_test_abc", exposing: false)] += 1
 		}
 		#expect(finished)
 		#expect(context.customAssignments["exp_test_ab"] == 3)

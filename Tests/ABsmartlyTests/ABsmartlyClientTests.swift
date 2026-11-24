@@ -1,10 +1,11 @@
 import Foundation
-#if canImport(FoundationNetworking)
-	import FoundationNetworking
-#endif
 import Testing
 
 @testable import ABsmartly
+
+#if canImport(FoundationNetworking)
+	import FoundationNetworking
+#endif
 
 @Suite struct ABsmartlyClientTests {
 	static let endpoint = URL(string: "https://test.absmartly.io/v1")!
@@ -77,7 +78,8 @@ import Testing
 
 	@Test func namedParameterInitializationThrowsWithEmptyEnvironment() {
 		#expect(throws: ABsmartlyError.invalidConfiguration("Missing Environment configuration")) {
-			try ABsmartlyClient(endpoint: Self.endpoint, apiKey: "test-api-key", application: "test-app", environment: "")
+			try ABsmartlyClient(
+				endpoint: Self.endpoint, apiKey: "test-api-key", application: "test-app", environment: "")
 		}
 	}
 
@@ -151,9 +153,14 @@ import Testing
 		let context = harness.client.makeContext(units: Self.units)
 		let error = try await withTimeout { await sdkError { try await context.ready() } }
 		#expect(error == .httpStatus(code: 500, message: HTTPURLResponse.localizedString(forStatusCode: 500)))
-		#expect(context.state == .failed(.httpStatus(code: 500, message: HTTPURLResponse.localizedString(forStatusCode: 500))))
+		#expect(
+			context.state
+				== .failed(.httpStatus(code: 500, message: HTTPURLResponse.localizedString(forStatusCode: 500))))
 		#expect(context.state.isSettled)
-		#expect(harness.recorder.errors == [.httpStatus(code: 500, message: HTTPURLResponse.localizedString(forStatusCode: 500))])
+		#expect(
+			harness.recorder.errors == [
+				.httpStatus(code: 500, message: HTTPURLResponse.localizedString(forStatusCode: 500))
+			])
 	}
 
 	@Test func awaitedContextIsReady() async throws {
@@ -356,10 +363,13 @@ import Testing
 
 	@Test func defaultContextOptionsApplyWhenNoneAreGiven() async throws {
 		// The Harness's default options disable auto-publish; a queued exposure stays pending.
-		let harness = Harness()
+		let clock = TestClock()
+		let harness = Harness(clock: clock)
 		let context = harness.context()
 		_ = context.treatment(for: "exp_test_ab")
-		try await Task.sleep(nanoseconds: 150_000_000)
+		#expect(clock.sleeperCount == 0)
+		clock.advance(by: 600)
+		await Task.yield()
 		#expect(harness.transport.publishes.isEmpty)
 		#expect(context.pendingEventCount == 1)
 	}

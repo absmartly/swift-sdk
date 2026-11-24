@@ -74,7 +74,8 @@ import Testing
 
 	@Test func assignRuleWinsAndFlagsExposure() throws {
 		let data = Self.contextData(
-			Self.experimentJSON(rules: Self.rules("{\"type\":\"assign\",\"variant\":2,\"conditions\":\(Self.countryNL)}")))
+			Self.experimentJSON(
+				rules: Self.rules("{\"type\":\"assign\",\"variant\":2,\"conditions\":\(Self.countryNL)}")))
 		let context = createContext(data, attributes: ["country": "NL"])
 
 		#expect(context.treatment(for: "exp") == 2)
@@ -91,7 +92,8 @@ import Testing
 
 	@Test func nonMatchingRuleFallsBackToNormalAssignment() throws {
 		let data = Self.contextData(
-			Self.experimentJSON(rules: Self.rules("{\"type\":\"assign\",\"variant\":2,\"conditions\":\(Self.countryNL)}")))
+			Self.experimentJSON(
+				rules: Self.rules("{\"type\":\"assign\",\"variant\":2,\"conditions\":\(Self.countryNL)}")))
 		let context = createContext(data, attributes: ["country": "DE"])
 
 		#expect(context.treatment(for: "exp") == Self.defaultVariant)
@@ -205,7 +207,8 @@ import Testing
 
 	@Test func attributeChangeReevaluatesRules() {
 		let data = Self.contextData(
-			Self.experimentJSON(rules: Self.rules("{\"type\":\"assign\",\"variant\":2,\"conditions\":\(Self.countryNL)}")))
+			Self.experimentJSON(
+				rules: Self.rules("{\"type\":\"assign\",\"variant\":2,\"conditions\":\(Self.countryNL)}")))
 		let context = createContext(data)
 
 		#expect(context.treatment(for: "exp") != 2)
@@ -267,7 +270,8 @@ import Testing
 		let plain = Self.contextData(Self.experimentJSON(rules: nil))
 		for i in 0..<50 {
 			#expect(
-				createContext(plain, unit: "u\(i)").treatment(for: "exp") == createContext(data, unit: "u\(i)").treatment(for: "exp"))
+				createContext(plain, unit: "u\(i)").treatment(for: "exp")
+					== createContext(data, unit: "u\(i)").treatment(for: "exp"))
 		}
 	}
 
@@ -400,7 +404,9 @@ import Testing
 	}
 
 	@Test func nonFiniteAssignVariantIsSkipped() {
-		let rules: [ExprValue] = [["type": "assign", "variant": .double(.infinity)], ["type": "assign", "variant": 1]]
+		let rules: [ExprValue] = [
+			["type": "assign", "variant": .double(.infinity)], ["type": "assign", "variant": 1],
+		]
 		#expect(AudienceMatcher.evaluateRules(rules, environmentName: nil, attributes: [:]) == .assign(variant: 1))
 	}
 
@@ -440,7 +446,8 @@ import Testing
 	@Test func unparseableRulesAreIgnored() {
 		for raw in ["not json", "{\"rules\":{}}", "[]"] {
 			#expect(
-				createContext(Self.contextData(Self.experimentJSON(rules: raw))).treatment(for: "exp") == Self.defaultVariant)
+				createContext(Self.contextData(Self.experimentJSON(rules: raw))).treatment(for: "exp")
+					== Self.defaultVariant)
 		}
 	}
 
@@ -468,7 +475,8 @@ import Testing
 		#expect(exposures(context).last?.ruleOverride == true)
 
 		let stagingScoped = Self.contextData(
-			Self.experimentJSON(rules: Self.rules("{\"type\":\"assign\",\"variant\":2,\"environments\":[\"staging\"]}")))
+			Self.experimentJSON(rules: Self.rules("{\"type\":\"assign\",\"variant\":2,\"environments\":[\"staging\"]}"))
+		)
 		let other = createContext(stagingScoped, environment: "production", attributes: ["environment": "staging"])
 		#expect(other.treatment(for: "exp") != 2)
 		#expect(exposures(other).last?.ruleOverride == false)
@@ -484,7 +492,8 @@ import Testing
 			let audience = "{\"filter\":[{\"eq\":[{\"var\":\"country\"},{\"value\":\"DE\"}]}]}"
 			let first = Self.contextData(
 				Self.experimentJSON(
-					rules: Self.rules("{\"type\":\"assign\",\"variant\":2,\"conditions\":\(Self.countryNL)}"), audience: audience))
+					rules: Self.rules("{\"type\":\"assign\",\"variant\":2,\"conditions\":\(Self.countryNL)}"),
+					audience: audience))
 			let context = createContext(first, attributes: ["country": "DE"])
 
 			let variant = context.treatment(for: "exp")
@@ -561,7 +570,8 @@ import Testing
 			let count = Locked(0)
 			AudienceMatcher.$parseCount.withValue(count) {
 				let data = Self.contextData(
-					Self.experimentJSON(rules: Self.rules("{\"type\":\"assign\",\"variant\":2,\"conditions\":\(Self.countryNL)}")))
+					Self.experimentJSON(
+						rules: Self.rules("{\"type\":\"assign\",\"variant\":2,\"conditions\":\(Self.countryNL)}")))
 				let context = createContext(data, attributes: ["country": "NL"])
 				#expect(count.withLock { $0 } == 1)
 				#expect(context.treatment(for: "exp") == 2)
@@ -579,8 +589,9 @@ import Testing
 		#if DEBUG
 			let count = Locked(0)
 			AudienceMatcher.$audienceParseCount.withValue(count) {
-				let data = Self.contextData(Self.experimentJSON(
-					rules: nil, audience: "{\"filter\":[{\"value\":true}]}"))
+				let data = Self.contextData(
+					Self.experimentJSON(
+						rules: nil, audience: "{\"filter\":[{\"value\":true}]}"))
 				let context = createContext(data)
 				#expect(count.withLock { $0 } == 1)
 				let variant = context.treatment(for: "exp")

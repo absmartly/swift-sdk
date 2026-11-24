@@ -92,6 +92,11 @@ jobs:
       - name: Run tests
         run: swift test --skip-build
 
+      # swift-format ships with the toolchain from Swift 6.0; the newest one checks the style.
+      - name: Lint (swift-format)
+        if: matrix.image == 'swift:latest'
+        run: swift format lint --strict --configuration swift-format.json -r Sources Tests Example
+
   pod-lint:
     runs-on: macos-latest
     timeout-minutes: 30

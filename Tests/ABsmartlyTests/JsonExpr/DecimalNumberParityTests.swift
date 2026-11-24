@@ -148,7 +148,9 @@ import Testing
 		// 1.5.0 formatted the parsed NSNumber itself.
 		for literal in [Self.high, "18446744073709551616", "-18446744073709551616", "12345678901234567890123"] {
 			let number = try #require(try Self.foundation(literal) as? NSNumber)
-			#expect(evaluator.stringConvert(try ExprValue(parsing: literal)) == Self.formatter.string(from: number), "\(literal)")
+			#expect(
+				evaluator.stringConvert(try ExprValue(parsing: literal)) == Self.formatter.string(from: number),
+				"\(literal)")
 		}
 		#if os(Linux)
 			#expect(evaluator.stringConvert(high) == "0.123456789012346")

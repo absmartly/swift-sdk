@@ -25,7 +25,8 @@ import Testing
 	// As in 1.5.0 (and JavaScript): no pattern or input length limit and no nested-quantifier
 	// rejection; only the timeout bounds a match.
 	@Test func longPatternsAndInputsAndNestedQuantifiersMatchAsIn150() {
-		#expect(match(.string(String(repeating: "a", count: 1001)), .string(String(repeating: "a", count: 1001))) == true)
+		#expect(
+			match(.string(String(repeating: "a", count: 1001)), .string(String(repeating: "a", count: 1001))) == true)
 		#expect(match(.string(String(repeating: "a", count: 10001)), "a") == true)
 		#expect(match("aaaa", "^(a+)+$") == true)
 		for pattern in ["(a*)*b", "((a+)b)+", "(a{1,})+", "(a+){2,}", "(?:x|a+)*"] {

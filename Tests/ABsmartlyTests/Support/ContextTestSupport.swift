@@ -111,9 +111,12 @@ struct ContextEnv {
 	let harness: Harness
 	let log = LoggedEvents()
 
-	init(retries: Int = 0, options: Context.Options = Context.Options(publishDelay: -1)) {
+	init(
+		retries: Int = 0, options: Context.Options = Context.Options(publishDelay: -1),
+		clock: Clock = FixedClock(value: Fixtures.now)
+	) {
 		let log = log
-		harness = Harness(retries: retries) { configuration in
+		harness = Harness(clock: clock, retries: retries) { configuration in
 			configuration.eventLogger = log.logger
 			configuration.defaultContextOptions = options
 		}
@@ -125,7 +128,8 @@ struct ContextEnv {
 
 	/// A context created ready from fixture data.
 	func context(
-		_ fixture: String = "context", units: [UnitType: String] = Fixtures.units, attributes: [String: JSONValue] = [:],
+		_ fixture: String = "context", units: [UnitType: String] = Fixtures.units,
+		attributes: [String: JSONValue] = [:],
 		overrides: [String: Int] = [:], customAssignments: [String: Int] = [:], options: Context.Options? = nil
 	) -> Context {
 		context(
@@ -241,7 +245,8 @@ func expectedBody(
 	attributes: [PublishEvent.Attribute] = [], publishedAt: Int64 = Fixtures.now
 ) -> JSONValue {
 	let event = PublishEvent(
-		hashed: true, units: units, publishedAt: publishedAt, exposures: exposures, goals: goals, attributes: attributes)
+		hashed: true, units: units, publishedAt: publishedAt, exposures: exposures, goals: goals, attributes: attributes
+	)
 	return normalized(try! JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(event)))
 }
 

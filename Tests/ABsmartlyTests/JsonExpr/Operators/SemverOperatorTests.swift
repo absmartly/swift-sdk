@@ -100,9 +100,11 @@ import Testing
 
 		let vars: [String: JSONValue] = ["app_version": .string(composed)]
 		#expect(
-			!JsonExpr.evaluateBoolean(["semver_eq": [["var": "app_version"], ["value": .string(decomposed)]]], vars: vars))
+			!JsonExpr.evaluateBoolean(
+				["semver_eq": [["var": "app_version"], ["value": .string(decomposed)]]], vars: vars))
 		#expect(
-			JsonExpr.evaluateBoolean(["semver_gt": [["var": "app_version"], ["value": .string(decomposed)]]], vars: vars))
+			JsonExpr.evaluateBoolean(
+				["semver_gt": [["var": "app_version"], ["value": .string(decomposed)]]], vars: vars))
 	}
 
 	// A number is converted like JavaScript's x.toFixed(15) with trailing zeros stripped: the exact

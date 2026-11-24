@@ -153,12 +153,13 @@ import Testing
 		let secret = "secret-\(UUID().uuidString)"
 		let env = ContextEnv()
 		env.transport.enqueue { _ in
-			let error: ABsmartlyError = switch kind {
-			case "httpStatus": .httpStatus(code: 400, message: secret)
-			case "blankUnitUID": .blankUnitUID(unitType: secret)
-			case "unitAlreadySet": .unitAlreadySet(unitType: secret)
-			default: .invalidConfiguration(secret)
-			}
+			let error: ABsmartlyError =
+				switch kind {
+				case "httpStatus": .httpStatus(code: 400, message: secret)
+				case "blankUnitUID": .blankUnitUID(unitType: secret)
+				case "unitAlreadySet": .unitAlreadySet(unitType: secret)
+				default: .invalidConfiguration(secret)
+				}
 			throw error
 		}
 		let context = env.client.makeContext(units: Fixtures.units)

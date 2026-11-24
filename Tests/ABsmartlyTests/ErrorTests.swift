@@ -1,7 +1,6 @@
+import ABsmartly
 import Foundation
 import Testing
-
-import ABsmartly
 
 @Suite struct ErrorTests {
 	static let endpoint = URL(string: "https://test.absmartly.io/v1")!

@@ -154,38 +154,50 @@ import Testing
 	// MARK: - Timers
 
 	@Test func startsRefreshTimerWhenReady() async throws {
-		let env = ContextEnv()
-		let (context, gate) = await env.loadingContext(options: Context.Options(publishDelay: -1, refreshInterval: 0.05))
+		let clock = TestClock()
+		let env = ContextEnv(clock: clock)
+		let (context, gate) = await env.loadingContext(options: Context.Options(publishDelay: -1, refreshInterval: 60))
 		gate.fulfill(fixture: "context")
 		try await context.ready()
 
-		// The initial load only; the timer has not fired yet.
+		// The initial load only; the timer is waiting.
+		#expect(await clock.waitForSleepers())
+		clock.advance(by: 59)
 		#expect(env.getCount == 1)
 
-		// The timer fires and refreshes.
-		#expect(await eventually(timeout: 5) { env.getCount >= 2 })
+		// The timer fires and refreshes, then waits for the next interval.
+		clock.advance(by: 1)
+		#expect(await eventually(timeout: 5) { env.getCount == 2 })
+		#expect(await clock.waitForSleepers())
 		try await context.close()
 	}
 
 	@Test func doesNotStartRefreshTimerWhenFailed() async {
-		let env = ContextEnv()
-		let (context, gate) = await env.loadingContext(options: Context.Options(publishDelay: -1, refreshInterval: 0.05))
+		let clock = TestClock()
+		let env = ContextEnv(clock: clock)
+		let (context, gate) = await env.loadingContext(options: Context.Options(publishDelay: -1, refreshInterval: 60))
 		gate.reject(TestError("test"))
 		try? await context.ready()
 
-		await pause(0.15)
+		#expect(clock.sleeperCount == 0)
+		clock.advance(by: 600)
 		#expect(env.getCount == 1)
 	}
 
 	@Test func startsPublishTimeoutWhenReadyWithQueueNotEmpty() async throws {
-		let env = ContextEnv()
-		let (context, gate) = await env.loadingContext(options: Context.Options(publishDelay: 0.01))
+		let clock = TestClock()
+		let env = ContextEnv(clock: clock)
+		let (context, gate) = await env.loadingContext(options: Context.Options(publishDelay: 5))
 		#expect(context.state == .loading)
 
 		context.track("test_goal", properties: ["amount": 100])
+		#expect(clock.sleeperCount == 0)
 		gate.fulfill(fixture: "context")
 		try await context.ready()
 
+		#expect(await clock.waitForSleepers())
+		#expect(env.publishCount == 0)
+		clock.advance(by: 5)
 		#expect(await eventually(timeout: 5) { env.publishCount == 1 })
 		#expect(env.lastSentEvent == expectedBody(goals: [goal("test_goal", ["amount": 100])]))
 	}
@@ -219,7 +231,9 @@ import Testing
 		#expect(env.publishCount == 1)
 		#expect(
 			env.lastSentEvent
-				== expectedBody(exposures: [exposure(1, "exp_test_ab", "session_id", 1, true, true, false, false, false, false)]))
+				== expectedBody(exposures: [
+					exposure(1, "exp_test_ab", "session_id", 1, true, true, false, false, false, false)
+				]))
 	}
 
 	@Test func setAttributes() {
