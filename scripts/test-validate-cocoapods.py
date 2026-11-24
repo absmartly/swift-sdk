@@ -8,9 +8,10 @@ import unittest
 
 
 SCRIPT = Path(__file__).resolve().with_name("validate-cocoapods.sh")
-QUICK = "pod spec lint ABSmartlySwiftSDK.podspec --quick --allow-warnings"
+REPO = f" @{SCRIPT.parent.parent}"
+QUICK = "pod" + REPO + " spec lint ABSmartlySwiftSDK.podspec --quick --allow-warnings"
 FULL = (
-    "pod lib lint ABSmartlySwiftSDK.podspec "
+    "pod" + REPO + " lib lint ABSmartlySwiftSDK.podspec "
     "--platforms=ios,osx,tvos,watchos --allow-warnings --verbose"
 )
 
@@ -28,6 +29,7 @@ if [[ $name == uname ]]; then
   exit 0
 fi
 printf '%s' "$name" >> "$TEST_TRACE"
+if [[ $name == pod ]]; then printf ' @%s' "$PWD" >> "$TEST_TRACE"; fi
 printf ' %s' "$@" >> "$TEST_TRACE"
 printf '\\n' >> "$TEST_TRACE"
 if [[ $name == pod && ${1:-} == spec ]]; then
@@ -49,7 +51,7 @@ fi
                 TEST_FULL_STATUS=str(full_status),
             )
             result = subprocess.run(
-                ["bash", str(SCRIPT)], env=environment, capture_output=True, text=True
+                ["bash", str(SCRIPT)], env=environment, capture_output=True, text=True, cwd=directory
             )
             commands = trace.read_text().splitlines() if trace.exists() else []
             return result, commands
@@ -58,7 +60,7 @@ fi
         result, commands = self.run_validation()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(commands, [
-            "xcodebuild -version", "swift --version", "pod --version", QUICK, FULL
+            "xcodebuild -version", "swift --version", "pod" + REPO + " --version", QUICK, FULL
         ])
 
     def test_linux_fails_before_invoking_apple_tools(self):

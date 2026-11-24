@@ -2,15 +2,51 @@
 
 ## Status
 
-**Blocked; no consumer fix is implemented.** Do not enable `COCOAPODS_PUBLISH` based on this
-investigation or the quick podspec check. The pod/module names, public dependency types and
-1.x minimum deployment targets remain unchanged. Do not retag `v1.5.0`.
+**Blocked on an owner decision; no consumer fix is implemented.** Do not enable
+`COCOAPODS_PUBLISH` based on this investigation or the quick podspec check. The pod/module names,
+public dependency types and 1.x minimum deployment targets remain unchanged. Do not retag `v1.5.0`.
 
-On 2026-11-24 the investigation worker had Linux with Swift 6.4.2, but neither CocoaPods nor
-Xcode. `swift test` passed 667 tests. No Apple dependency build or full lint was run there.
-The Xcode failures below are the previously documented release blockers, not newly reproduced
-results. The new script and manual workflow collect real build evidence without overriding
-any deployment targets or modifying global CocoaPods caches.
+### Primary blocker: current Xcode's deployment-target floor
+
+Mac run on `d089977cc3aa1ae61e8d657e8b1feff125a6f957` (2026-11-24; Xcode 27.2 build 27B52,
+macOS 26.6.2, Swift 6.4.2, CocoaPods 1.17.0): `swift test` passed 670 tests and
+`pod spec lint --quick` passed, but every `pod lib lint` failed. Xcode 27.2 rejects deployment
+targets below its supported range, for this SDK and for dependency-free probe pods alike:
+
+| Platform | 1.x podspec declares | Xcode 27.2 supported range |
+| --- | --- | --- |
+| iOS | 10.0 | 15.0 to 27.2.x |
+| macOS | 10.10 | 12.0 to 27.2.x |
+| watchOS | 3.0 | 9.0 to 27.2.x |
+| tvOS | 10.0 | not measured (no tvOS simulator runtime installed) |
+
+So on Xcode 27.2 no dependency change (newer releases, pinned forks or vendored code) can make
+`pod lib lint` pass while the podspec declares the 1.x targets. The iOS lint in that run also
+crashed in CocoaPods' simulator lookup (fourflusher could not parse `simctl list -j` output)
+before building; that is a tooling problem on the validating Mac, not a podspec defect.
+
+### Options for the owner
+
+1. **Raise only the CocoaPods deployment targets in a 1.x release** to the validating Xcode's
+   floor (iOS 15, macOS 12, watchOS 9, tvOS to be measured). SwiftPM keeps iOS 10 / macOS 10.14 /
+   tvOS 10 / watchOS 3, and the public API is unchanged. Pod users whose apps target lower OS
+   versions cannot take the new pod and stay on trunk 1.3.4. Whether the trunk dependency pods
+   (declared below the floor) then lint is still to be measured.
+2. **Lint and publish on an older Xcode** that still accepts the 1.x targets. The podspec is
+   unchanged, but this still hits the secondary dependency blocker below, depends on hosted
+   runners keeping that Xcode, and ships a pod that current Xcode cannot lint.
+3. **Stop shipping 1.x through CocoaPods.** Trunk stays at 1.3.4, 1.x is SwiftPM-only, and pod
+   users must move to SwiftPM for 1.4.0+.
+
+CocoaPods trunk becomes read-only on 2026-12-02, so options 1 and 2 also need an owner-authorized
+publication before then.
+
+### Secondary blocker: dependency pods on older Xcode
+
+The previously documented failures (SwiftyJSON 5 availability errors on macOS, PromiseKit 6's iOS 8
+target needing the removed `libarclite`) were reported on Xcode 16.3 and 26 and were not re-run
+here. They matter for option 2, and possibly for option 1 if CocoaPods does not lift dependency
+targets to the SDK's raised ones.
 
 ## Released dependency evidence
 
@@ -33,7 +69,7 @@ SwiftyJSON also appears in the public API (`ABSmartly.JSON` aliases `SwiftyJSON.
 when inspected. It is not a released fix and its proposed target increases must be checked
 against 1.x compatibility, not copied blindly.
 
-## Owner decision needed
+## Dependency remediation (older Xcode)
 
 Prefer compatible upstream backports/releases that fix the dependency builds. If those are not
 available, maintaining corrected dependency distributions needs explicit owner approval and a
@@ -42,7 +78,8 @@ updates and eventual CocoaPods distribution. No such distribution is introduced 
 
 Increasing this SDK's target does not change dependency pod targets. A Podfile `post_install`
 override is a per-app workaround, not a durable podspec/consumer fix. Do not suppress compiler
-errors, vendor dependencies into the ABSmartly module, or raise the 1.x minimums to make lint green.
+errors, vendor dependencies into the ABSmartly module, or raise the 1.x minimums to make lint green
+without the owner choosing option 1.
 
 ## Mac reproduction and acceptance
 

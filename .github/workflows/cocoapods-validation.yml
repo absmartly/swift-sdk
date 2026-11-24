@@ -1,7 +1,7 @@
 name: CocoaPods validation (manual)
 
-# Diagnostic until the compatible dependency fixes described in docs/cocoapods-validation.md
-# are available. Not a required/green packaging gate, and never publishes to trunk.
+# Diagnostic until the owner decision described in docs/cocoapods-validation.md is made
+# and implemented. Not a required/green packaging gate, and never publishes to trunk.
 on:
   workflow_dispatch:
 

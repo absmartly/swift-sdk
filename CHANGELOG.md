@@ -4,9 +4,10 @@
 
 ### Maintenance
 - Document the CocoaPods dependency investigation and add a full-lint Mac script and manual
-  diagnostic CI workflow. No consumer fix is implemented: compatible upstream dependency fixes
-  or an owner-approved distribution plan are still needed. The quick podspec check does not
-  compile dependencies. Deployment targets, dependency types and publication gates are unchanged.
+  diagnostic CI workflow. No consumer fix is implemented: Xcode 27.2 cannot build pods below
+  iOS 15 / macOS 12 / watchOS 9, below the 1.x podspec's targets, so CocoaPods validation needs an
+  owner decision (see docs/cocoapods-validation.md). The quick podspec check does not compile
+  dependencies. Deployment targets, dependency types and publication gates are unchanged.
 
 ## 1.5.0
 
