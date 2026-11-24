@@ -1193,6 +1193,43 @@ final class ContextTest: XCTestCase {
 	}
 	#endif
 
+	// Owner decision (Q8), as in the Java SDK: a config-only refresh with an unchanged iteration keeps a
+	// cached assignment, including its variant variables. exp_one was resolved before the refresh added
+	// the key to its variant, so it still wins without the key: the default is returned and exp_one is
+	// exposed. A context that never resolved exp_one reads the refreshed config.
+	func testConfigOnlyRefreshKeepsACachedAssignmentsVariables() throws {
+		let before = [
+			sharedKeyExperiment(id: 1, name: "exp_one", configs: [nil, "{\"other\":\"one\"}"]),
+			sharedKeyExperiment(id: 2, name: "exp_two", configs: [nil, "{\"icon\":\"two\"}"]),
+		]
+		let afterJSON =
+			"{\"experiments\":["
+			+ [
+				sharedKeyExperiment(id: 1, name: "exp_one", configs: [nil, "{\"icon\":\"one\"}"]),
+				sharedKeyExperiment(id: 2, name: "exp_two", configs: [nil, "{\"icon\":\"two\"}"]),
+			].joined(separator: ",") + "]}"
+		let after = try JSONDecoder().decode(ContextData.self, from: afterJSON.data(using: .utf8)!)
+
+		for warm in [true, false] {
+			setUp()
+			let context = try createSharedKeyContext(before)
+			if warm {
+				XCTAssertEqual(1, context.peekTreatment("exp_one"))
+			}
+			provider.getContextDataReturnValue = Promise.value(after)
+			let refreshed = expectation(description: "refreshed")
+			_ = context.refresh().done { refreshed.fulfill() }
+			wait(for: [refreshed], timeout: 2)
+			logger.clearInvocations()
+
+			let expected: JSON = warm ? "default" : "one"
+			XCTAssertEqual(expected, context.peekVariableValue("icon", defaultValue: "default"), "warm: \(warm)")
+			XCTAssertEqual(expected, context.getVariableValue("icon", defaultValue: "default"), "warm: \(warm)")
+			XCTAssertEqual(["exp_one"], loggedExposures().map { $0.name }, "warm: \(warm)")
+			XCTAssertEqual(1, context.getPendingCount(), "warm: \(warm)")
+		}
+	}
+
 	func testPeekVariableValueSharedKeyMatchesGetAndQueuesNothing() throws {
 		let scenarios: [([String], String?, JSON)] = [
 			(sharedKeyBothAssigned(lowestFirst: true), nil, "one"),

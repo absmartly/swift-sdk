@@ -101,6 +101,9 @@ security fixes, from the `release/1.x` branch) for 12 months after 2.0 ships.
   - Only the winner is exposed. Candidates that were checked but did not win get no exposure; a later
     `getTreatment` on one still exposes it once. Each holdout covering a checked candidate publishes
     its own exposure, as in Java. `peekVariableValue` exposes nothing.
+  - As in Java, a refresh that changes only variant configs (same experiment iteration) keeps an
+    assignment already resolved in the context, including its variables. If that winner's variant
+    did not define the key before the refresh, `getVariableValue` still returns the default.
 
   Compared with 1.4.0, a candidate won by an assignment rule now counts as the winner, and holdouts
   apply.

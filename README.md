@@ -317,6 +317,10 @@ variant does not define the key, `getVariableValue` returns the default; a later
 never used. If the user is in none of them, a held-out experiment's control value (see Holdouts) or the
 default is returned. The holdouts covering each experiment checked publish their own exposure.
 
+As in the Java SDK, an assignment already resolved in the context keeps its variant's variables until
+the experiment's iteration (or another assignment input) changes; a refresh that changes only variant
+configs does not replace them.
+
 ### Peek at Treatment Variants
 
 Although generally not recommended, it is sometimes necessary to peek at a treatment or variable without triggering an exposure. The A/B Smartly SDK provides a `peekTreatment()` method for that.
