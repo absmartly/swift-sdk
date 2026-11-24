@@ -165,20 +165,78 @@ extension ContextTests {
 		#expect(onMain.value == [true, true])
 	}
 
-	// A logger that causes another error while handling a main-delivered error does not get it as a
-	// second `.error` (as in 1.5.0): only the refresh failure is delivered.
+	// A logger that causes another error while handling an error delivered asynchronously on the main
+	// queue does not get it as a second `.error` (as in 1.5.0): only the refresh failure arrives.
 	@Test func errorHandlerCausingAnErrorOnMainDeliveryDoesNotRecurse() async {
 		let env = ContextEnv()
-		let dispatcher: @Sendable (Context.Event, @escaping @Sendable () -> Void) -> Void = { _, deliver in deliver() }
-		await Context.$mainThreadDispatcher.withValue(dispatcher) {
-			env.log.setHook { context, event in
-				if case .error = event { try? context.setUnit("session_id", to: "other") }
-			}
+		let handled = Box(0)
+		env.log.setHook { context, event in
+			guard case .error = event else { return }
+			handled.mutate { $0 += 1 }
+			try? context.setUnit("session_id", to: "other")
+		}
+		await Context.$mainThreadDeliveryOverride.withValue(true) {
 			let context = env.context()
 			env.failNextRequest("refresh failed")
 			try? await context.refresh()
 		}
+		#expect(await eventually(timeout: 5) { handled.value >= 1 })
+		await pause(0.1)
 		#expect(env.log.errorMessages == ["refresh failed"])
+	}
+
+	// With main delivery on, exposures, goals and misuse errors still reach the logger on the calling
+	// thread, synchronously.
+	@Test func callerEventsStayOnTheCallingThreadWithMainDelivery() {
+		let key = DispatchSpecificKey<Bool>()
+		DispatchQueue.main.setSpecific(key: key, value: true)
+		defer { DispatchQueue.main.setSpecific(key: key, value: nil) }
+		let seen = Box<[String]>([])
+		let env = ContextEnv()
+		env.log.setHook { _, event in
+			let onMain = DispatchQueue.getSpecific(key: key) == true
+			switch event {
+			case .exposure: seen.mutate { $0.append("exposure:\(onMain)") }
+			case .goal: seen.mutate { $0.append("goal:\(onMain)") }
+			case .error: seen.mutate { $0.append("error:\(onMain)") }
+			default: break
+			}
+		}
+		Context.$mainThreadDeliveryOverride.withValue(true) {
+			let context = env.context()
+			_ = context.treatment(for: "exp_test_ab")
+			context.track("goal", properties: nil)
+			try? context.setUnit("session_id", to: "other")
+		}
+		#expect(seen.value == ["exposure:false", "goal:false", "error:false"])
+	}
+
+	// The re-delivery guard applies only while an `.error` is being handled: a misuse error caused by
+	// a `.publish` handler is delivered.
+	@Test func errorCausedByANonErrorHandlerIsDelivered() async throws {
+		let env = ContextEnv()
+		env.log.setHook { context, event in
+			if case .publish = event { try? context.setUnit("session_id", to: "other") }
+		}
+		let context = env.context()
+		context.track("goal", properties: nil)
+		try await context.publish()
+		#expect(env.log.errorMessages == ["Unit 'session_id' UID already set."])
+	}
+
+	// The guard is per context: an error that context A's error handler causes on context B is
+	// delivered for B.
+	@Test func errorGuardIsPerContext() {
+		let env = ContextEnv()
+		let other = env.context()
+		let first = env.context()
+		env.log.clear()
+		env.log.setHook { context, event in
+			if case .error = event, context === first { try? other.setUnit("session_id", to: "other") }
+		}
+		try? first.setUnit("session_id", to: "other")
+		#expect(env.log.errorMessages == ["Unit 'session_id' UID already set.", "Unit 'session_id' UID already set."])
+		#expect(env.log.contexts == [ObjectIdentifier(first), ObjectIdentifier(other)])
 	}
 
 	// As in 1.5.0: the errors of background work (load, refresh, publish) are routed to the logger's
