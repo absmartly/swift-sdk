@@ -26,9 +26,10 @@ public struct UnitType: RawRepresentable, Hashable, Sendable, ExpressibleByStrin
 /// Receives every event of the contexts it is configured for.
 ///
 /// It is called outside the SDK's locks, so it may call back into the context. `exposure`, `goal`
-/// and `error` arrive synchronously on the thread that caused them; `ready`, `refresh`, `publish`
-/// and `close` arrive on the main thread on Apple platforms (as in 1.x, so a logger may touch UIKit)
-/// and on the completing thread on Linux.
+/// and misuse `error`s arrive synchronously on the thread that caused them; `ready`, `refresh`,
+/// `publish`, `close` and the `error`s of loading, refreshing and publishing arrive on the main
+/// thread on Apple platforms (as in 1.x, so a logger may touch UIKit) and on the completing thread
+/// on Linux.
 public struct EventLogger: Sendable {
 	public let handle: @Sendable (Context, Context.Event) -> Void
 

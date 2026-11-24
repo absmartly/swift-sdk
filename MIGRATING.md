@@ -143,7 +143,7 @@ let variant = context.treatment(for: "exp_checkout")
 | `peekVariableValue(_:defaultValue:)` | `variable(_:default:exposing: false)`, `variableValue(_:exposing: false)` |
 | `getVariableKeys()` | `variableKeys` |
 | `getExperiments()` | `experiments` |
-| `getContextData()` | `contextData` |
+| `getContextData()` | `contextData` (a failed context returns an empty `ContextData`, as in JavaScript; 1.5.0 returns `nil`) |
 | `getCustomFieldValue(experimentName:key:) -> Any?` | `customFieldValue(_:in:) -> JSONValue?` |
 | `getCustomFieldValueType(experimentName:key:)` | `customFieldType(_:in:)` |
 | `getCustomFieldKeys(experimentName:)` | `customFieldKeys(in:)` |

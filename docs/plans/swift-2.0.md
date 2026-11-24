@@ -277,9 +277,10 @@ configuration.eventLogger = .custom { context, event in }   // @Sendable closure
 ```
 
 - The logger is called outside the context's lock, so it may call back into the context. Threads
-  are those of 1.5.0: `exposure`, `goal` and `error` on the calling thread, synchronously;
-  `ready`, `refresh`, `publish` and `close` on the main thread on Apple platforms (so a logger may
-  touch UIKit), and on the completing thread on Linux. The handler is `@Sendable` either way.
+  are those of 1.5.0: `exposure`, `goal` and misuse `error`s on the calling thread,
+  synchronously; `ready`, `refresh`, `publish`, `close` and the `error`s of loading, refreshing
+  and publishing on the main thread on Apple platforms (so a logger may touch UIKit), and on the
+  completing thread on Linux. The handler is `@Sendable` either way.
 - Events, their order and their payloads are those of 1.5.0. `close` is the close event (1.x's
   `finalize` alias is dropped).
 - Every stream finishes after the `close` event. `events` read after close returns a finished

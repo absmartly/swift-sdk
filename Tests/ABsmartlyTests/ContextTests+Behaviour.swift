@@ -141,6 +141,46 @@ extension ContextTests {
 		#expect(context.state == .failed(.transport("load failed")))
 	}
 
+	// The real main-queue delivery (Apple platforms' default): background errors reach the logger on
+	// the main queue.
+	@Test func backgroundErrorsRunOnTheMainQueue() async {
+		let key = DispatchSpecificKey<Bool>()
+		DispatchQueue.main.setSpecific(key: key, value: true)
+		defer { DispatchQueue.main.setSpecific(key: key, value: nil) }
+		let onMain = Box<[Bool]>([])
+		let env = ContextEnv()
+		env.log.setHook { _, event in
+			if case .error = event { onMain.mutate { $0.append(DispatchQueue.getSpecific(key: key) == true) } }
+		}
+		await Context.$mainThreadDeliveryOverride.withValue(true) {
+			let context = env.context()
+			env.failNextRequest("refresh failed")
+			try? await context.refresh()
+			context.track("goal", properties: nil)
+			env.failNextRequest("publish failed")
+			try? await context.publish()
+		}
+
+		#expect(await eventually(timeout: 5) { onMain.value.count == 2 })
+		#expect(onMain.value == [true, true])
+	}
+
+	// A logger that causes another error while handling a main-delivered error does not get it as a
+	// second `.error` (as in 1.5.0): only the refresh failure is delivered.
+	@Test func errorHandlerCausingAnErrorOnMainDeliveryDoesNotRecurse() async {
+		let env = ContextEnv()
+		let dispatcher: @Sendable (Context.Event, @escaping @Sendable () -> Void) -> Void = { _, deliver in deliver() }
+		await Context.$mainThreadDispatcher.withValue(dispatcher) {
+			env.log.setHook { context, event in
+				if case .error = event { try? context.setUnit("session_id", to: "other") }
+			}
+			let context = env.context()
+			env.failNextRequest("refresh failed")
+			try? await context.refresh()
+		}
+		#expect(env.log.errorMessages == ["refresh failed"])
+	}
+
 	// As in 1.5.0: the errors of background work (load, refresh, publish) are routed to the logger's
 	// main-thread delivery, like ready/refresh/publish/close; misuse errors stay on the calling thread.
 	@Test func backgroundErrorsAreDeliveredOnTheMainThread() async {

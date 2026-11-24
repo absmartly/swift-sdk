@@ -747,18 +747,32 @@ public final class Context: Sendable {
 			continuation.yield(event)
 		}
 		guard let logger else { return }
+		// While the logger handles an `.error`, a further error it causes on that thread is not
+		// delivered again (it would recurse without bound); it has already gone to the SDK log.
+		let deliver: @Sendable () -> Void = { [self] in
+			guard case .error = event else {
+				logger.handle(self, event)
+				return
+			}
+			let threadDictionary = Thread.current.threadDictionary
+			threadDictionary[deliveringErrorKey] = true
+			defer { threadDictionary.removeObject(forKey: deliveringErrorKey) }
+			logger.handle(self, event)
+		}
 		#if DEBUG
 			if onMain, let dispatcher = Self.mainThreadDispatcher {
-				dispatcher(event) { logger.handle(self, event) }
+				dispatcher(event, deliver)
 				return
 			}
 		#endif
-		if onMain && Self.deliversEventsOnMainThread && !Thread.isMainThread {
-			DispatchQueue.main.async { logger.handle(self, event) }
+		if onMain && Self.mainThreadDeliveryEnabled && !Thread.isMainThread {
+			DispatchQueue.main.async(execute: deliver)
 		} else {
-			logger.handle(self, event)
+			deliver()
 		}
 	}
+
+	private var deliveringErrorKey: String { "com.absmartly.Context.deliveringError.\(ObjectIdentifier(self).hashValue)" }
 
 	#if canImport(Darwin)
 		private static let mainThreadDelivery = Locked(true)
@@ -773,7 +787,20 @@ public final class Context: Sendable {
 		set { mainThreadDelivery.withLock { $0 = newValue } }
 	}
 
+	private static var mainThreadDeliveryEnabled: Bool {
+		#if DEBUG
+			if let override = mainThreadDeliveryOverride {
+				return override
+			}
+		#endif
+		return deliversEventsOnMainThread
+	}
+
 	#if DEBUG
+		/// Test hook: forces main-thread delivery on or off for the current task and the tasks it
+		/// starts, without touching the process-wide setting other tests use.
+		@TaskLocal static var mainThreadDeliveryOverride: Bool?
+
 		/// Test hook: receives each event routed to the main thread, with its delivery, in place of
 		/// the main queue (which nothing services under Linux tests). Task-local, so tasks the
 		/// context starts inherit it and parallel tests do not see it.
@@ -799,17 +826,12 @@ public final class Context: Sendable {
 		emitError(error)
 	}
 
-	// An error raised while this context is already delivering `.error` on the same thread (e.g. a
-	// logger reading a value from its error handler before the context is ready) is not delivered
-	// again, which would recurse without bound; it has already gone to the SDK log.
+	// An error raised while the logger is handling this context's `.error` on the same thread (e.g. a
+	// logger reading a value from its error handler before the context is ready) is not delivered.
 	private func emitError(_ error: ABsmartlyError, onMain: Bool = false) {
-		let key = "com.absmartly.Context.deliveringError.\(ObjectIdentifier(self).hashValue)"
-		let threadDictionary = Thread.current.threadDictionary
-		if threadDictionary[key] != nil {
+		if Thread.current.threadDictionary[deliveringErrorKey] != nil {
 			return
 		}
-		threadDictionary[key] = true
-		defer { threadDictionary.removeObject(forKey: key) }
 		emit(.error(error), onMain: onMain)
 	}
 }
