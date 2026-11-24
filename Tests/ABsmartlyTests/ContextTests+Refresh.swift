@@ -297,6 +297,27 @@ extension ContextTests {
 	}
 }
 
+extension ContextTests {
+	// As in 1.5.0: a refresh whose fetch completes after close() started installs nothing and logs
+	// nothing, so the closed context does not change.
+	@Test func refreshCompletingAfterCloseIsDiscarded() async throws {
+		let env = ContextEnv()
+		let context = env.context()
+		let gate = env.pendingRequest()
+		let refreshing = Task { try await context.refresh() }
+		#expect(await eventually(timeout: 5) { env.getCount == 1 })
+		try await context.close()
+		env.log.clear()
+
+		gate.fulfill(fixture: "refreshed")
+		try await refreshing.value
+		await pause(0.05)
+		#expect(context.state == .closed)
+		#expect(context.contextData == Fixtures.contextData("context"))
+		#expect(env.log.events == [])
+	}
+}
+
 // Start-up readiness when a refresh overlaps the first fetch: whichever settles first decides, and
 // every `ready()` caller (before and after) gets that one result.
 extension ContextTests {

@@ -254,7 +254,8 @@ public final class Context: Sendable {
 					// stays failed, as `refresh()` on a failed context does.
 					let outcome: RefreshOutcome = self.storage.withLock { state in
 						state.refreshTask = nil
-						if state.failure != nil {
+						// A refresh that lands once close() has started changes nothing (as in 1.5.0).
+						if state.failure != nil || state.closing || state.closed {
 							return .discarded
 						}
 						let loading = !state.ready
@@ -291,7 +292,7 @@ public final class Context: Sendable {
 	}
 
 	private enum RefreshOutcome {
-		/// The first fetch failed: the context stays failed and the data is not installed.
+		/// The first fetch failed, or close() has started: the data is not installed.
 		case discarded
 		/// Installed on a ready context.
 		case refreshed

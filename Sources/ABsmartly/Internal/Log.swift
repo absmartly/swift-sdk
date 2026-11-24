@@ -87,9 +87,8 @@ enum EventLog {
 		case .ready: return LogEntry(summary: "ready", detail: String(describing: event))
 		case .refresh: return LogEntry(summary: "refresh", detail: String(describing: event))
 		case .publish: return LogEntry(summary: "publish", detail: String(describing: event))
-		case .exposure(let exposure):
-			return LogEntry(summary: "exposure '\(exposure.name)'", detail: String(describing: event))
-		case .goal(let goal): return LogEntry(summary: "goal '\(goal.name)'", detail: String(describing: event))
+		case .exposure: return LogEntry(summary: "exposure", detail: String(describing: event))
+		case .goal: return LogEntry(summary: "goal", detail: String(describing: event))
 		case .close: return LogEntry(summary: "close", detail: nil)
 		case .error(let error): return LogEntry(summary: "error: \(error.logSummary)", detail: error.logDetail)
 		}

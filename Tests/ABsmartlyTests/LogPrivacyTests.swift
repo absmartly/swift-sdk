@@ -20,13 +20,28 @@ import Testing
 			""")
 	}
 
+	// Experiment and field names come from the payload too, so they are private like the value.
 	static func expectPrivate(_ marker: String, secret: String, sourceLocation: SourceLocation = #_sourceLocation) {
 		let entries = LogCapture.entries(containing: secret)
 		#expect(!entries.isEmpty, "no diagnostic logged", sourceLocation: sourceLocation)
 		for entry in entries {
-			#expect(entry.summary.contains(marker), "summary names the experiment", sourceLocation: sourceLocation)
+			#expect(!entry.summary.contains(marker), "\(entry.summary)", sourceLocation: sourceLocation)
 			#expect(!entry.summary.contains(secret), "\(entry.summary)", sourceLocation: sourceLocation)
 			#expect(entry.detail?.contains(secret) == true, sourceLocation: sourceLocation)
+			#expect(entry.detail?.contains(marker) == true, sourceLocation: sourceLocation)
+		}
+	}
+
+	@Test func assignmentRulesDiagnosticsKeepTheExperimentNamePrivate() {
+		let marker = UUID().uuidString
+		_ = DataIndex(Self.experiment(marker, config: "{}", extra: ",\"assignmentRules\":\"{not json\""))
+		_ = ContextFixtures.decode(
+			"{\"experiments\":[{\"id\":2,\"name\":\"inline_\(marker)\",\"assignmentRules\":{\"rules\":[]}}]}")
+		let entries = LogCapture.entries(containing: marker)
+		#expect(entries.count == 2)
+		for entry in entries {
+			#expect(!entry.summary.contains(marker), "\(entry.summary)")
+			#expect(entry.detail?.contains(marker) == true)
 		}
 	}
 
@@ -51,15 +66,13 @@ import Testing
 		Self.expectPrivate(marker, secret: secret)
 	}
 
-	// Compile failure, nested quantifiers, over-length pattern and timeout.
-	@Test(arguments: ["compile", "nested", "length", "timeout"])
+	// Compile failure and timeout, the two regex diagnostics.
+	@Test(arguments: ["compile", "timeout"])
 	func regexPatternIsPrivate(path: String) {
 		let secret = "secret\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))"
 		let (input, pattern): (String, String) =
 			switch path {
 			case "compile": ("x", "[" + secret)
-			case "nested": ("x", "(a+)+" + secret)
-			case "length": ("x", secret + String(repeating: "a", count: 1000))
 			default: (String(repeating: "a", count: 60) + "b", "^(a|aa)+$|" + secret)
 			}
 		_ = ExprEvaluator(vars: [:]).evaluate(
@@ -118,7 +131,15 @@ import Testing
 			#expect(!entry.summary.contains(secret), "\(entry.summary)")
 			#expect(entry.detail?.contains(secret) == true)
 		}
-		#expect(EventLog.entry(.goal(goal)).summary == "goal 'checkout'")
+		#expect(EventLog.entry(.goal(goal)).summary == "goal")
+		let exposure = Exposure(
+			id: 1, name: secret, unit: "session_id", variant: 1, exposedAt: 0, assigned: true, eligible: true,
+			overridden: false, fullOn: false, custom: false, audienceMismatch: false, ruleOverride: false)
+		#expect(EventLog.entry(.exposure(exposure)).summary == "exposure")
+		#expect(EventLog.entry(.exposure(exposure)).detail?.contains(secret) == true)
+		let named = Goal(name: secret, achievedAt: 0, properties: nil)
+		#expect(EventLog.entry(.goal(named)).summary == "goal")
+		#expect(EventLog.entry(.goal(named)).detail?.contains(secret) == true)
 	}
 
 	// A custom transport can throw any `ABsmartlyError`, including ones carrying its own text.

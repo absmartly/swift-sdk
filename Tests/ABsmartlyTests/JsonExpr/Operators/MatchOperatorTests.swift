@@ -22,21 +22,14 @@ import Testing
 		#expect(match("abcdefghijk", .null) == .null)
 	}
 
-	@Test func rejectsLongPattern() {
-		#expect(match("test", .string(String(repeating: "a", count: 1001))) == .null)
-	}
-
-	@Test func rejectsLongInput() {
-		#expect(match(.string(String(repeating: "a", count: 10001)), "a") == .null)
-	}
-
-	@Test func rejectsNestedQuantifiers() {
-		#expect(match("test", "(a+)+b") == .null)
-	}
-
-	@Test func rejectsOtherNestedQuantifierForms() {
+	// As in 1.5.0 (and JavaScript): no pattern or input length limit and no nested-quantifier
+	// rejection; only the timeout bounds a match.
+	@Test func longPatternsAndInputsAndNestedQuantifiersMatchAsIn150() {
+		#expect(match(.string(String(repeating: "a", count: 1001)), .string(String(repeating: "a", count: 1001))) == true)
+		#expect(match(.string(String(repeating: "a", count: 10001)), "a") == true)
+		#expect(match("aaaa", "^(a+)+$") == true)
 		for pattern in ["(a*)*b", "((a+)b)+", "(a{1,})+", "(a+){2,}", "(?:x|a+)*"] {
-			#expect(match("test", .string(pattern)) == .null, "\(pattern)")
+			#expect(match("aab", .string(pattern)) == true, "\(pattern)")
 		}
 	}
 
@@ -61,12 +54,6 @@ import Testing
 		#expect(elapsed < 2.0)
 
 		#expect(match("aaaa", "^(a|aa)+$") == true)
-	}
-
-	@Test func acceptsNormalPatternWithinLimits() {
-		let pattern = String(repeating: "a", count: 999)
-		let input = String(repeating: "a", count: 9999)
-		#expect(match(.string(input), .string(pattern)).isTrue)
 	}
 
 	@Test func noSemaphoreThreadLeak() {

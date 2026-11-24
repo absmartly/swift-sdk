@@ -91,7 +91,7 @@ public struct Experiment: Sendable, Equatable, Codable {
 		if assignmentRules == nil, container.contains(.assignmentRules),
 			(try? container.decodeNil(forKey: .assignmentRules)) == false
 		{
-			Log.error("Ignoring assignmentRules for experiment '\(name)': expected a JSON string.")
+			Log.error("Ignoring assignmentRules: expected a JSON string.", detail: "Experiment '\(name)'.")
 		}
 	}
 }

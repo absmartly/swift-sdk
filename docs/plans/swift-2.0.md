@@ -514,11 +514,11 @@ Behaviour parity is proven, not asserted:
   no value. `"true"` and `"false"` agree. Open for the owner: align 2.0 with 1.5.0 or keep it.
 - Released 1.5.0 also restored other 1.4.0 behaviour (commit c2b5841) that 2.0 keeps in its
   earlier form: `refresh()` on a failed context fetches again and can recover it in 1.5.0 (2.0:
-  succeeds without fetching), and 1.5.0's `match` drops the pattern/input length limits and
-  nested-quantifier rejection (2.0 keeps them; both keep the timeout). A negative `publishDelay`
+  succeeds without fetching). `match` follows 1.5.0: no pattern/input length limits and no
+  nested-quantifier rejection, only the 0.1 s timeout. A negative `publishDelay`
   disables automatic publishing in both. The failed-context refresh difference is final (owner,
-  2026-11-24); only the regex and boolean differences remain open for the owner. The parity probe
-  does not exercise failed-context refresh or regex limits.
+  2026-11-24); only the boolean difference remains open for the owner. The parity probe does not
+  exercise failed-context refresh.
 - An integer literal from 2^63 to 2^64−1 inside an audience or rule (e.g. `9223372036854775808`)
   is converted to text as `"9223372036854776000"`. 1.5.0 on Linux prints it as a negative number
   (a Foundation `NSNumber` formatting bug), on Apple platforms as the unsigned value. Only `match`,
