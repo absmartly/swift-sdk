@@ -30,24 +30,53 @@ error: The iOS Simulator deployment target 'IPHONEOS_DEPLOYMENT_TARGET' is set t
 
 So on Xcode 27.2 no dependency change (newer releases, pinned forks or vendored code) can make
 `pod lib lint` pass while the podspec declares the 1.x targets. The iOS lint in that run also
-crashed in CocoaPods' simulator lookup (fourflusher could not parse `simctl list -j` output)
+crashed in CocoaPods' simulator lookup (fourflusher, the simulator picker, failed reading
+`simctl list -j` output; run 2 traced it to a Ruby 4 incompatibility on unterminated output)
 before building; that is a tooling problem on the validating Mac, not a podspec defect.
 
 ### Options for the owner
 
-1. **Raise only the CocoaPods deployment targets in a 1.x release** to the validating Xcode's
-   floor (iOS 15, macOS 12, watchOS 9, tvOS to be measured). SwiftPM keeps iOS 10 / macOS 10.14 /
-   tvOS 10 / watchOS 3, and the public API is unchanged. Pod users whose apps target lower OS
-   versions cannot take the new pod and stay on trunk 1.3.4. Whether the trunk dependency pods
-   (declared below the floor) then lint is still to be measured.
+Mac run 2 (same SHA and toolchain) linted a copy of the podspec raised to the floor (iOS 15,
+macOS 12, tvOS 15, watchOS 9) against the trunk dependencies. On macOS and watchOS the build was
+reached and failed **only** on the dependency pods, each built at its own declared target:
+PromiseKit, SwiftAtomics and SwiftAtomicsShims at macOS 10.10 / watchOS 2.0 or 3.0, SwiftyJSON at
+macOS 10.13 / watchOS 4.0. CocoaPods does not lift a dependency to its dependent's target, so a
+podspec only lints on Xcode 27.2 if **every pod in its graph** declares targets at or above the floor.
+(iOS and tvOS did not reach the build: a CocoaPods tooling crash, and no tvOS simulator runtime.)
+
+No published release of any dependency meets the floor (trunk specs): SwiftyJSON 5.0.2
+(iOS 12, macOS 10.13, tvOS 9, watchOS 4), PromiseKit 6.18.1, the newest 6.x on trunk (iOS 8,
+macOS 10.10, tvOS 9, watchOS 2), PromiseKit 8.2.0 (iOS 10, macOS 10.13, tvOS 10, watchOS 4), and
+SwiftAtomics / SwiftAtomicsShims 1.0.2 (iOS 10, macOS 10.10, tvOS 10, watchOS 3). `pod trunk push`
+resolves dependencies from trunk only, and a podspec cannot depend on a git URL or commit.
+
+1. **Raise the CocoaPods targets in a 1.x release.** Raising only this podspec is not enough. For
+   lint and trunk it also needs, before trunk goes read-only, new trunk releases of the dependency
+   pods declaring targets at or above the floor:
+   - **SwiftAtomics / SwiftAtomicsShims:** a 1.0.3 with raised targets. Its trunk source is
+     `marcioapm/swift-atomics` and its trunk owner is presumably Marcio, so this is in ABsmartly's
+     reach (owner action; it also affects every other user of that pod).
+   - **SwiftyJSON 5.x and PromiseKit 6.x:** only their maintainers can push new versions under those
+     pod names. ABsmartly could instead publish its own forks under new pod names that keep the
+     module names `SwiftyJSON` and `PromiseKit`, so the SDK's public types and API stay the same.
+     The cost: an app that also uses the real `SwiftyJSON` or `PromiseKit` pod gets two pods
+     providing the same module and fails to build, and ABsmartly maintains the forks.
+   - Vendoring the dependency sources into the `ABSmartly` module would change the public types
+     (`SwiftyJSON.JSON`, `PromiseKit.Promise` would become ABSmartly types), so it is ruled out.
+
+   Pod users get a pod that builds on current Xcode without Podfile hooks. Apps below the raised
+   targets cannot take it and stay on trunk 1.3.4. SwiftPM keeps iOS 10 / macOS 10.14 / tvOS 10 /
+   watchOS 3 and the public API is unchanged.
 2. **Lint and publish on an older Xcode** that still accepts the 1.x targets. The podspec is
    unchanged, but this still hits the secondary dependency blocker below, depends on hosted
-   runners keeping that Xcode, and ships a pod that current Xcode cannot lint.
+   runners keeping that Xcode, and consumers on current Xcode still need a `post_install` hook
+   that raises every pod target (whether that alone builds is measured in Mac run 3, step E).
 3. **Stop shipping 1.x through CocoaPods.** Trunk stays at 1.3.4, 1.x is SwiftPM-only, and pod
-   users must move to SwiftPM for 1.4.0+.
+   users must move to SwiftPM for 1.4.0+. Apps can still point a Podfile at the git tag (with the
+   hook above) at their own risk.
 
 CocoaPods trunk becomes read-only on 2026-12-02, so options 1 and 2 also need an owner-authorized
-publication before then.
+publication (for option 1, including the dependency pods) before then.
 
 ### Secondary blocker: dependency pods on older Xcode
 
@@ -64,6 +93,7 @@ or a replacement for resolving the CocoaPods spec repository on a Mac:
 | Source | Immutable revision | Relevant declaration |
 | --- | --- | --- |
 | [SwiftyJSON 5.0.2](https://github.com/SwiftyJSON/SwiftyJSON/blob/af76cf3ef710b6ca5f8c05f3a31307d44a3c5828/SwiftyJSON.podspec) | `af76cf3ef710b6ca5f8c05f3a31307d44a3c5828` | macOS 10.9 |
+| SwiftyJSON 5.0.2 (CocoaPods trunk) | trunk spec `SwiftyJSON/5.0.2` | iOS 12, macOS 10.13, tvOS 9, watchOS 4 (differs from the git tag; so with the 1.x targets the resolver picks 5.0.1, which declares macOS 10.9, as Mac run 1 installed) |
 | [PromiseKit 6.22.1](https://github.com/mxcl/PromiseKit/blob/8a98e31a47854d3180882c8068cc4d9381bf382d/PromiseKit.podspec) | `8a98e31a47854d3180882c8068cc4d9381bf382d` | iOS 8, including CorePromise (GitHub only; see below) |
 | PromiseKit 6.18.1 (CocoaPods trunk) | trunk spec, installed in the Mac run | iOS 8, watchOS 2 (Mac run: `PromiseKit` target built at watchOS 2.0) |
 | SwiftAtomics 1.0.2 (CocoaPods trunk) | trunk spec `SwiftAtomics/1.0.2` | iOS 10, macOS 10.10, tvOS 10, watchOS 3 |
