@@ -44,6 +44,15 @@ final class ContextNegativePublishDelayTest: XCTestCase {
 		XCTAssertEqual(0, handler.publishEventCallsCount)
 	}
 
+	func testFractionalNegativeDelaySchedulesNoPublish() throws {
+		let context = makeContext(Promise.value(try contextData()), publishDelay: -0.001)
+
+		context.track("goal1", properties: nil)
+
+		XCTAssertEqual(1, context.getPendingCount())
+		XCTAssertEqual(0, scheduler.scheduleAfterExecuteCallsCount)
+	}
+
 	func testExplicitPublishStillSends() throws {
 		let context = makeContext(Promise.value(try contextData()))
 		context.track("goal1", properties: nil)
