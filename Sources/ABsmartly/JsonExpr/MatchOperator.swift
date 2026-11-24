@@ -14,7 +14,7 @@ enum MatchOperator {
 			return .bool(true)
 		}
 		guard pattern.count <= maxPatternLength else {
-			Log.error("Regex pattern exceeds maximum length of \(maxPatternLength): '\(pattern.prefix(50))...'")
+			Log.error("Regex pattern exceeds maximum length of \(maxPatternLength).", detail: "'\(pattern.prefix(50))...'")
 			return .null
 		}
 		guard text.count <= maxInputLength else {
@@ -22,7 +22,7 @@ enum MatchOperator {
 			return .null
 		}
 		if hasNestedQuantifiers(pattern) {
-			Log.error("Regex pattern contains potentially catastrophic nested quantifiers: '\(pattern)'")
+			Log.error("Regex pattern contains potentially catastrophic nested quantifiers.", detail: "'\(pattern)'")
 			return .null
 		}
 
@@ -30,7 +30,7 @@ enum MatchOperator {
 		do {
 			regex = try NSRegularExpression(pattern: pattern, options: [])
 		} catch {
-			Log.error("Failed to compile regex pattern '\(pattern)': \(error.safeDescription)")
+			Log.error("Failed to compile regex pattern.", detail: "'\(pattern)': \(error.safeDescription)")
 			return .null
 		}
 		return firstMatch(regex, in: text, pattern: pattern)
@@ -53,7 +53,7 @@ enum MatchOperator {
 			}
 		}
 		if timedOut {
-			Log.error("Regex pattern '\(pattern)' timed out after \(matchTimeout)s")
+			Log.error("Regex pattern timed out after \(matchTimeout)s.", detail: "'\(pattern)'")
 			return .null
 		}
 		return .bool(matched)

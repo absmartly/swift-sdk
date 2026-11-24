@@ -47,7 +47,9 @@ Holdouts come in a later 2.x release.
 - Typed variables (`variable(_:default:)` for any `Decodable & Sendable`), `treatment(for:as:)` for `Int`-backed enums, `isInTreatment(_:)`.
 - Atomic `setOverride(_:for:)`/`setOverrides(_:)` and `setCustomAssignment(_:for:)`/`setCustomAssignments(_:)`; `overrides`/`customAssignments` dictionary properties (a snapshot on read; assigning replaces the whole dictionary); overrides and custom assignments at context creation.
 - `Context.State` and `context.state`.
-- `EventLogger.osLog`.
+- `EventLogger.osLog`. It logs what happened (event kind, experiment or goal name, error kind) publicly and the event's contents (goal properties, attributes, context data, error text) as private data, which the unified log redacts unless the device is set up to show it. The SDK's own diagnostics (malformed configs, custom fields, regex patterns, audiences) do the same: payload text is private.
+- `ABsmartlyError.encoding`: a publish payload that cannot be encoded (for example a goal property that is NaN or infinite) fails with `.encoding` and sends nothing; `.decoding` is only for data the SDK received or parsed.
+- A `refresh()` that completes while the first fetch is still pending makes the context ready, and every `ready()` caller (waiting or later) succeeds; the first fetch's late result, data or error, is ignored. If the first fetch fails first, the context stays failed and an overlapping refresh does not change it (`refresh()` on a failed context does not recover it, as before).
 
 ### Dependencies
 - None linked on Apple platforms: PromiseKit, SwiftyJSON and swift-atomics are gone; MD5 comes from CryptoKit. `swift-crypto` (`3.0.0..<5.0.0`) is linked on Linux only (SwiftPM still downloads it, and swift-asn1, when resolving on Apple platforms).

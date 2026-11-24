@@ -296,3 +296,68 @@ extension ContextTests {
 		gate.fulfill(fixture: "context")
 	}
 }
+
+// Start-up readiness when a refresh overlaps the first fetch: whichever settles first decides, and
+// every `ready()` caller (before and after) gets that one result.
+extension ContextTests {
+	@Test func refreshWinningStartupSettlesReadyAndTheLateLoadFailureIsIgnored() async throws {
+		let env = ContextEnv()
+		let (context, gate) = await env.loadingContext()
+		let early = Box<Result<Void, ABsmartlyError>?>(nil)
+		Task {
+			do throws(ABsmartlyError) {
+				try await context.ready()
+				early.value = .success(())
+			} catch {
+				early.value = .failure(error)
+			}
+		}
+		await pause(0.05)
+
+		env.serveNext("context")
+		try await context.refresh()
+		#expect(await eventually(timeout: 5) { early.value != nil })
+		#expect(early.value.map { (try? $0.get()) != nil } == true)
+		#expect(context.treatment(for: "exp_test_ab") == 1)
+
+		gate.reject(TestError("late load failure"))
+		await pause(0.05)
+		try await context.ready()
+		#expect(context.state == .ready)
+		#expect(context.treatment(for: "exp_test_ab") == 1)
+		#expect(context.variableValue("banner.size") == "large")
+		#expect(env.log.errorMessages == [])
+		#expect(env.log.events.filter { if case .ready = $0 { return true } else { return false } }.count == 1)
+	}
+
+	@Test func refreshWinningStartupIgnoresTheLateLoadData() async throws {
+		let env = ContextEnv()
+		let (context, gate) = await env.loadingContext()
+
+		env.serveNext("refreshed")
+		try await context.refresh()
+		gate.fulfill(fixture: "context")
+		await pause(0.05)
+
+		#expect(context.contextData == Fixtures.contextData("refreshed"))
+		#expect(env.log.events.filter { if case .ready = $0 { return true } else { return false } }.count == 1)
+	}
+
+	@Test func loadFailingFirstKeepsTheContextFailedWhenAnOverlappingRefreshSucceeds() async throws {
+		let env = ContextEnv()
+		let (context, loadGate) = await env.loadingContext()
+		let refreshGate = env.pendingRequest()
+		let refreshing = Task { try await context.refresh() }
+		#expect(await eventually(timeout: 5) { env.getCount == 2 })
+
+		loadGate.reject(TestError("load failed"))
+		await #expect(throws: ABsmartlyError.transport("load failed")) { try await context.ready() }
+
+		refreshGate.fulfill(fixture: "context")
+		try await refreshing.value
+		await #expect(throws: ABsmartlyError.transport("load failed")) { try await context.ready() }
+		#expect(context.state == .failed(.transport("load failed")))
+		#expect(context.contextData == ContextData())
+		#expect(context.treatment(for: "exp_test_ab") == 0)
+	}
+}

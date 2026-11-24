@@ -76,7 +76,7 @@ struct Connection: Sendable {
 		do {
 			body = try JSONEncoder().encode(event)
 		} catch {
-			throw .decoding(error.safeDescription)
+			throw .encoding(error.safeDescription)
 		}
 		_ = try await send(method: "PUT", url: publishURL, body: body)
 	}

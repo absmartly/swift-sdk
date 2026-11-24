@@ -87,12 +87,14 @@ struct DataIndex: Sendable {
 		do {
 			let parsed = try JSONValue(parsing: config)
 			guard case .object(let object) = parsed else {
-				Log.error("Variant config for experiment '\(experimentName)' is not a valid JSON object. Config: '\(truncated)'")
+				Log.error(
+					"Variant config for experiment '\(experimentName)' is not a valid JSON object.", detail: "Config: '\(truncated)'")
 				return nil
 			}
 			return object
 		} catch {
-			Log.error("Failed to parse variant config for experiment '\(experimentName)': \(error). Config: '\(truncated)'")
+			Log.error(
+				"Failed to parse variant config for experiment '\(experimentName)'.", detail: "\(error). Config: '\(truncated)'")
 			return nil
 		}
 	}
@@ -116,8 +118,8 @@ struct DataIndex: Sendable {
 					} catch {
 						let truncated = text.count > 100 ? "\(text.prefix(100))..." : text
 						Log.error(
-							"Failed to parse JSON custom field '\(name)' for experiment '\(experiment.name)': \(error). Original value: '\(truncated)'"
-						)
+							"Failed to parse JSON custom field '\(name)' for experiment '\(experiment.name)'.",
+							detail: "\(error). Original value: '\(truncated)'")
 					}
 				} else if type.hasPrefix("boolean") {
 					value = .bool(text == "true")

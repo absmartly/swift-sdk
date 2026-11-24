@@ -112,6 +112,8 @@ public final class Context: Sendable {
 	}
 
 	/// Returns once the experiment data is loaded; throws the load error if it could not be fetched.
+	/// Every caller gets the same result: when a `refresh()` overlaps the first fetch, whichever
+	/// settles first decides.
 	public func ready() async throws(ABsmartlyError) {
 		let result: Result<Void, ABsmartlyError> = await withCheckedContinuation { continuation in
 			let settled: Result<Void, ABsmartlyError>? = storage.withLock { state in
@@ -131,12 +133,15 @@ public final class Context: Sendable {
 		try result.get()
 	}
 
+	/// Fetches the first data. A refresh that completes first makes the context ready instead, and
+	/// this fetch's late result (data or error) is then ignored, so every `ready()` caller gets the
+	/// same result.
 	func load(_ fetch: @escaping @Sendable () async throws(ABsmartlyError) -> ContextData) {
 		// Holds the context until the fetch settles, so `ready()` always returns.
 		Task { [self] in
 			do throws(ABsmartlyError) {
 				let data = try await fetch()
-				install(data, deliverOnMain: true)
+				install(data, deliverOnMain: true, onlyWhileLoading: true)
 			} catch {
 				fail(error)
 			}
@@ -145,15 +150,25 @@ public final class Context: Sendable {
 
 	/// Installs the context's first data. With `deliverOnMain` false (pre-fetched data) the ready
 	/// event is delivered synchronously, as in 1.x.
-	func install(_ data: ContextData, deliverOnMain: Bool = false) {
+	func install(_ data: ContextData, deliverOnMain: Bool = false, onlyWhileLoading: Bool = false) {
 		let index = DataIndex(data)
-		let waiters = storage.withLock { state in
+		let waiters: [CheckedContinuation<Result<Void, ABsmartlyError>, Never>]? = storage.withLock { state in
+			if onlyWhileLoading && state.isReady {
+				return nil
+			}
 			state.index = index
 			markReady(&state)
 			let waiters = state.readyWaiters
 			state.readyWaiters = []
 			return waiters
 		}
+		guard let waiters else { return }
+		settleReady(data, waiters: waiters, deliverOnMain: deliverOnMain)
+	}
+
+	private func settleReady(
+		_ data: ContextData, waiters: [CheckedContinuation<Result<Void, ABsmartlyError>, Never>], deliverOnMain: Bool
+	) {
 		// Ready before delivery, so a logger's ready handler can read the context.
 		emit(.ready(data), onMain: deliverOnMain)
 		for waiter in waiters {
@@ -169,11 +184,18 @@ public final class Context: Sendable {
 	}
 
 	private func fail(_ error: ABsmartlyError) {
-		storage.withLock { state in
+		let superseded = storage.withLock { state in
+			if state.isReady {
+				return true
+			}
 			state.index = .empty
 			state.failure = error
+			return false
 		}
-		Log.error("Context initialization failed: \(error)")
+		if superseded {
+			return
+		}
+		Log.error("Context initialization failed", error)
 		// Delivered before the context reports failed, like the JavaScript SDK.
 		emitError(error)
 		let waiters = storage.withLock { state in
@@ -207,7 +229,8 @@ public final class Context: Sendable {
 	}
 
 	/// Fetches the experiment data again. Assignments that the new data does not change are kept.
-	/// On a failed context this succeeds without fetching.
+	/// On a failed context this succeeds without fetching; one that was in flight when the first
+	/// fetch failed succeeds without installing its data.
 	public func refresh() async throws(ABsmartlyError) {
 		let claimed: Result<Task<Result<Void, ABsmartlyError>, Never>?, ABsmartlyError> = storage.withLock { state in
 			if let error = state.checkNotClosed() {
@@ -225,16 +248,33 @@ public final class Context: Sendable {
 				do throws(ABsmartlyError) {
 					let data = try await connection.fetchContextData()
 					let index = DataIndex(data)
-					self.storage.withLock { state in
-						state.index = index
+					// While the first fetch is still pending, this refresh makes the context ready. Once
+					// that fetch failed (`failure` is set before the error is delivered), the context
+					// stays failed, as `refresh()` on a failed context does.
+					let startup: [CheckedContinuation<Result<Void, ABsmartlyError>, Never>]?? = self.storage.withLock {
+						state in
 						state.refreshTask = nil
+						if state.failure != nil {
+							return .none
+						}
+						let loading = !state.ready
+						state.index = index
 						markReady(&state)
+						guard loading else { return .some(nil) }
+						let waiters = state.readyWaiters
+						state.readyWaiters = []
+						return .some(waiters)
 					}
-					emit(.refresh(data), onMain: true)
+					if case .some(let waiters) = startup {
+						if let waiters {
+							settleReady(data, waiters: waiters, deliverOnMain: true)
+						}
+						emit(.refresh(data), onMain: true)
+					}
 					result = .success(())
 				} catch {
 					self.storage.withLock { $0.refreshTask = nil }
-					Log.error("Context refresh failed: \(error)")
+					Log.error("Context refresh failed", error)
 					emitError(error)
 					result = .failure(error)
 				}
@@ -350,7 +390,7 @@ public final class Context: Sendable {
 				state.goals.insert(contentsOf: event.goals, at: 0)
 				state.pendingCount += count
 			}
-			Log.error("Publish failed: \(error)")
+			Log.error("Publish failed", error)
 			emitError(error)
 			result = .failure(error)
 		}
@@ -726,7 +766,7 @@ public final class Context: Sendable {
 	}
 
 	private func reportError(_ error: ABsmartlyError) {
-		Log.error(error.description)
+		Log.error(error.logSummary, detail: error.logDetail)
 		emitError(error)
 	}
 

@@ -42,7 +42,9 @@ public struct EventLogger: Sendable {
 	}
 
 	/// Writes every event to the unified logging system (subsystem `com.absmartly.sdk`, category
-	/// `events`); errors at error level, the rest at debug level. Prints on Linux.
+	/// `events`); errors at error level, the rest at debug level. The event kind and names are
+	/// public; its contents (goal properties, attributes, context data, error text) are private.
+	/// Prints on Linux.
 	public static let osLog = EventLogger { _, event in
 		EventLog.write(event)
 	}

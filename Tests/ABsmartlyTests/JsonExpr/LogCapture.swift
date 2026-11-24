@@ -6,9 +6,9 @@ import Foundation
 /// fans messages into a buffer, so suites running in parallel never replace each other's observer;
 /// tests filter the buffer by a marker unique to them.
 enum LogCapture {
-	private static let messages = Locked<[String]>([])
-	private static let installed: Void = Log.setObserver { message in
-		LogCapture.messages.withLock { $0.append(message) }
+	private static let captured = Locked<[LogEntry]>([])
+	private static let installed: Void = Log.setObserver { entry in
+		LogCapture.captured.withLock { $0.append(entry) }
 	}
 
 	static func install() {
@@ -16,8 +16,12 @@ enum LogCapture {
 	}
 
 	static func messages(containing marker: String) -> [String] {
+		entries(containing: marker).map(\.text)
+	}
+
+	static func entries(containing marker: String) -> [LogEntry] {
 		install()
-		return messages.withLock { $0 }.filter { $0.contains(marker) }
+		return captured.withLock { $0 }.filter { $0.text.contains(marker) }
 	}
 }
 

@@ -22,6 +22,9 @@ public enum ABsmartlyError: Error, Sendable, Hashable {
 	case transport(String)
 	/// A response, context data or JSON text could not be decoded.
 	case decoding(String)
+	/// The publish payload could not be encoded (for example a goal property that is NaN or
+	/// infinite), so nothing was sent.
+	case encoding(String)
 	/// The operation was cancelled.
 	case cancelled
 }
@@ -38,6 +41,7 @@ extension ABsmartlyError: LocalizedError {
 		case .httpStatus(_, let message): return message
 		case .transport(let message): return message
 		case .decoding(let message): return message
+		case .encoding(let message): return message
 		case .cancelled: return "The operation was cancelled."
 		}
 	}

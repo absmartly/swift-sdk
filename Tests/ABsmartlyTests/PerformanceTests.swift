@@ -71,7 +71,6 @@ import Testing
 			let context = Harness().context()
 			let count = Locked(0)
 			ContextState.$attributeMapBuildCount.withValue(count) {
-				// Positive control: the hook observes a real map build.
 				_ = ContextState(application: "website", environment: "production").attributeMap()
 				#expect(count.withLock { $0 } == 1)
 				count.withLock { $0 = 0 }

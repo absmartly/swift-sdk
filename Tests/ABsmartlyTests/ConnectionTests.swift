@@ -289,6 +289,22 @@ import Testing
 		#expect(error == .httpStatus(code: 500, message: HTTPURLResponse.localizedString(forStatusCode: 500)))
 	}
 
+	// A payload that cannot be encoded is a local error: nothing is sent, and it is not reported as an
+	// invalid server response.
+	@Test func publishRejectsAnUnencodablePayloadWithoutSending() async throws {
+		let (connection, transport) = Self.connection(retries: 3)
+		var event = Self.event
+		event.goals = [Goal(name: "goal1", achievedAt: 1_620_000_000_000, properties: ["amount": .double(.nan)])]
+		let sent = event
+		let error = try await withTimeout { await sdkError { try await connection.publish(sent) } }
+		guard case .encoding(let message) = error else {
+			Issue.record("expected an encoding error, got \(String(describing: error))")
+			return
+		}
+		#expect(!message.isEmpty)
+		#expect(transport.requests.isEmpty)
+	}
+
 	@Test func publishRejectsOnNetworkError() async throws {
 		let (connection, transport) = Self.connection()
 		transport.enqueue { _ in throw URLError(.cannotConnectToHost) }

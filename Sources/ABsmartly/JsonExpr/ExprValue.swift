@@ -117,20 +117,13 @@ extension ExprValue {
 		}
 	}
 
+	/// A parsed rule array. Attribute collections are never materialised (they are walked lazily by
+	/// the operators), so an attribute array gives nil.
 	var arrayValue: [ExprValue]? {
-		switch self {
-		case .array(let value): return value
-		case .attributeArray(let value): return value.map(ExprValue.init(attribute:))
-		default: return nil
+		if case .array(let value) = self {
+			return value
 		}
-	}
-
-	var objectValue: [String: ExprValue]? {
-		switch self {
-		case .object(let value): return value
-		case .attributeObject(let value): return value.mapValues(ExprValue.init(attribute:))
-		default: return nil
-		}
+		return nil
 	}
 
 	func allObjectValuesSatisfy(_ predicate: (String, ExprValue) -> Bool) -> Bool {

@@ -35,8 +35,8 @@ enum AudienceMatcher {
 		default:
 			let truncated = audience.count > 100 ? "\(audience.prefix(100))..." : audience
 			Log.error(
-				"Audience filter has invalid type: \(filter.typeName), expected dictionary or array. Audience: '\(truncated)'"
-			)
+				"Audience filter has invalid type: \(filter.typeName), expected dictionary or array.",
+				detail: "Audience: '\(truncated)'")
 			return .none
 		}
 	}

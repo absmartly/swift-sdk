@@ -286,10 +286,9 @@ import Testing
 		#expect(evaluator.extractVar("d") != [1, 2, 4])
 		#expect(evaluator.extractVar("f") != ["x": 4])
 		#expect(evaluator.extractVar("f") != ["y": 3])
-		#expect(evaluator.extractVar("d").arrayValue == [1, 2, 3])
-		#expect(evaluator.extractVar("f").objectValue == ["x": 3])
-		#expect(evaluator.extractVar("d").objectValue == nil)
-		#expect(evaluator.extractVar("f").arrayValue == nil)
+		#expect(evaluator.extractVar("d") == .attributeArray([1, 2, 3]))
+		#expect(evaluator.extractVar("f") == .attributeObject(["x": 3]))
+		#expect(evaluator.extractVar("d").arrayValue == nil)
 	}
 
 	@Test(.enabled(if: countsConversions)) func attributeConversionCounterIncludesVisitedElements() {

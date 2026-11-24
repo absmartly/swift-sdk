@@ -48,7 +48,6 @@ struct ContextState {
 	var customAssignments: [String: Int] = [:]
 
 	#if DEBUG
-		// Test hooks: actual dictionary writes and cached rule/audience re-evaluations.
 		var assignmentCacheWrites = 0
 		var revalidations = 0
 	#endif

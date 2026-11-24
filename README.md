@@ -282,7 +282,7 @@ for await event in context.events {
 
 Each access to `context.events` returns a new stream, which finishes after the context closes. To
 see the events of every context, set `configuration.eventLogger` (`.osLog` writes them to the unified
-log).
+log, with their contents, such as goal properties and attributes, marked private).
 
 ## Errors
 
