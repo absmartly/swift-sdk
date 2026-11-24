@@ -130,7 +130,8 @@ security fixes, from the `release/1.x` branch) for 12 months after 2.0 ships.
   failed publish as success and dropped its events. Failed events are re-queued, and a failed `close()`
   leaves the context open with one automatic publish scheduled for them (a single attempt; after
   that `publish()`, `close()` or the next event retries) (1.4.0 marked it closed with the events
-  lost). A failed `close()` does not itself restart the refresh timer. A refresh already in flight
+  lost). With a negative `publishDelay` nothing is retried automatically, neither on the failed
+  `close()` nor on the next event: call `publish()` or `close()` again. A failed `close()` does not itself restart the refresh timer. A refresh already in flight
   can restart it if it succeeds after the close rejects, and a later successful explicit refresh
   can restart it too.
   `getContextData()` rejects a non-2xx response with an HTTP error instead of a decoding error.
