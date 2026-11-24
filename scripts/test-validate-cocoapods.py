@@ -93,10 +93,12 @@ class SimctlJsonWrapperTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             fake = Path(directory) / "xcrun"
             trace = Path(directory) / "trace"
+            output = Path(directory) / "output"
+            output.write_text(fake_output)
             fake.write_text(
                 "#!/usr/bin/env bash\n"
                 f"printf '%s\\n' \"$*\" > {trace}\n"
-                f"printf '%s' {fake_output!r}\n"
+                f"cat {output}\n"
                 f"exit {fake_status}\n"
             )
             fake.chmod(0o755)
@@ -109,11 +111,28 @@ class SimctlJsonWrapperTest(unittest.TestCase):
             return result, trace.read_text().strip()
 
     def test_simctl_json_keeps_only_the_object_with_a_trailing_newline(self):
-        raw = 'Install Started\n{"devices": {}}\nInstall'
+        raw = 'Install Started\nwarning: {stale}\n{\n  "devices": {}\n}\nInstall Succeeded {x}'
         result, called = self.run_wrapper(raw, "simctl", "list", "-j", "devices")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout, '{"devices": {}}\n')
+        self.assertEqual(result.stdout, '{\n  "devices": {}\n}\n')
         self.assertEqual(called, "simctl list -j devices")
+
+    def test_args_containing_j_but_not_dash_j_pass_through(self):
+        result, called = self.run_wrapper("raw", "simctl", "list", "jobs")
+        self.assertEqual(result.stdout, "raw")
+        self.assertEqual(called, "simctl list jobs")
+
+    def test_default_real_xcrun_is_absolute_not_a_path_lookup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            decoy = Path(directory) / "xcrun"
+            marker = Path(directory) / "called"
+            decoy.write_text(f"#!/usr/bin/env bash\ntouch {marker}\n")
+            decoy.chmod(0o755)
+            environment = {k: v for k, v in os.environ.items() if k != "REAL_XCRUN"}
+            environment["PATH"] = directory + os.pathsep + environment["PATH"]
+            subprocess.run(["bash", str(self.WRAPPER), "--version"], env=environment,
+                           capture_output=True, text=True, timeout=10)
+            self.assertFalse(marker.exists())
 
     def test_other_calls_pass_through_unchanged(self):
         result, called = self.run_wrapper("plain", "simctl", "list", "runtimes")
@@ -123,6 +142,7 @@ class SimctlJsonWrapperTest(unittest.TestCase):
     def test_simctl_failure_is_not_masked(self):
         result, _ = self.run_wrapper("boom", "simctl", "list", "-j", "devices", fake_status=3)
         self.assertEqual(result.returncode, 3)
+        self.assertEqual(result.stdout, "boom\n")
 
     def test_output_without_json_fails(self):
         result, _ = self.run_wrapper("no json here", "simctl", "list", "-j", "devices")

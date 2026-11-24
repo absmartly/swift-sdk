@@ -16,8 +16,8 @@ if [ "${1:-}" = simctl ] && [ "${2:-}" = list ] && printf '%s\n' "$@" | grep -qx
   [ "$status" -eq 0 ] || { printf '%s\n' "$output"; exit "$status"; }
   printf '%s' "$output" | ruby -e '
     raw = STDIN.read
-    first = raw.index("{")
-    last = raw.rindex("}")
+    first = raw.index(/^\{/)
+    last = raw.rindex(/^\}/)
     abort("simctl list returned no JSON object:\n" + raw) unless first && last
     puts raw[first..last]'
   exit $?

@@ -29,9 +29,9 @@ error: The iOS Simulator deployment target 'IPHONEOS_DEPLOYMENT_TARGET' is set t
 ```
 
 So on Xcode 27.2 no dependency change (newer releases, pinned forks or vendored code) can make
-`pod lib lint` pass while the podspec declares the 1.x targets. The iOS lint in that run also
-crashed in CocoaPods' simulator lookup (fourflusher, the simulator picker) before building, in
-two ways (see "Mac reproduction and acceptance"); that is a tooling problem on the validating Mac, not a podspec defect.
+`pod lib lint` pass while the podspec declares the 1.x targets. The iOS lint in runs 1 and 2
+also crashed in CocoaPods' simulator lookup (fourflusher, the simulator picker) before building,
+differently in each run (see "Mac reproduction and acceptance"); that is a tooling problem on the validating Mac, not a podspec defect.
 
 ### Consumers versus lint and trunk
 
@@ -47,7 +47,7 @@ post_install do |installer|
   installer.pods_project.targets.each do |target|
     target.build_configurations.each do |config|
       # Only raise: a pod that already needs a newer OS keeps its own target.
-      if config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'].to_f < 15.0
+      if Gem::Version.new(config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] || '0') < Gem::Version.new('15.0')
         config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
       end
     end
