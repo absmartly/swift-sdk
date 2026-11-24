@@ -177,8 +177,9 @@ let variant = context.treatment(for: "exp_checkout")
 | `.close` / `.finalize` | `.close` |
 | `.error(error: Error)` | `.error(ABsmartlyError)` |
 
-Delivery threads are unchanged: `exposure`, `goal` and `error` on the calling thread; `ready`,
-`refresh`, `publish` and `close` on the main thread on Apple platforms.
+Delivery threads are unchanged: `exposure`, `goal` and misuse `error`s on the calling thread;
+`ready`, `refresh`, `publish`, `close` and the `error`s of loading, refreshing and publishing on the
+main thread on Apple platforms.
 
 ### Models and values
 

@@ -359,8 +359,11 @@ extension ContextTests {
 		}
 		env.log.clear()
 
-		refreshGate.reject(TestError("late failure"))
-		#expect(await refreshing.value == .transport("late failure"))
+		let marker = "late failure \(UUID().uuidString)"
+		LogCapture.install()
+		refreshGate.reject(TestError(marker))
+		#expect(await refreshing.value == .transport(marker))
+		#expect(LogCapture.entries(containing: marker).count == 1)
 		publishGate?.fulfill(HTTPResponse(statusCode: 200, body: Data()))
 		try await closing.value
 		#expect(env.log.errors == [])

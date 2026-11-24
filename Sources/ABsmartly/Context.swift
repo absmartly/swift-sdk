@@ -184,26 +184,21 @@ public final class Context: Sendable {
 	}
 
 	private func fail(_ error: ABsmartlyError) {
-		let superseded = storage.withLock { state in
+		let waiters: [CheckedContinuation<Result<Void, ABsmartlyError>, Never>]? = storage.withLock { state in
 			if state.isReady {
-				return true
+				return nil
 			}
 			state.index = .empty
 			state.failure = error
-			return false
-		}
-		if superseded {
-			return
-		}
-		Log.error("Context initialization failed", error)
-		// Delivered before the context reports failed, like the JavaScript SDK.
-		emitError(error)
-		let waiters = storage.withLock { state in
 			state.failed = true
 			let waiters = state.readyWaiters
 			state.readyWaiters = []
 			return waiters
 		}
+		guard let waiters else { return }
+		Log.error("Context initialization failed", error)
+		// The context is already failed when the logger hears of it, as in 1.5.0 and JavaScript.
+		emitError(error, onMain: true)
 		for waiter in waiters {
 			waiter.resume(returning: .failure(error))
 		}
@@ -285,7 +280,7 @@ public final class Context: Sendable {
 					}
 					Log.error("Context refresh failed", error)
 					if !closing {
-						emitError(error)
+						emitError(error, onMain: true)
 					}
 					result = .failure(error)
 				}
@@ -411,7 +406,7 @@ public final class Context: Sendable {
 				state.pendingCount += count
 			}
 			Log.error("Publish failed", error)
-			emitError(error)
+			emitError(error, onMain: true)
 			result = .failure(error)
 		}
 		storage.withLock { $0.inFlightPublishes[id] = nil }
@@ -744,13 +739,20 @@ public final class Context: Sendable {
 	}
 
 	// Streams see every event at once, in order. The logger sees `ready`/`refresh`/`publish`/`close`
-	// on the main thread on Apple platforms (`onMain`), as in 1.x, without the work waiting for it.
+	// and the errors of background work (load, refresh, publish) on the main thread on Apple
+	// platforms (`onMain`), as in 1.x, without the work waiting for it.
 	private func emit(_ event: Event, onMain: Bool, streams: [Int: AsyncStream<Event>.Continuation]? = nil) {
 		let streams = streams ?? storage.withLock { $0.streams }
 		for continuation in streams.values {
 			continuation.yield(event)
 		}
 		guard let logger else { return }
+		#if DEBUG
+			if onMain, let dispatcher = Self.mainThreadDispatcher {
+				dispatcher(event) { logger.handle(self, event) }
+				return
+			}
+		#endif
 		if onMain && Self.deliversEventsOnMainThread && !Thread.isMainThread {
 			DispatchQueue.main.async { logger.handle(self, event) }
 		} else {
@@ -770,6 +772,13 @@ public final class Context: Sendable {
 		get { mainThreadDelivery.withLock { $0 } }
 		set { mainThreadDelivery.withLock { $0 = newValue } }
 	}
+
+	#if DEBUG
+		/// Test hook: receives each event routed to the main thread, with its delivery, in place of
+		/// the main queue (which nothing services under Linux tests). Task-local, so tasks the
+		/// context starts inherit it and parallel tests do not see it.
+		@TaskLocal static var mainThreadDispatcher: (@Sendable (Event, @escaping @Sendable () -> Void) -> Void)?
+	#endif
 
 	// MARK: - Errors
 
@@ -793,7 +802,7 @@ public final class Context: Sendable {
 	// An error raised while this context is already delivering `.error` on the same thread (e.g. a
 	// logger reading a value from its error handler before the context is ready) is not delivered
 	// again, which would recurse without bound; it has already gone to the SDK log.
-	private func emitError(_ error: ABsmartlyError) {
+	private func emitError(_ error: ABsmartlyError, onMain: Bool = false) {
 		let key = "com.absmartly.Context.deliveringError.\(ObjectIdentifier(self).hashValue)"
 		let threadDictionary = Thread.current.threadDictionary
 		if threadDictionary[key] != nil {
@@ -801,7 +810,7 @@ public final class Context: Sendable {
 		}
 		threadDictionary[key] = true
 		defer { threadDictionary.removeObject(forKey: key) }
-		emit(.error(error), onMain: false)
+		emit(.error(error), onMain: onMain)
 	}
 }
 

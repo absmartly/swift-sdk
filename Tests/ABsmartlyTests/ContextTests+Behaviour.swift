@@ -126,7 +126,8 @@ extension ContextTests {
 		#expect(context.state == .ready)
 	}
 
-	@Test func errorEventIsLoggedBeforeContextReportsFailed() async {
+	// As in 1.5.0 and JavaScript: a logger handling the load failure already sees the context failed.
+	@Test func errorEventSeesTheContextFailed() async {
 		let env = ContextEnv()
 		let stateWhenLogged = Box<Context.State?>(nil)
 		env.log.setHook { context, event in
@@ -136,9 +137,45 @@ extension ContextTests {
 		gate.reject(TestError("load failed"))
 		try? await context.ready()
 
-		// The error is logged while the context is still loading, before it is marked failed.
-		#expect(stateWhenLogged.value == .loading)
+		#expect(stateWhenLogged.value == .failed(.transport("load failed")))
 		#expect(context.state == .failed(.transport("load failed")))
+	}
+
+	// As in 1.5.0: the errors of background work (load, refresh, publish) are routed to the logger's
+	// main-thread delivery, like ready/refresh/publish/close; misuse errors stay on the calling thread.
+	@Test func backgroundErrorsAreDeliveredOnTheMainThread() async {
+		let routed = Box<[String]>([])
+		let dispatcher: @Sendable (Context.Event, @escaping @Sendable () -> Void) -> Void = { event, deliver in
+			let kind: String
+			switch event {
+			case .error(let error): kind = "error:\(error.description)"
+			case .ready: kind = "ready"
+			case .refresh: kind = "refresh"
+			case .publish: kind = "publish"
+			case .close: kind = "close"
+			default: kind = "other"
+			}
+			routed.mutate { $0.append(kind) }
+			deliver()
+		}
+		await Context.$mainThreadDispatcher.withValue(dispatcher) {
+			let env = ContextEnv()
+			let (failing, gate) = await env.loadingContext()
+			gate.reject(TestError("load failed"))
+			try? await failing.ready()
+
+			let context = env.context()
+			env.failNextRequest("refresh failed")
+			try? await context.refresh()
+			context.track("goal", properties: nil)
+			env.failNextRequest("publish failed")
+			try? await context.publish()
+			_ = context.variableValue("x")
+			try? context.setUnit("session_id", to: "other")
+		}
+
+		let errors = routed.value.filter { $0.hasPrefix("error:") }
+		#expect(errors == ["error:load failed", "error:refresh failed", "error:publish failed"])
 	}
 
 	@Test func publicApiDoesNotThrowAndReturnsDefaultsBeforeReady() async {
@@ -177,8 +214,9 @@ extension ContextTests {
 		gate.reject(TestError("load failed"))
 		try? await context.ready()
 
+		// The handler already sees the context failed, whose data is empty.
 		#expect(nestedReads.value == 1)
-		#expect(nestedData.value == [nil])
+		#expect(nestedData.value == [ContextData()])
 		#expect(env.log.errorMessages == ["load failed"])
 		#expect(context.state == .failed(.transport("load failed")))
 	}
