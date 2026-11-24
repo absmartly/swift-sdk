@@ -99,6 +99,9 @@ jobs:
       - name: Run tests
         run: swift test
 
+      - name: Test CocoaPods validation command flow (stub tools only)
+        run: python3 scripts/test-validate-cocoapods.py
+
       # Optimized builds compile out the DEBUG-only lifecycle test hooks; the rest must still pass.
       - name: Run tests (release)
         run: swift test -c release
