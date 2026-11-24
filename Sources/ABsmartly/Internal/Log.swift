@@ -4,10 +4,11 @@ import Foundation
 	import os
 #endif
 
-/// One diagnostic line. `summary` says what failed (SDK text, experiment and field names) and is
-/// logged public; `detail` holds customer payload text (variant configs, field values, regex
-/// patterns, audiences, error text, event contents) and is logged private on Apple platforms, so
-/// the unified log redacts it unless the device is set up to show private data.
+/// One diagnostic line. `summary` says what failed, in SDK text only, and is logged public;
+/// `detail` holds everything from the payload or the caller (experiment and field names, variant
+/// configs, field values, regex patterns, audiences, error text, event contents) and is logged
+/// private on Apple platforms, so the unified log redacts it unless the device is set up to show
+/// private data.
 struct LogEntry: Sendable, Equatable {
 	let summary: String
 	let detail: String?
@@ -18,7 +19,7 @@ struct LogEntry: Sendable, Equatable {
 	}
 }
 
-/// The SDK's own diagnostics (malformed payload fields, regex limits). Not customer events: those
+/// The SDK's own diagnostics (malformed payload fields, regex failures and timeouts). Not customer events: those
 /// go to the context's event logger and event streams.
 enum Log {
 	// Test hook: sees every entry before it is written.

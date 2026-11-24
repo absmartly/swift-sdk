@@ -316,6 +316,56 @@ extension ContextTests {
 		#expect(context.contextData == Fixtures.contextData("context"))
 		#expect(env.log.events == [])
 	}
+
+	// A refresh that lands while close() is still publishing is dropped too.
+	@Test func refreshCompletingWhileClosingIsDiscarded() async throws {
+		let env = ContextEnv()
+		let context = env.context()
+		context.track("goal", properties: nil)
+		let refreshGate = env.pendingRequest()
+		let refreshing = Task { try await context.refresh() }
+		#expect(await eventually(timeout: 5) { env.getCount == 1 })
+		let publishGate = env.pendingRequest()
+		let closing = Task { try await context.close() }
+		#expect(await eventually(timeout: 5) { env.publishCount == 1 })
+		env.log.clear()
+
+		refreshGate.fulfill(fixture: "refreshed")
+		try await refreshing.value
+		#expect(context.contextData == Fixtures.contextData("context"))
+		publishGate.fulfill(HTTPResponse(statusCode: 200, body: Data()))
+		try await closing.value
+		#expect(env.log.events.allSatisfy { if case .refresh = $0 { false } else { true } })
+		#expect(context.state == .closed)
+	}
+
+	// As in 1.5.0: a refresh failing after close() started is thrown to the caller but logs no event.
+	@Test(arguments: [false, true])
+	func refreshFailingAfterCloseStartedLogsNoEvent(whileClosing: Bool) async throws {
+		let env = ContextEnv()
+		let context = env.context()
+		if whileClosing {
+			context.track("goal", properties: nil)
+		}
+		let refreshGate = env.pendingRequest()
+		let refreshing = Task { () -> ABsmartlyError? in await sdkError { try await context.refresh() } }
+		#expect(await eventually(timeout: 5) { env.getCount == 1 })
+		let publishGate = whileClosing ? env.pendingRequest() : nil
+		let closing = Task { try await context.close() }
+		if whileClosing {
+			#expect(await eventually(timeout: 5) { env.publishCount == 1 })
+		} else {
+			try await closing.value
+		}
+		env.log.clear()
+
+		refreshGate.reject(TestError("late failure"))
+		#expect(await refreshing.value == .transport("late failure"))
+		publishGate?.fulfill(HTTPResponse(statusCode: 200, body: Data()))
+		try await closing.value
+		#expect(env.log.errors == [])
+		#expect(context.state == .closed)
+	}
 }
 
 // Start-up readiness when a refresh overlaps the first fetch: whichever settles first decides, and

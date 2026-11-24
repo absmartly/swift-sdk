@@ -277,9 +277,16 @@ public final class Context: Sendable {
 					}
 					result = .success(())
 				} catch {
-					self.storage.withLock { $0.refreshTask = nil }
+					// Like a late success, a late failure after close() started logs no event (as in 1.5.0);
+					// the caller still gets the error.
+					let closing = self.storage.withLock { state in
+						state.refreshTask = nil
+						return state.closing || state.closed
+					}
 					Log.error("Context refresh failed", error)
-					emitError(error)
+					if !closing {
+						emitError(error)
+					}
 					result = .failure(error)
 				}
 				return result

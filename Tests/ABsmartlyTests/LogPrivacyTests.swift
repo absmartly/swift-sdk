@@ -59,11 +59,16 @@ import Testing
 	@Test func customFieldValueIsPrivate() {
 		let marker = UUID().uuidString
 		let secret = "{secret-\(marker)"
+		let field = "field-\(UUID().uuidString)"
 		_ = DataIndex(
 			Self.experiment(
 				marker, config: "{}",
-				extra: ",\"customFieldValues\":[{\"name\":\"f\",\"type\":\"json\",\"value\":\"\(secret)\"}]"))
+				extra: ",\"customFieldValues\":[{\"name\":\"\(field)\",\"type\":\"json\",\"value\":\"\(secret)\"}]"))
 		Self.expectPrivate(marker, secret: secret)
+		for entry in LogCapture.entries(containing: secret) {
+			#expect(!entry.summary.contains(field), "\(entry.summary)")
+			#expect(entry.detail?.contains(field) == true)
+		}
 	}
 
 	// Compile failure and timeout, the two regex diagnostics.
