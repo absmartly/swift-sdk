@@ -229,7 +229,8 @@ public final class Context: Sendable {
 	}
 
 	/// Fetches the experiment data again. Assignments that the new data does not change are kept.
-	/// On a failed context this succeeds without fetching; one that was in flight when the first
+	/// On a failed context this succeeds without fetching, as in the Java and JavaScript SDKs (1.5.0
+	/// fetches and can recover); one that was in flight when the first
 	/// fetch failed succeeds without installing its data.
 	public func refresh() async throws(ABsmartlyError) {
 		let claimed: Result<Task<Result<Void, ABsmartlyError>, Never>?, ABsmartlyError> = storage.withLock { state in

@@ -215,6 +215,10 @@ differences (see also the note for 1.4.x users at the top):
 
 These API-level differences are also worth knowing:
 
+- `refresh()` on a failed context succeeds without fetching and the context stays failed, as in
+  the Java and JavaScript SDKs. 1.5.0 fetches again and can recover the context. Create a new
+  context to retry a failed load.
+
 - `setUnit` throws as well as emitting the `.error` event (1.x only emitted it). The unit is left
   unchanged, as before.
 - `customFieldValue(_:in:)` returns `JSONValue?` for every field type: `number` fields are
