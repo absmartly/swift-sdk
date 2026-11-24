@@ -20,6 +20,14 @@ targets below its supported range, for this SDK and for dependency-free probe po
 | watchOS | 3.0 | 9.0 to 27.2.x |
 | tvOS | 10.0 | not measured (no tvOS simulator runtime installed) |
 
+These are hard build errors, not warnings: the probe pods were linted with `--allow-warnings` and
+still failed. Exact lines from the run logs (SDK, macOS; dependency-free probe, iOS):
+
+```text
+error: The macOS deployment target 'MACOSX_DEPLOYMENT_TARGET' is set to 10.10, but the range of supported deployment target versions is 12.0 to 27.2.x. (in target 'ABSmartlySwiftSDK' from project 'Pods')
+error: The iOS Simulator deployment target 'IPHONEOS_DEPLOYMENT_TARGET' is set to 10.0, but the range of supported deployment target versions is 15.0 to 27.2.x. (in target 'ProbeSDKTargets' from project 'Pods')
+```
+
 So on Xcode 27.2 no dependency change (newer releases, pinned forks or vendored code) can make
 `pod lib lint` pass while the podspec declares the 1.x targets. The iOS lint in that run also
 crashed in CocoaPods' simulator lookup (fourflusher could not parse `simctl list -j` output)
@@ -56,10 +64,15 @@ or a replacement for resolving the CocoaPods spec repository on a Mac:
 | Source | Immutable revision | Relevant declaration |
 | --- | --- | --- |
 | [SwiftyJSON 5.0.2](https://github.com/SwiftyJSON/SwiftyJSON/blob/af76cf3ef710b6ca5f8c05f3a31307d44a3c5828/SwiftyJSON.podspec) | `af76cf3ef710b6ca5f8c05f3a31307d44a3c5828` | macOS 10.9 |
-| [PromiseKit 6.22.1](https://github.com/mxcl/PromiseKit/blob/8a98e31a47854d3180882c8068cc4d9381bf382d/PromiseKit.podspec) | `8a98e31a47854d3180882c8068cc4d9381bf382d` | iOS 8, including CorePromise |
+| [PromiseKit 6.22.1](https://github.com/mxcl/PromiseKit/blob/8a98e31a47854d3180882c8068cc4d9381bf382d/PromiseKit.podspec) | `8a98e31a47854d3180882c8068cc4d9381bf382d` | iOS 8, including CorePromise (GitHub only; see below) |
+| PromiseKit 6.18.1 (CocoaPods trunk) | trunk spec, installed in the Mac run | iOS 8, watchOS 2 (Mac run: `PromiseKit` target built at watchOS 2.0) |
+| SwiftAtomics 1.0.2 (CocoaPods trunk) | trunk spec `SwiftAtomics/1.0.2` | iOS 10, macOS 10.10, tvOS 10, watchOS 3 |
 | [PromiseKit 8.2.0](https://github.com/mxcl/PromiseKit/blob/2bc44395edb4f8391902a9ff7c220471882a4d07/PromiseKit.podspec) | `2bc44395edb4f8391902a9ff7c220471882a4d07` | macOS 10.13, watchOS 4 |
 
-The existing constraints already admit SwiftyJSON 5.0.2 and PromiseKit 6.22.1. Raising just their
+The newest PromiseKit 6.x on the CocoaPods trunk is 6.18.1, which is what `~> 6.8` resolves to for
+pod users (the Mac run installed it); 6.19 to 6.22.1 were released on GitHub only. SwiftAtomics
+1.0.2 is the only trunk version and declares exactly the 1.x targets, so it is below Xcode 27.2's
+floor too. The existing constraints already admit SwiftyJSON 5.0.2 and PromiseKit 6.18.1. Raising just their
 lower bounds does not remove the documented macOS availability and iOS `libarclite` failures.
 Using only `PromiseKit/CorePromise` still retains iOS 8. PromiseKit 8 is not a compatible
 substitution: the SDK pod supports macOS 10.10 and watchOS 3, and exposes PromiseKit types.
@@ -84,7 +97,7 @@ without the owner choosing option 1.
 ## Mac reproduction and acceptance
 
 Use separate clean checkouts for baseline `1dfbec862f6322a3948c8925857422bac369375e` and the
-candidate fix. From each checkout, for **each installed Xcode 16.3 and 26 toolchain**, run:
+candidate fix. From each checkout, for **each installed Xcode 16.3, 26 and 27.2 toolchain**, run:
 
 ```bash
 set -o pipefail

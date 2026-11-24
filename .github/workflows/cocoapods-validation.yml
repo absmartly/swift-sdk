@@ -18,6 +18,8 @@ jobs:
           - name: Xcode 16.3
             runner: macos-15
             xcode: /Applications/Xcode_16.3.app
+          # Whatever macos-latest ships (Xcode 26.x when added); the log's first lines show the
+          # resolved version. Xcode 27.2, which the owner decision rests on, is not on hosted runners yet.
           - name: current Xcode
             runner: macos-latest
             xcode: ''
