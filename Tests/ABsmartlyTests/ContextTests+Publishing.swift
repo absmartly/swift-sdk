@@ -97,9 +97,17 @@ extension ContextTests {
 
 	// As in released 1.5.0, Java and JavaScript: a negative delay disables the automatic publish, and
 	// publish() and close() still send the events.
-	@Test func negativePublishDelayDisablesAutomaticPublishing() async throws {
+	@Test(arguments: [-1.0, -0.5, 0.0])
+	func negativePublishDelayDisablesAutomaticPublishing(delay: Double) async throws {
 		let env = ContextEnv()
-		let context = env.context(options: Context.Options(publishDelay: -1))
+		let context = env.context(options: Context.Options(publishDelay: delay))
+		if delay == 0 {
+			context.track("goal", properties: nil)
+			#expect(await eventually(timeout: 5) { env.publishCount == 1 })
+			try await context.close()
+			#expect(context.state == .closed)
+			return
+		}
 		_ = context.treatment(for: "exp_test_ab")
 		context.track("goal1", properties: nil)
 		await pause(0.2)

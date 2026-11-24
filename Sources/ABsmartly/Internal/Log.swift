@@ -60,7 +60,9 @@ extension ABsmartlyError {
 		case .httpStatus(let code, _): return "HTTP status \(code)"
 		case .transport: return "transport error"
 		case .decoding: return "decoding error"
-		case .notReady, .closing, .closed, .blankUnitUID, .unitAlreadySet, .cancelled: return description
+		case .blankUnitUID: return "blank unit UID"
+		case .unitAlreadySet: return "unit UID already set"
+		case .notReady, .closing, .closed, .cancelled: return description
 		}
 	}
 
@@ -68,9 +70,9 @@ extension ABsmartlyError {
 	var logDetail: String? {
 		switch self {
 		case .invalidConfiguration(let message), .httpStatus(_, let message), .transport(let message),
-			.decoding(let message):
+			.decoding(let message), .blankUnitUID(let message), .unitAlreadySet(let message):
 			return message
-		case .notReady, .closing, .closed, .blankUnitUID, .unitAlreadySet, .cancelled: return nil
+		case .notReady, .closing, .closed, .cancelled: return nil
 		}
 	}
 }

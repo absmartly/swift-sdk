@@ -43,7 +43,7 @@ import Testing
 		#expect(context.treatment(for: "exp_test_abc") == 1)
 	}
 
-	// 1.5.0 (JS context.ts _refresh): a failed context stays failed; refresh succeeds without fetching.
+	// Java/JS and the final 2.0 contract: a failed context stays failed; refresh does not fetch.
 	@Test func refreshOnFailedContextDoesNotFetch() async throws {
 		let env = ContextEnv()
 		let context = await env.failedContext()

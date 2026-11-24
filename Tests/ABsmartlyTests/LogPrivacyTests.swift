@@ -87,7 +87,8 @@ import Testing
 		let secret = "secret-\(UUID().uuidString)"
 		let errors: [ABsmartlyError] = [
 			.transport(secret), .decoding(secret), .invalidConfiguration(secret),
-			.httpStatus(code: 418, message: secret),
+			.httpStatus(code: 418, message: secret), .blankUnitUID(unitType: secret),
+			.unitAlreadySet(unitType: secret),
 		]
 		for error in errors {
 			#expect(!error.logSummary.contains(secret))
@@ -121,13 +122,18 @@ import Testing
 	}
 
 	// A custom transport can throw any `ABsmartlyError`, including ones carrying its own text.
-	@Test(arguments: ["invalidConfiguration", "httpStatus"])
+	@Test(arguments: ["invalidConfiguration", "httpStatus", "blankUnitUID", "unitAlreadySet"])
 	func customTransportErrorTextIsPrivate(kind: String) async {
 		let secret = "secret-\(UUID().uuidString)"
 		let env = ContextEnv()
 		env.transport.enqueue { _ in
-			throw kind == "httpStatus"
-				? ABsmartlyError.httpStatus(code: 400, message: secret) : ABsmartlyError.invalidConfiguration(secret)
+			let error: ABsmartlyError = switch kind {
+			case "httpStatus": .httpStatus(code: 400, message: secret)
+			case "blankUnitUID": .blankUnitUID(unitType: secret)
+			case "unitAlreadySet": .unitAlreadySet(unitType: secret)
+			default: .invalidConfiguration(secret)
+			}
+			throw error
 		}
 		let context = env.client.makeContext(units: Fixtures.units)
 		try? await context.ready()
@@ -165,6 +171,24 @@ import Testing
 		for entry in entries {
 			let prefix = operation == "refresh" ? "Context refresh failed" : "Publish failed"
 			#expect(entry.summary == "\(prefix): HTTP status 400")
+			#expect(entry.detail == secret)
+		}
+	}
+
+	@Test func unitValidationTextIsPrivate() throws {
+		let secret = "secret-\(UUID().uuidString)"
+		let env = ContextEnv()
+		let context = env.context(units: [UnitType(secret): "uid"])
+		#expect(throws: ABsmartlyError.blankUnitUID(unitType: secret)) {
+			try context.setUnit(UnitType(secret), to: " ")
+		}
+		#expect(throws: ABsmartlyError.unitAlreadySet(unitType: secret)) {
+			try context.setUnit(UnitType(secret), to: "other")
+		}
+		let entries = LogCapture.entries(containing: secret)
+		#expect(entries.count == 2)
+		for entry in entries {
+			#expect(!entry.summary.contains(secret))
 			#expect(entry.detail == secret)
 		}
 	}

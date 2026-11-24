@@ -176,9 +176,10 @@ try await context.close()     // publish what is pending and close; idempotent
 context.pendingEventCount
 ```
 
-The lifecycle is the 1.5.0 lifecycle: a failed publish re-queues its events; a failed `close()`
+The lifecycle mostly follows 1.5.0: a failed publish re-queues its events; a failed `close()`
 throws and leaves the context open with its events queued, so `publish()`/`close()` can retry;
-`refresh()` on a failed context succeeds without fetching; `publish()` and `refresh()` work before
+`refresh()` on a failed context succeeds without fetching (the final 2.0 decision, as in Java/JS;
+1.5.0 fetches and can recover); `publish()` and `refresh()` work before
 the context is ready; a negative `publishDelay` disables automatic publishing.
 
 ### Treatments and variables (the hot path)
@@ -515,8 +516,9 @@ Behaviour parity is proven, not asserted:
   earlier form: `refresh()` on a failed context fetches again and can recover it in 1.5.0 (2.0:
   succeeds without fetching), and 1.5.0's `match` drops the pattern/input length limits and
   nested-quantifier rejection (2.0 keeps them; both keep the timeout). A negative `publishDelay`
-  disables automatic publishing in both. The parity probe does not exercise these. Open for the
-  owner, like the boolean difference above.
+  disables automatic publishing in both. The failed-context refresh difference is final (owner,
+  2026-11-24); only the regex and boolean differences remain open for the owner. The parity probe
+  does not exercise failed-context refresh or regex limits.
 - An integer literal from 2^63 to 2^64−1 inside an audience or rule (e.g. `9223372036854775808`)
   is converted to text as `"9223372036854776000"`. 1.5.0 on Linux prints it as a negative number
   (a Foundation `NSNumber` formatting bug), on Apple platforms as the unsigned value. Only `match`,
