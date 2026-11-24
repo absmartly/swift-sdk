@@ -3,12 +3,18 @@
 ## 2.0.0 (unreleased)
 
 A new API for Swift 6 over the 1.5.0 engine. Assignment, audiences, assignment rules, exposures,
-goals and the publish payload retain 1.5.0 behaviour apart from the extreme unsigned-number
-rounding described in [MIGRATING.md](MIGRATING.md#behaviour-notes) (a parity test replays 1.5.0's
+goals and the publish payload retain 1.5.0 behaviour apart from holdouts (below) and the extreme
+unsigned-number rounding described in [MIGRATING.md](MIGRATING.md#behaviour-notes) (a parity test replays 1.5.0's
 recorded output); the `X-Agent` header is `absmartly-swift-sdk/2.0.0`. See [MIGRATING.md](MIGRATING.md) for every
 1.x API and its replacement, and [SUPPORT.md](SUPPORT.md) for the 1.x support window.
 
+**2.0.0 does not support holdouts.** Holdout data in the context payload (`holdouts`, `holdoutIds`)
+is ignored, as 1.4.0 ignored it: every unit is assigned and exposed as if no holdout existed, and no
+holdout exposure is published. Apps that rely on holdouts should stay on 1.5.x, which supports them.
+Holdouts come in a later 2.x release.
+
 ### BREAKING (everyone moves)
+- Holdouts are not supported (1.5.0 supports them): holdout data is ignored, so a unit a holdout would hold out is assigned and exposed normally, and no holdout exposure is published. Stay on 1.5.x if you use holdouts; they come in a later 2.x release.
 - Module and pod renamed to `ABsmartly` (was module `ABSmartly`, pod `ABSmartlySwiftSDK`); the entry type is `ABsmartlyClient`. Update `import` lines and the dependency.
 - `async`/`await` replaces PromiseKit: `ready()`, `publish()`, `refresh()`, `close()` and `fetchContextData()` are `async throws(ABsmartlyError)`.
 - `JSONValue` replaces SwiftyJSON's `JSON` in every API (attributes, variables, goal properties, custom fields, unit values).
@@ -72,11 +78,13 @@ recorded output); the `X-Agent` header is `absmartly-swift-sdk/2.0.0`. See [MIGR
 - On Linux, `ABSmartlyError` (and the internal HTTP error) subclass `NSError`, because Foundation in Swift 6.0 and 6.1 crashes when `localizedDescription` is read on a class-based error that is not an `NSError` ([swift-corelibs-foundation#5221](https://github.com/swiftlang/swift-corelibs-foundation/issues/5221)). `errorMessage`, `localizedDescription` and `is`/`as?` casts are unchanged. Apple platforms are not affected.
 
 ### Changed
+- Holdouts configured in A/B Smartly now take effect in the Swift SDK (v1.4.0 ignored them; see *Added*). A unit held out by a holdout covering an experiment moves to the control variant, and that experiment's exposure is replaced by the holdout's own exposure. Experiments not covered by a holdout are unchanged; a unit that is not held out is assigned as before, plus one exposure per covering holdout.
 - The `X-Application-Version` header is normalised for the collector, which binds it as an integer and rejects anything else with HTTP 400: the configured value is trimmed and sent as-is when it is 1–18 ASCII digits, otherwise as `"0"` (like the Java SDK). `ClientConfig.applicationVersion` keeps the caller's value. v1.4.0 sent the raw value on publish, so a dotted version such as `"2.4.1"` made every publish fail.
 - The context GET carries the same headers as the publish PUT (`X-API-Key`, `X-Agent`, `X-Application`, `X-Application-Version`, `X-Environment`), as the JavaScript SDK sends on every request.
 - Every exposure in the publish payload carries `ruleOverride` (`false` when no assignment rule matched), as the JavaScript SDK serialises it.
 
 ### Added
+- Holdouts, matching the JavaScript SDK. `ContextData.holdouts` and `Experiment.holdoutIds` are decoded (with `Experiment.holdoutType`, informational), and a unit held out by any holdout covering an experiment gets the control variant and values with no exposure of its own; in a three-arm holdout, arm 1 holds out only experiments that are not full-on. Each covering holdout publishes an ordinary exposure (its id, name and the unit's arm) the first time a covered experiment is read. Overrides and matching assignment rules still win. A payload without holdouts assigns and publishes exactly as before. `ContextData(experiments:holdouts:)` is a new initialiser; `ContextData(experiments:)` and `ContextData()` are unchanged. A malformed holdout entry is ignored on its own.
 - Assignment rules (`Experiment.assignmentRules`), matching the JavaScript SDK. The first rule whose `environments` and `conditions` match sets the variant: `assign` gives a fixed variant, `split` hashes the unit with the experiment's seed over the rule's percentages (which must sum to 100 within 0.01). A matching rule wins over audience/`audienceStrict`, traffic eligibility, full-on and custom assignments; only an override beats it. Exposures carry a new `ruleOverride` flag. A split matched before its unit is set gives the experiment's no-unit result (the full-on variant, else 0) and is re-resolved when the unit is set, unless it was already exposed. Malformed rules are skipped; a split whose length differs from the variant count, or an out-of-bounds `assign` variant, falls back to normal assignment.
 - `semver_eq`, `semver_gt`, `semver_gte`, `semver_lt` and `semver_lte` JSON-expression operators.
 - The `X-Agent` header is `absmartly-swift-sdk/<version>` (was `absmartly-swift-sdk`).

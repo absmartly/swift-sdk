@@ -17,6 +17,10 @@ typing, `X-Application-Version` normalisation and more). Read the 1.5.0 **BREAKI
 sections of [CHANGELOG.md](CHANGELOG.md) first; the easiest path is to upgrade to 1.5.0, check your
 experiments, then move to 2.0.
 
+**Using holdouts? Stay on 1.5.x for now.** 2.0.0 does not support holdouts: it ignores holdout
+data in the context payload, so every unit is assigned and exposed as if no holdout existed and no
+holdout exposure is published. 1.5.x supports holdouts; they come to 2.x in a later release.
+
 1.x stays supported on the `release/1.x` branch (see [SUPPORT.md](SUPPORT.md)). You cannot use 1.x
 and 2.x in the same app: a Swift package graph holds one major version of a package.
 
@@ -192,8 +196,12 @@ Delivery threads are unchanged: `exposure`, `goal` and `error` on the calling th
 
 ## Behaviour notes
 
-Assignment and publishing retain 1.5.0 behaviour apart from these extreme-number differences
-(see also the note for 1.4.x users at the top):
+Assignment and publishing retain 1.5.0 behaviour apart from holdouts and these extreme-number
+differences (see also the note for 1.4.x users at the top):
+
+- Holdouts are ignored (1.5.0 applies them). A unit that a holdout covering an experiment would
+  hold out gets its normal variant and variables, the experiment's own exposure is published, and
+  no holdout exposure is. Experiments without holdouts behave exactly as in 1.5.0.
 
 - `UInt64`/`UInt` attributes above `Int64.max` are stored as doubles: `12345678901234567890` is
   published as `1.2345678901234567e+19`, not the exact integer. String operators see the double's

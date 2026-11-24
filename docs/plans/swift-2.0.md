@@ -14,7 +14,7 @@ A customer's iOS team ships Swift 6 apps with strict concurrency. 1.x gets in th
 
 1.5.0 (branch `release/1.5.0-prep`) stays source compatible and adds `async` overloads next to the
 PromiseKit API. 2.0 is the modern API: idiomatic Swift, `Sendable` throughout, no third-party
-dependencies, and **the same assignment and event behaviour as 1.5.0** (javascript-sdk is the
+dependencies, and **the same assignment and event behaviour as 1.5.0**, holdouts aside (see *Holdouts and switchbacks*) (javascript-sdk is the
 reference, cross-sdk-tests the conformance corpus).
 
 ## Goals and non-goals
@@ -421,10 +421,10 @@ behaviour is exactly 1.5.0's. Each will be fixed in both lines at the same time.
 
 ### Holdouts and switchbacks
 
-- **Holdouts** are being added to 1.x on `feat/holdouts`. When they land on `main`, `main` is
-  merged into this branch and the 1.x holdout logic is ported into `ContextState` (the
-  `Assignment` value already has room for the holdout fields, and exposures queue the holdout
-  exposures first, as in javascript-sdk).
+- **Holdouts** are not in 2.0.0 (owner decision 2026-11-24: holdouts are not live yet and 2.0
+  should not wait for them). 1.5.x supports them. 2.0.0 ignores holdout data in the payload, as
+  1.4.0 did: `ContextData` decoding drops `holdouts` and `holdoutIds` like any unknown field. They
+  come in a later 2.x, ported into `ContextState`.
 - **Switchbacks** come later, following java-sdk `SWITCHBACK.md` (R33, cluster-defined). The
   design leaves room for them:
   - `Experiment` decoding is field-name based and ignores unknown fields, so the switchback fields
