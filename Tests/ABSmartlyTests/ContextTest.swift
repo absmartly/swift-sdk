@@ -1043,6 +1043,18 @@ final class ContextTest: XCTestCase {
 		XCTAssertEqual(1, overridden.getPendingCount())
 	}
 
+	// 1.4.0 trapped (index out of range) reading variables for a negative override. The override still
+	// wins: the default is returned and the override is exposed, as in the Java SDK.
+	func testGetVariableValueSharedKeyNegativeOverrideGivesTheDefaultWithoutCrashing() throws {
+		let context = try createSharedKeyContext(sharedKeyBothAssigned(lowestFirst: true))
+		context.setOverride(experimentName: "exp_one", variant: -1)
+
+		XCTAssertEqual("default", context.getVariableValue("icon", defaultValue: "default"))
+		XCTAssertEqual(
+			[Exposure(1, "exp_one", "session_id", -1, clock.millis(), false, true, true, false, false, false)],
+			loggedExposures())
+	}
+
 	// A matching assignment rule puts the unit in exp_one even though its unit is missing.
 	func testGetVariableValueSharedKeyRuleAssignedLowerIdWins() throws {
 		let rule =

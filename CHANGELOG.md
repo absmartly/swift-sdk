@@ -86,24 +86,25 @@ security fixes, from the `release/1.x` branch) for 12 months after 2.0 ships.
 - Every exposure in the publish payload carries `ruleOverride` (`false` when no assignment rule matched).
 
 ### Fixed
-- Variable keys shared by several experiments. Affects anyone running two or more experiments whose
-  variants define the same variable key. Before this release, an experiment the user was only checked
-  against could be exposed, recording users in experiments they never saw, and the wrong experiment
-  could win. A key's candidates are now the experiments whose variants define it, in ascending id
-  order, and the rule matches the Java SDK:
+- Variable keys shared by several experiments. This affects anyone running two or more experiments
+  whose variants define the same variable key. Unreleased builds of `main` after 1.4.0 exposed every
+  experiment they checked for a key, recording users in experiments they never saw. They also took the
+  value from a later experiment when the winner's variant lacked the key, which biases the winner's
+  results. 1.4.0 itself exposed only the winner and did neither. The rule now applied, matching the
+  Java SDK:
+  - A key's candidates are the experiments whose variants define it, in ascending id order.
   - The winner is the first candidate the user is in: assigned, overridden or selected by an
     assignment rule. When no candidate qualifies, the first held-out candidate supplies its control
-    value. Otherwise `getVariableValue` returns the default.
+    value (see Holdouts). Otherwise `getVariableValue` returns the default.
   - When the winner's variant does not define the key, the default is returned. A later candidate is
     never used because of the variant the user got.
   - Only the winner is exposed. Candidates that were checked but did not win get no exposure; a later
-    `getTreatment` on one still exposes it once.
-  - Each holdout covering a checked candidate is exposed once, as in Java.
-  - `peekVariableValue` exposes nothing.
+    `getTreatment` on one still exposes it once. Each holdout covering a checked candidate publishes
+    its own exposure, as in Java. `peekVariableValue` exposes nothing.
 
-  Under this rule, a strict audience mismatch gives the control variant without an exposure. In 1.4.0
-  the value came from the first assigned or overridden candidate, even when its variant lacked the key.
-  The pre-release main also exposed every candidate it checked.
+  Compared with 1.4.0, a candidate won by an assignment rule now counts as the winner, and holdouts
+  apply. An override to a variant outside the experiment's variants no longer crashes (1.4.0 trapped
+  with an index out of range on a negative override); it returns the default and exposes the override.
 - A `json` custom field holding valid non-object JSON (array, number, string, boolean) is returned as
   `JSON` by `getCustomFieldValue`; 1.4.0 returned `nil` because the `VariableParser` only accepts objects.
   `null` returns `nil`. Objects and invalid JSON still go through the configured `VariableParser`, and

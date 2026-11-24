@@ -1409,19 +1409,20 @@ public final class Context {
 	}
 
 	// Selects and claims in one contextLock section, so setUnit cannot change a candidate in between.
+	// The closed/closing checks and the claim run only where something may be claimed, so a warmed
+	// read of an already exposed winner stays on the cached path; queueClaimed re-checks them.
 	private func selectVariableAssignment(
 		_ candidates: [ExperimentVariables], expose: Bool
 	) -> (Assignment?, ClaimedExposure?) {
 		contextLock.lock()
 		defer { contextLock.unlock() }
 
-		let expose = expose && !closed.load(ordering: .acquiring) && !closing.load(ordering: .acquiring)
 		var claim = ClaimBuilder()
 		var winner: Assignment?
 		var suppressedFallback: Assignment?
 		for candidate in candidates {
 			let assignment = lookupAssignment(candidate.data.name)
-			if expose {
+			if expose, assignment.holdouts != nil, canClaimLocked() {
 				claimHoldoutArmsLocked(assignment, into: &claim)
 			}
 			if assignment.assigned || assignment.overridden || assignment.ruleOverride {
@@ -1434,10 +1435,14 @@ public final class Context {
 		}
 
 		winner = winner ?? suppressedFallback
-		if expose, let winner = winner {
+		if expose, let winner = winner, !winner.exposed.load(ordering: .acquiring), canClaimLocked() {
 			claimLocked(winner, into: &claim)
 		}
-		return (winner, expose ? claim.build(generation: dataGeneration) : nil)
+		return (winner, claim.build(generation: dataGeneration))
+	}
+
+	private func canClaimLocked() -> Bool {
+		return !closed.load(ordering: .acquiring) && !closing.load(ordering: .acquiring)
 	}
 
 	// Arm 0 always holds the experiment out. In a 3-arm holdout, arm 1 holds out only an experiment
