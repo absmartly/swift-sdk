@@ -103,8 +103,10 @@ security fixes, from the `release/1.x` branch) for 12 months after 2.0 ships.
     its own exposure, as in Java. `peekVariableValue` exposes nothing.
 
   Compared with 1.4.0, a candidate won by an assignment rule now counts as the winner, and holdouts
-  apply. An override to a variant outside the experiment's variants no longer crashes (1.4.0 trapped
-  with an index out of range on a negative override); it returns the default and exposes the override.
+  apply.
+- `setOverride` with a negative variant no longer crashes `getTreatment` or `getVariableValue`
+  (1.4.0 trapped with an index out of range). The override is returned and exposed; a variable read
+  gives the default.
 - A `json` custom field holding valid non-object JSON (array, number, string, boolean) is returned as
   `JSON` by `getCustomFieldValue`; 1.4.0 returned `nil` because the `VariableParser` only accepts objects.
   `null` returns `nil`. Objects and invalid JSON still go through the configured `VariableParser`, and

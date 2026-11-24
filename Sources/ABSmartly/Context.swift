@@ -1069,6 +1069,7 @@ public final class Context {
 		case initialLoadTookContext
 		case flushObservedNotFailed
 		case closeAwaitedInFlight
+		case variableClaimAttempted
 	}
 
 	private static var testHooks: [TestHook: () -> Void] = [:]
@@ -1442,6 +1443,9 @@ public final class Context {
 	}
 
 	private func canClaimLocked() -> Bool {
+		#if DEBUG
+		Context.runTestHook(.variableClaimAttempted)
+		#endif
 		return !closed.load(ordering: .acquiring) && !closing.load(ordering: .acquiring)
 	}
 

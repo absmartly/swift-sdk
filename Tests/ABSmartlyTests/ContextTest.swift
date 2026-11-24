@@ -1043,7 +1043,7 @@ final class ContextTest: XCTestCase {
 		XCTAssertEqual(1, overridden.getPendingCount())
 	}
 
-	// 1.4.0 trapped (index out of range) reading variables for a negative override. The override still
+	// 1.4.0 trapped (index out of range) on a negative override, in getTreatment and getVariableValue. The override still
 	// wins: the default is returned and the override is exposed, as in the Java SDK.
 	func testGetVariableValueSharedKeyNegativeOverrideGivesTheDefaultWithoutCrashing() throws {
 		let context = try createSharedKeyContext(sharedKeyBothAssigned(lowestFirst: true))
@@ -1053,6 +1053,8 @@ final class ContextTest: XCTestCase {
 		XCTAssertEqual(
 			[Exposure(1, "exp_one", "session_id", -1, clock.millis(), false, true, true, false, false, false)],
 			loggedExposures())
+		XCTAssertEqual(-1, context.getTreatment("exp_one"))
+		XCTAssertEqual(1, context.getPendingCount())
 	}
 
 	// A matching assignment rule puts the unit in exp_one even though its unit is missing.
@@ -1140,6 +1142,25 @@ final class ContextTest: XCTestCase {
 		XCTAssertEqual(["exp_one", "exp_two"], loggedExposures().map { $0.name }.sorted())
 		XCTAssertEqual(2, context.getPendingCount())
 	}
+
+	#if DEBUG
+	// A warmed read of an already exposed winner with no holdouts attempts no claim, so it stays on
+	// the cached path (the closed/closing checks and the claim are skipped).
+	func testWarmedSharedKeyReadOfAnExposedWinnerAttemptsNoClaim() throws {
+		let context = try createSharedKeyContext(sharedKeyBothAssigned(lowestFirst: true))
+		var attempts = 0
+		Context.setTestHook(.variableClaimAttempted) { attempts += 1 }
+		defer { Context.setTestHook(.variableClaimAttempted, nil) }
+
+		XCTAssertEqual("one", context.getVariableValue("icon", defaultValue: "default"))
+		XCTAssertEqual(1, attempts)
+		for _ in 0..<10 {
+			XCTAssertEqual("one", context.getVariableValue("icon", defaultValue: "default"))
+		}
+		XCTAssertEqual(1, attempts)
+		XCTAssertEqual(1, context.getPendingCount())
+	}
+	#endif
 
 	func testPeekVariableValueSharedKeyMatchesGetAndQueuesNothing() throws {
 		let scenarios: [([String], String?, JSON)] = [
