@@ -259,7 +259,13 @@ public final class Context: Sendable {
 						let loading = !state.ready
 						state.index = index
 						markReady(&state)
-						guard loading else { return .refreshed }
+						guard loading else {
+							// As in 1.5.0: events still queued (e.g. a failed publish) get a publish timer.
+							if state.pendingCount > 0 {
+								schedulePublish(&state)
+							}
+							return .refreshed
+						}
 						let waiters = state.readyWaiters
 						state.readyWaiters = []
 						return .wonStartup(waiters)
@@ -438,10 +444,11 @@ public final class Context: Sendable {
 	}
 
 	private func schedulePublish(_ state: inout ContextState) {
-		// Nothing to send, or a closed context (a logger returning after another caller closed it):
-		// no timer, which would only hold the context for the delay.
-		guard state.isReady, !state.closed, state.pendingCount > 0, publishDelay >= 0, state.publishTimer == nil
-		else { return }
+		// No timer for a closed context (a logger returning after another caller closed it), which
+		// would only hold the context for the delay. The queue may be momentarily empty because
+		// another publish has taken the batch; if that publish fails it re-queues the batch, and this
+		// timer sends it (as in 1.5.0), so the queue is not checked here.
+		guard state.isReady, !state.closed, publishDelay >= 0, state.publishTimer == nil else { return }
 		let delay = publishDelay
 		// Held strongly until it fires, so goals tracked just before the caller drops its last
 		// reference are still published.

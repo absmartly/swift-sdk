@@ -690,8 +690,8 @@ extension ContextTests {
 		#expect(env.log.errorMessages == ["ABsmartly Context is finalizing."])
 	}
 
-	// No publish timer for an empty queue or a closed context: a goal's logger that returns after
-	// another caller has closed (and drained) the context starts none, so nothing holds the context.
+	// No publish timer for a closed context: a goal's logger that returns after another caller has
+	// closed (and drained) the context starts none, so nothing holds the context.
 	@Test func noPublishTimerWhenTheLoggerReturnsAfterClose() async throws {
 		let clock = TestClock()
 		let env = ContextEnv(clock: clock)
@@ -705,18 +705,64 @@ extension ContextTests {
 				closed.value = true
 				done.signal()
 			}
-			done.wait()
+			_ = done.wait(timeout: .now() + 5)
 		}
-		await Task.detached { context.track("goal1", properties: nil) }.value
+		let tracking = Thread { context.track("goal1", properties: nil) }
+		tracking.start()
+		#expect(await eventually(timeout: 10) { tracking.isFinished })
 		#expect(closed.value)
 		#expect(context.state == .closed)
 		#expect(env.publishCount == 1)
 		await pause(0.05)
 		#expect(clock.sleeperCount == 0)
+	}
 
-		let empty = env.context(options: Context.Options(publishDelay: 5))
-		try await empty.publish()
+	// As in 1.5.0: a goal whose batch another publish takes before its timer is armed still gets the
+	// timer, which retries the batch if that publish fails.
+	@Test func timerStillArmedWhenAnotherPublishTookTheBatch() async throws {
+		let clock = TestClock()
+		let env = ContextEnv(clock: clock)
+		let context = env.context(options: Context.Options(publishDelay: 5))
+		let gate = env.pendingRequest()
+		env.log.setHook { context, event in
+			guard case .goal = event else { return }
+			Task { try? await context.publish() }
+			let deadline = Date().addingTimeInterval(5)
+			while env.publishCount < 1 && Date() < deadline {
+				usleep(1000)
+			}
+		}
+		let tracking = Thread { context.track("goal1", properties: nil) }
+		tracking.start()
+		#expect(await eventually(timeout: 10) { tracking.isFinished })
+		#expect(env.publishCount == 1)
+
+		gate.reject(TestError("offline"))
+		#expect(await eventually(timeout: 5) { context.pendingEventCount == 1 })
+		#expect(await clock.waitForSleepers())
+		clock.advance(by: 5)
+		#expect(await eventually(timeout: 5) { env.publishCount == 2 })
+		#expect(await eventually(timeout: 5) { context.pendingEventCount == 0 })
+	}
+
+	// As in 1.5.0: a successful refresh arms a publish timer for events still queued (here a batch
+	// re-queued by a failed publish).
+	@Test func refreshSchedulesAPublishForQueuedEvents() async throws {
+		let clock = TestClock()
+		let env = ContextEnv(clock: clock)
+		let context = env.context(options: Context.Options(publishDelay: 5))
+		context.track("goal1", properties: nil)
+		env.failNextRequest("offline")
+		try? await context.publish()
+		#expect(context.pendingEventCount == 1)
 		#expect(clock.sleeperCount == 0)
+
+		env.serveNext("context")
+		try await context.refresh()
+		#expect(await clock.waitForSleepers())
+		clock.advance(by: 5)
+		#expect(await eventually(timeout: 5) { env.publishCount == 2 })
+		#expect(await eventually(timeout: 5) { context.pendingEventCount == 0 })
 	}
 
 	@Test func closeWaitsForInFlightPublish() async throws {

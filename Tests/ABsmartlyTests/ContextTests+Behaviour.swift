@@ -306,10 +306,15 @@ extension ContextTests {
 				try? await context.publish()
 				_ = context.variableValue("x")
 				try? context.setUnit("session_id", to: "other")
+				env.serveNext("context")
+				try? await context.close()
 			}
 
 			let errors = routed.value.filter { $0.hasPrefix("error:") }
 			#expect(errors == ["error:load failed", "error:refresh failed", "error:publish failed"])
+			// So do the publish and close events, as in 1.x (pre-fetched data delivers ready at once).
+			#expect(routed.value.contains("publish"))
+			#expect(routed.value.last == "close")
 		}
 	#endif
 
