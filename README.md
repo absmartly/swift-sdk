@@ -6,7 +6,7 @@ A/B Smartly - Swift SDK for iOS, macOS and Linux applications.
 
 The A/B Smartly Swift SDK is supported on:
 - iOS 10.0 or later
-- macOS 10.14 or later (Swift Package Manager; 10.10 with CocoaPods)
+- macOS 10.14 or later
 - Linux (Swift Package Manager, Swift 5.10 or later)
 
 The async/await API (`import ABSmartlyAsync`) needs iOS 13, macOS 10.15, tvOS 13 or watchOS 6.
@@ -19,9 +19,9 @@ maintained (bug and security fixes, from the `release/1.x` branch) for 12 months
 | Platform    | Support    | Notes                                          |
 |-------------|------------|------------------------------------------------|
 | iOS         | iOS 10+    | Full support including UIDevice integration    |
-| macOS       | 10.14+ (Swift Package Manager), 10.10+ (CocoaPods) | Full support |
+| macOS       | 10.14+     | Full support                                   |
 | Linux       | Swift 5.10+ | Swift Package Manager; tested in CI with Swift 5.10 and 6.1. `JSON` is a vendored copy of SwiftyJSON's `JSON` (same API); on Apple platforms it is `SwiftyJSON.JSON` |
-| Swift       | 5.3+ tools, Swift 5 language mode | Swift Package Manager (and CocoaPods, see below); builds with Swift 6 toolchains and can be used from Swift 6 apps |
+| Swift       | 5.3+ tools, Swift 5 language mode | Swift Package Manager; builds with Swift 6 toolchains and can be used from Swift 6 apps |
 
 ## Installation
 
@@ -37,27 +37,29 @@ To install the A/B Smartly SDK using Swift Package Manager, following these step
 
 - Select the ABSmartly library
 
-### Cocoapods
+### CocoaPods (1.3.4 only)
 
-The latest version on the CocoaPods trunk is 1.3.4; 1.4.0 and 1.5.0 are available through Swift
-Package Manager. To use CocoaPods, add the following lines to your `Podfile`:
+1.x releases after 1.3.4 are distributed through Swift Package Manager only. 1.3.4 stays on the
+CocoaPods trunk, and no newer 1.x version will be published there (CocoaPods trunk becomes
+read-only on 2 December 2026).
+
+To stay on 1.3.4 with CocoaPods, keep this in your `Podfile`:
 
 ```ruby
-pod 'ABSmartlySwiftSDK', '~> 1.3'
+pod 'ABSmartlySwiftSDK', '1.3.4'
 ```
 
-To use 1.5.0 through CocoaPods before it is on the trunk, point the pod at the git tag:
-`pod 'ABSmartlySwiftSDK', :git => 'https://github.com/absmartly/swift-sdk.git', :tag => 'v1.5.0'`.
-The dependency pods (and this podspec) declare deployment targets below what current Xcode
-builds: Xcode 27.2 accepts nothing below iOS 15 / macOS 12 / watchOS 9. Raise pod targets that
-are below your app's platform in the Podfile (use `MACOSX_DEPLOYMENT_TARGET`, `WATCHOS_DEPLOYMENT_TARGET` or
-`TVOS_DEPLOYMENT_TARGET` and your app's version for other platforms):
+Current Xcode does not build pods below iOS 15 / macOS 12 / watchOS 9 (Xcode 27.2), and
+ABSmartlySwiftSDK 1.3.4 and its dependency pods declare lower targets. Raise the pods' targets in
+your `Podfile`; use `MACOSX_DEPLOYMENT_TARGET`, `TVOS_DEPLOYMENT_TARGET` or
+`WATCHOS_DEPLOYMENT_TARGET` and your app's version for other platforms:
 
 ```ruby
 post_install do |installer|
   installer.pods_project.targets.each do |target|
     target.build_configurations.each do |config|
-      if Gem::Version.new(config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] || '0') < Gem::Version.new('15.0')
+      current = config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] || '0'
+      if Gem::Version.new(current) < Gem::Version.new('15.0')
         config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
       end
     end
@@ -65,15 +67,20 @@ post_install do |installer|
 end
 ```
 
-With this hook the unchanged 1.x pod and its dependencies built on Xcode 27.2 for iOS 15, macOS 12
-and watchOS 9 (tvOS not tested; measured with an unconditional raise, which is the same build here
-because every one of these pods declares less than the floor). Swift Package Manager needs no hook (on Xcode 27.2, `swift test` was run on macOS only). See
-[CocoaPods validation status](docs/cocoapods-validation.md).
+Then run `pod install`.
 
-Run the following command to update your Xcode project:
-```
-pod install
-```
+#### Moving from CocoaPods to Swift Package Manager
+
+1. Remove `pod 'ABSmartlySwiftSDK'` from your `Podfile` and run `pod install` (or `pod deintegrate`
+   if it was your only pod).
+2. Add the package as described under [Swift Package Manager](#swift-package-manager) and select
+   the `ABSmartly` library. The module name is the same, so `import ABSmartly` is unchanged.
+3. The package brings in PromiseKit, SwiftyJSON and swift-atomics through Swift Package Manager.
+   If your app also uses PromiseKit or SwiftyJSON from CocoaPods, move those to Swift Package
+   Manager too, so each module is linked once.
+4. Read the [CHANGELOG](CHANGELOG.md) for the changes since 1.3.4. Swift Package Manager needs
+   macOS 10.14 (CocoaPods 1.3.4 supported 10.10); apps that must support macOS 10.10 to 10.13 stay
+   on 1.3.4.
 
 ## Getting Started
 

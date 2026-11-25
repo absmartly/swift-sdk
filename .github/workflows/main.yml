@@ -54,34 +54,12 @@ jobs:
           xcodebuild build -scheme ABSmartly -destination "generic/platform=watchOS" -quiet \
             WATCHOS_DEPLOYMENT_TARGET=5.0
 
-      # Structural podspec validation (no build). A full `pod lib lint`, and so `pod trunk push`, does
-      # not pass on current Xcode with the 1.x targets and released dependency pods; see
-      # docs/cocoapods-validation.md.
-      - name: Lint podspec (quick)
-        if: matrix.name == 'latest'
-        run: pod spec lint ABSmartlySwiftSDK.podspec --quick --allow-warnings
-
       # The Example app references this checkout as a local package and has its own lockfile.
       # Resolve strictly from it, so a lockfile that no longer satisfies Package.swift fails CI.
       - name: Resolve Example app packages from its lockfile
         run: |
           xcodebuild -resolvePackageDependencies -project Example/Example.xcodeproj -scheme Example \
             -onlyUsePackageVersionsFromResolvedFile
-
-  # Stub tools only: checks scripts/validate-cocoapods.sh, not CocoaPods dependency builds.
-  cocoapods-script:
-    name: test (cocoapods validation script)
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          persist-credentials: false
-
-      - name: Test command flow
-        run: python3 scripts/test-validate-cocoapods.py
 
   test-linux:
     name: test (linux, swift-${{ matrix.swift }})

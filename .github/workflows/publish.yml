@@ -1,9 +1,8 @@
 name: Publish Swift-SDK
 
 # Swift Package Manager resolves releases straight from the git tag; this checks the tag matches
-# the podspec and SDK version, runs the tests, and (when the repository variable COCOAPODS_PUBLISH
-# is true) publishes the same version to the CocoaPods trunk. Publishing requires the
-# COCOAPODS_TRUNK_TOKEN secret (a trunk session token of a registered owner of the pod).
+# the podspec and SDK version and runs the tests. Nothing is published to CocoaPods: 1.3.4 is the
+# last version on the trunk, and later 1.x versions are Swift Package Manager only (see README).
 on:
   push:
     tags:
@@ -17,7 +16,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  cocoapods:
+  release-checks:
     runs-on: macos-latest
     timeout-minutes: 30
     steps:
@@ -25,8 +24,8 @@ jobs:
         with:
           persist-credentials: false
 
-      # The tag, the podspec and the X-Agent version must agree, or the pod and the version the
-      # SDK reports would not match the code SwiftPM users get from the tag.
+      # The tag, the podspec and the X-Agent version must agree, or the version the SDK reports
+      # would not match the code SwiftPM users get from the tag.
       - name: Check versions match the tag
         env:
           TAG: ${{ github.ref_name }}
@@ -42,18 +41,3 @@ jobs:
 
       - name: Build and test
         run: swift test
-
-      # Off until a maintainer resolves the CocoaPods validation failure noted in the 1.5.0
-      # CHANGELOG: set the repository variable COCOAPODS_PUBLISH=true to publish v* tags pushed after
-      # that (it does not re-run for existing tags). The version check and tests above still run on
-      # every tag.
-      - name: Publish to CocoaPods trunk
-        if: vars.COCOAPODS_PUBLISH == 'true'
-        env:
-          COCOAPODS_TRUNK_TOKEN: ${{ secrets.COCOAPODS_TRUNK_TOKEN }}
-        run: |
-          if [ -z "$COCOAPODS_TRUNK_TOKEN" ]; then
-            echo "::error::COCOAPODS_TRUNK_TOKEN secret is not set"
-            exit 1
-          fi
-          pod trunk push ABSmartlySwiftSDK.podspec --allow-warnings --skip-tests

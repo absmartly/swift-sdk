@@ -2,16 +2,13 @@
 
 ## Unreleased
 
-### Maintenance
-- Document CocoaPods on current Xcode and add a full-lint Mac script and manual diagnostic CI
-  workflow. Xcode 27.2 cannot build pods below iOS 15 / macOS 12 / watchOS 9, and this podspec's
-  1.x targets and every dependency pod's are below that floor, so `pod lib lint` / `pod trunk push`
-  cannot pass with released dependencies; publishing needs an owner decision
-  (docs/cocoapods-validation.md). Pod users can build the unchanged pod with a Podfile
-  `post_install` hook like the README's (an equivalent, unconditional raise was measured on iOS,
-  macOS and watchOS). The quick podspec check
-  does not compile dependencies. Deployment targets, dependency types and publication gates are
-  unchanged.
+### Changed
+- 1.x is no longer published to CocoaPods: 1.3.4 is the last version on the CocoaPods trunk, and
+  later 1.x versions (including 1.4.0 and 1.5.0) are Swift Package Manager only. The README shows
+  CocoaPods users how to keep building 1.3.4 on current Xcode (a Podfile `post_install` hook that
+  raises pod deployment targets) and how to move to Swift Package Manager. The release workflow no
+  longer has a CocoaPods trunk step; it still checks that the tag, podspec and SDK version agree and
+  runs the tests. This replaces the 1.5.0 notes about a trunk push behind `COCOAPODS_PUBLISH`.
 
 ## 1.5.0
 
