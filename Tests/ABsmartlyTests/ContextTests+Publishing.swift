@@ -555,6 +555,109 @@ extension ContextTests {
 		#expect(context.pendingEventCount == 1)
 	}
 
+	#if DEBUG
+		// As in 1.5.0: a timer publish that starts after close() waited for the publishes in flight is
+		// still in flight when close() checks whether it is idle. close() waits for it; its PUT fails and
+		// re-queues the batch, which close() then sends, so no batch is left on the closed context.
+		@Test func closeDoesNotSucceedWhileAnAutomaticPublishMayRequeue() async throws {
+			let clock = TestClock()
+			let env = ContextEnv(clock: clock)
+			let context = env.context(options: Context.Options(publishDelay: 5))
+			context.track("goal1", properties: nil)
+			#expect(await clock.waitForSleepers())
+			let timerPublish = env.pendingRequest()
+			let fired = Box(false)
+			let hook: @Sendable () async -> Void = {
+				guard !fired.value else { return }
+				fired.value = true
+				clock.advance(by: 5)
+				_ = await eventually(timeout: 5) { env.publishCount == 1 }
+				Task {
+					await pause(0.05)
+					timerPublish.reject(TestError("timer publish failed"))
+				}
+			}
+			try await Context.$closeAwaitedInFlightHook.withValue(hook) {
+				try await context.close()
+			}
+
+			#expect(context.state == .closed)
+			await pause(0.1)
+			#expect(context.pendingEventCount == 0)
+			#expect(env.publishCount == 2)
+			#expect(env.sentEvents.last?["goals"]?[0]?["name"] == "goal1")
+		}
+	#endif
+
+	// As in 1.5.0: when close()'s final publish fails, the reopened context schedules its usual
+	// automatic publish, which sends the re-queued events without another call.
+	@Test func failedCloseSchedulesARetryOfTheRequeuedEvents() async throws {
+		let clock = TestClock()
+		let env = ContextEnv(clock: clock)
+		let context = env.context(options: Context.Options(publishDelay: 5))
+		context.track("goal1", properties: nil)
+		env.failNextRequest("offline")
+		await #expect(throws: ABsmartlyError.transport("offline")) { try await context.close() }
+		#expect(context.state == .ready)
+
+		#expect(await clock.waitForSleepers())
+		clock.advance(by: 5)
+		#expect(await eventually(timeout: 5) { env.publishCount == 2 })
+		#expect(await eventually(timeout: 5) { context.pendingEventCount == 0 })
+	}
+
+	// With a negative delay nothing is retried automatically after a failed close.
+	@Test func failedCloseWithNegativeDelaySchedulesNoRetry() async {
+		let clock = TestClock()
+		let env = ContextEnv(clock: clock)
+		let context = env.context(options: Context.Options(publishDelay: -1))
+		context.track("goal1", properties: nil)
+		env.failNextRequest("offline")
+		await #expect(throws: ABsmartlyError.transport("offline")) { try await context.close() }
+		#expect(clock.sleeperCount == 0)
+		#expect(context.pendingEventCount == 1)
+	}
+
+	// A goal tracked once close() has started is rejected, never left queued on a closed context.
+	@Test func goalTrackedWhileClosingIsRejected() async throws {
+		let env = ContextEnv()
+		let context = env.context()
+		context.track("goal1", properties: nil)
+		let gate = env.pendingRequest()
+		let closing = Task { try await context.close() }
+		#expect(await eventually(timeout: 5) { env.publishCount == 1 })
+
+		context.track("late", properties: nil)
+		gate.fulfill(ok)
+		try await closing.value
+		#expect(context.state == .closed)
+		#expect(context.pendingEventCount == 0)
+		#expect(env.log.goals.map(\.name) == ["goal1"])
+		#expect(env.log.errorMessages == ["ABsmartly Context is finalizing."])
+	}
+
+	// The race itself: track() passes its first check, then close() finishes before it queues the
+	// goal. The clock read in between is the seam; the goal is rejected, not left queued.
+	@Test func goalRacingAFinishedCloseIsNotQueued() async throws {
+		let clock = PausingClock()
+		let env = ContextEnv(clock: clock)
+		let context = env.context()
+		let tracking = Thread {
+			context.track("racing", properties: nil)
+		}
+		clock.pauseNextRead()
+		tracking.start()
+		#expect(await eventually(timeout: 5) { clock.isPaused })
+		try await context.close()
+		clock.resume()
+		#expect(await eventually(timeout: 5) { tracking.isFinished })
+
+		#expect(context.state == .closed)
+		#expect(context.pendingEventCount == 0)
+		#expect(env.log.goals.isEmpty)
+		#expect(env.log.errorMessages == ["ABsmartly Context is finalized."])
+	}
+
 	@Test func closeWaitsForInFlightPublish() async throws {
 		let env = ContextEnv()
 		let context = env.context()

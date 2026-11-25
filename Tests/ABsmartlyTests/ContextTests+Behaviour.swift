@@ -154,71 +154,77 @@ extension ContextTests {
 		#expect(context.state == .failed(.transport("load failed")))
 	}
 
-	// The real main-queue delivery (Apple platforms' default): background errors reach the logger on
-	// the main queue.
-	@Test func backgroundErrorsRunOnTheMainQueue() async {
-		mainQueueTag.install()
-		let onMain = Box<[Bool]>([])
-		let env = ContextEnv()
-		env.log.setHook { _, event in
-			if case .error = event { onMain.mutate { $0.append(mainQueueTag.isMain) } }
-		}
-		await Context.$mainThreadDeliveryOverride.withValue(true) {
-			let context = env.context()
-			env.failNextRequest("refresh failed")
-			try? await context.refresh()
-			context.track("goal", properties: nil)
-			env.failNextRequest("publish failed")
-			try? await context.publish()
-		}
-
-		#expect(await eventually(timeout: 5) { onMain.value.count == 2 })
-		#expect(onMain.value == [true, true])
-	}
-
-	// A logger that causes another error while handling an error delivered asynchronously on the main
-	// queue does not get it as a second `.error` (as in 1.5.0): only the refresh failure arrives.
-	@Test func errorHandlerCausingAnErrorOnMainDeliveryDoesNotRecurse() async {
-		let env = ContextEnv()
-		let handled = Box(0)
-		env.log.setHook { context, event in
-			guard case .error = event else { return }
-			handled.mutate { $0 += 1 }
-			try? context.setUnit("session_id", to: "other")
-		}
-		await Context.$mainThreadDeliveryOverride.withValue(true) {
-			let context = env.context()
-			env.failNextRequest("refresh failed")
-			try? await context.refresh()
-		}
-		#expect(await eventually(timeout: 5) { handled.value >= 1 })
-		await pause(0.1)
-		#expect(env.log.errorMessages == ["refresh failed"])
-	}
-
-	// With main delivery on, exposures, goals and misuse errors still reach the logger on the calling
-	// thread, synchronously.
-	@Test func callerEventsStayOnTheCallingThreadWithMainDelivery() {
-		mainQueueTag.install()
-		let seen = Box<[String]>([])
-		let env = ContextEnv()
-		env.log.setHook { _, event in
-			let onMain = mainQueueTag.isMain
-			switch event {
-			case .exposure: seen.mutate { $0.append("exposure:\(onMain)") }
-			case .goal: seen.mutate { $0.append("goal:\(onMain)") }
-			case .error: seen.mutate { $0.append("error:\(onMain)") }
-			default: break
+	#if DEBUG
+		// The real main-queue delivery (Apple platforms' default): background errors reach the logger on
+		// the main queue.
+		@Test func backgroundErrorsRunOnTheMainQueue() async {
+			mainQueueTag.install()
+			let onMain = Box<[Bool]>([])
+			let env = ContextEnv()
+			env.log.setHook { _, event in
+				if case .error = event { onMain.mutate { $0.append(mainQueueTag.isMain) } }
 			}
+			await Context.$mainThreadDeliveryOverride.withValue(true) {
+				let context = env.context()
+				env.failNextRequest("refresh failed")
+				try? await context.refresh()
+				context.track("goal", properties: nil)
+				env.failNextRequest("publish failed")
+				try? await context.publish()
+			}
+
+			#expect(await eventually(timeout: 5) { onMain.value.count == 2 })
+			#expect(onMain.value == [true, true])
 		}
-		Context.$mainThreadDeliveryOverride.withValue(true) {
-			let context = env.context()
-			_ = context.treatment(for: "exp_test_ab")
-			context.track("goal", properties: nil)
-			try? context.setUnit("session_id", to: "other")
+	#endif
+
+	#if DEBUG
+		// A logger that causes another error while handling an error delivered asynchronously on the main
+		// queue does not get it as a second `.error` (as in 1.5.0): only the refresh failure arrives.
+		@Test func errorHandlerCausingAnErrorOnMainDeliveryDoesNotRecurse() async {
+			let env = ContextEnv()
+			let handled = Box(0)
+			env.log.setHook { context, event in
+				guard case .error = event else { return }
+				handled.mutate { $0 += 1 }
+				try? context.setUnit("session_id", to: "other")
+			}
+			await Context.$mainThreadDeliveryOverride.withValue(true) {
+				let context = env.context()
+				env.failNextRequest("refresh failed")
+				try? await context.refresh()
+			}
+			#expect(await eventually(timeout: 5) { handled.value >= 1 })
+			await pause(0.1)
+			#expect(env.log.errorMessages == ["refresh failed"])
 		}
-		#expect(seen.value == ["exposure:false", "goal:false", "error:false"])
-	}
+	#endif
+
+	#if DEBUG
+		// With main delivery on, exposures, goals and misuse errors still reach the logger on the calling
+		// thread, synchronously.
+		@Test func callerEventsStayOnTheCallingThreadWithMainDelivery() {
+			mainQueueTag.install()
+			let seen = Box<[String]>([])
+			let env = ContextEnv()
+			env.log.setHook { _, event in
+				let onMain = mainQueueTag.isMain
+				switch event {
+				case .exposure: seen.mutate { $0.append("exposure:\(onMain)") }
+				case .goal: seen.mutate { $0.append("goal:\(onMain)") }
+				case .error: seen.mutate { $0.append("error:\(onMain)") }
+				default: break
+				}
+			}
+			Context.$mainThreadDeliveryOverride.withValue(true) {
+				let context = env.context()
+				_ = context.treatment(for: "exp_test_ab")
+				context.track("goal", properties: nil)
+				try? context.setUnit("session_id", to: "other")
+			}
+			#expect(seen.value == ["exposure:false", "goal:false", "error:false"])
+		}
+	#endif
 
 	// The re-delivery guard applies only while an `.error` is being handled: a misuse error caused by
 	// a `.publish` handler is delivered.
@@ -268,42 +274,44 @@ extension ContextTests {
 		#expect(env.log.contexts == [ObjectIdentifier(first), ObjectIdentifier(other)])
 	}
 
-	// As in 1.5.0: the errors of background work (load, refresh, publish) are routed to the logger's
-	// main-thread delivery, like ready/refresh/publish/close; misuse errors stay on the calling thread.
-	@Test func backgroundErrorsAreDeliveredOnTheMainThread() async {
-		let routed = Box<[String]>([])
-		let dispatcher: @Sendable (Context.Event, @escaping @Sendable () -> Void) -> Void = { event, deliver in
-			let kind: String
-			switch event {
-			case .error(let error): kind = "error:\(error.description)"
-			case .ready: kind = "ready"
-			case .refresh: kind = "refresh"
-			case .publish: kind = "publish"
-			case .close: kind = "close"
-			default: kind = "other"
+	#if DEBUG
+		// As in 1.5.0: the errors of background work (load, refresh, publish) are routed to the logger's
+		// main-thread delivery, like ready/refresh/publish/close; misuse errors stay on the calling thread.
+		@Test func backgroundErrorsAreDeliveredOnTheMainThread() async {
+			let routed = Box<[String]>([])
+			let dispatcher: @Sendable (Context.Event, @escaping @Sendable () -> Void) -> Void = { event, deliver in
+				let kind: String
+				switch event {
+				case .error(let error): kind = "error:\(error.description)"
+				case .ready: kind = "ready"
+				case .refresh: kind = "refresh"
+				case .publish: kind = "publish"
+				case .close: kind = "close"
+				default: kind = "other"
+				}
+				routed.mutate { $0.append(kind) }
+				deliver()
 			}
-			routed.mutate { $0.append(kind) }
-			deliver()
-		}
-		await Context.$mainThreadDispatcher.withValue(dispatcher) {
-			let env = ContextEnv()
-			let (failing, gate) = await env.loadingContext()
-			gate.reject(TestError("load failed"))
-			try? await failing.ready()
+			await Context.$mainThreadDispatcher.withValue(dispatcher) {
+				let env = ContextEnv()
+				let (failing, gate) = await env.loadingContext()
+				gate.reject(TestError("load failed"))
+				try? await failing.ready()
 
-			let context = env.context()
-			env.failNextRequest("refresh failed")
-			try? await context.refresh()
-			context.track("goal", properties: nil)
-			env.failNextRequest("publish failed")
-			try? await context.publish()
-			_ = context.variableValue("x")
-			try? context.setUnit("session_id", to: "other")
-		}
+				let context = env.context()
+				env.failNextRequest("refresh failed")
+				try? await context.refresh()
+				context.track("goal", properties: nil)
+				env.failNextRequest("publish failed")
+				try? await context.publish()
+				_ = context.variableValue("x")
+				try? context.setUnit("session_id", to: "other")
+			}
 
-		let errors = routed.value.filter { $0.hasPrefix("error:") }
-		#expect(errors == ["error:load failed", "error:refresh failed", "error:publish failed"])
-	}
+			let errors = routed.value.filter { $0.hasPrefix("error:") }
+			#expect(errors == ["error:load failed", "error:refresh failed", "error:publish failed"])
+		}
+	#endif
 
 	@Test func publicApiDoesNotThrowAndReturnsDefaultsBeforeReady() async {
 		let env = ContextEnv()

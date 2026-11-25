@@ -7,6 +7,22 @@ import Testing
 private func json(_ value: JSONValue) -> JSONValue { value }
 
 @Suite struct JSONValueTests {
+	// Q3: NaN and infinity are null on the SDK's own encoders (the collector PUT, `description`);
+	// an app's encoder keeps its nonConformingFloatEncodingStrategy.
+	@Test func nonFiniteNumbersFollowTheAppEncodersStrategy() throws {
+		let value: JSONValue = ["nan": .double(.nan), "inf": .double(.infinity)]
+		let strict = JSONEncoder()
+		#expect(throws: EncodingError.self) { try strict.encode(value) }
+
+		let lenient = JSONEncoder()
+		lenient.outputFormatting = .sortedKeys
+		lenient.nonConformingFloatEncodingStrategy = .convertToString(
+			positiveInfinity: "+inf", negativeInfinity: "-inf", nan: "nan")
+		#expect(String(decoding: try lenient.encode(value), as: UTF8.self) == #"{"inf":"+inf","nan":"nan"}"#)
+
+		#expect(value.description == #"{"inf":null,"nan":null}"#)
+	}
+
 	static func decode(_ text: String) throws -> JSONValue {
 		try JSONDecoder().decode(JSONValue.self, from: Data(text.utf8))
 	}

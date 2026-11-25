@@ -161,8 +161,11 @@ extension JSONValue: Codable {
 		case .null: try container.encodeNil()
 		case .bool(let value): try container.encode(value)
 		case .int(let value): try container.encode(value)
-		// JSON has no NaN or infinity: like JavaScript's `JSON.stringify`, they are written as null.
-		case .double(let value) where !value.isFinite: try container.encodeNil()
+		// The SDK's own encoders (the collector PUT, `description`) write NaN and infinity as null,
+		// like JavaScript's `JSON.stringify`. Any other encoder applies its own
+		// `nonConformingFloatEncodingStrategy`.
+		case .double(let value) where !value.isFinite && encoder.userInfo[.absmartlyNonFiniteAsNull] as? Bool == true:
+			try container.encodeNil()
 		case .double(let value): try container.encode(value)
 		case .string(let value): try container.encode(value)
 		case .array(let value): try container.encode(value)
@@ -267,10 +270,24 @@ extension JSONValue: ExpressibleByDictionaryLiteral {
 	}
 }
 
-extension JSONValue: CustomStringConvertible {
-	/// Compact JSON text, keys sorted.
-	public var description: String {
+extension CodingUserInfoKey {
+	/// Set to `true` by the SDK's encoders: a non-finite `JSONValue.double` is encoded as null.
+	static let absmartlyNonFiniteAsNull = CodingUserInfoKey(rawValue: "com.absmartly.nonFiniteAsNull")!
+}
+
+extension JSONEncoder {
+	/// A JSON encoder writing non-finite numbers as null, as the collector expects.
+	static func absmartly() -> JSONEncoder {
 		let encoder = JSONEncoder()
+		encoder.userInfo[.absmartlyNonFiniteAsNull] = true
+		return encoder
+	}
+}
+
+extension JSONValue: CustomStringConvertible {
+	/// Compact JSON text, keys sorted; NaN and infinity as null.
+	public var description: String {
+		let encoder = JSONEncoder.absmartly()
 		encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
 		guard let data = try? encoder.encode(self) else { return "null" }
 		return String(decoding: data, as: UTF8.self)

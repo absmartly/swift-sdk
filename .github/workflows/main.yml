@@ -92,6 +92,11 @@ jobs:
       - name: Run tests
         run: swift test --skip-build
 
+      # Optimized builds compile out the DEBUG-only test hooks; the rest of the suite must still build
+      # and pass.
+      - name: Run tests (release)
+        run: swift test -c release -Xswiftc -enable-testing -Xswiftc -warnings-as-errors
+
   # swift-format ships with the toolchain; a pinned image, so a new release cannot fail CI by itself.
   lint:
     runs-on: ubuntu-latest

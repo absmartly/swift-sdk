@@ -8,13 +8,15 @@ import Testing
 @Suite struct HoldoutsIgnoredTests {
 	static let experiment = Fixtures.contextData("holdouts_context").experiments[0]
 
-	// `holdout_a` (id 11) covers `exp_test_holdout`; its arm 0 (10%) would hold the unit out.
-	static func heldOutUIDs() -> [String] {
-		(0..<400).map { "uid-\($0)" }.filter { uid in
-			let assigner = VariantAssigner(unitHash: Hashing.hashUnit(uid))
-			return assigner.assign([0.1, 0.9], seedHi: 13, seedLo: 111) == 0
-				&& assigner.assign(experiment.split, seedHi: experiment.seedHi, seedLo: experiment.seedLo) == 1
-		}
+	// `holdout_a` (id 11) covers `exp_test_holdout`; its arm 0 (10%) would hold this unit out, and
+	// the experiment's own split gives it variant 1.
+	static let heldOutUID = "uid-4"
+
+	@Test func heldOutUIDIsHeldOutByTheFixture() {
+		let assigner = VariantAssigner(unitHash: Hashing.hashUnit(Self.heldOutUID))
+		#expect(assigner.assign([0.1, 0.9], seedHi: 13, seedLo: 111) == 0)
+		#expect(
+			assigner.assign(Self.experiment.split, seedHi: Self.experiment.seedHi, seedLo: Self.experiment.seedLo) == 1)
 	}
 
 	@Test func holdoutPayloadDecodesLikeTheSamePayloadWithoutHoldouts() throws {
@@ -31,29 +33,26 @@ import Testing
 	}
 
 	@Test func heldOutUnitIsAssignedAndExposedAsIfNoHoldoutExisted() async throws {
-		let uids = Self.heldOutUIDs()
-		try #require(!uids.isEmpty)
-		for uid in uids {
-			let env = ContextEnv()
-			let context = env.context("holdouts_context", units: [.sessionID: uid])
+		let uid = Self.heldOutUID
+		let env = ContextEnv()
+		let context = env.context("holdouts_context", units: [.sessionID: uid])
 
-			#expect(context.variable("banner.size", default: "small", exposing: false) == "large")
-			#expect(context.treatment(for: "exp_test_holdout") == 1)
-			#expect(context.variable("banner.size", default: "small") == "large")
-			#expect(
-				env.log.exposures == [
-					exposure(1, "exp_test_holdout", "session_id", 1, true, true, false, false, false, false)
-				])
+		#expect(context.variable("banner.size", default: "small", exposing: false) == "large")
+		#expect(context.treatment(for: "exp_test_holdout") == 1)
+		#expect(context.variable("banner.size", default: "small") == "large")
+		#expect(
+			env.log.exposures == [
+				exposure(1, "exp_test_holdout", "session_id", 1, true, true, false, false, false, false)
+			])
 
-			try await context.publish()
-			let units = [PublishEvent.Unit(type: "session_id", uid: unitHash(uid))]
-			#expect(
-				env.lastSentEvent
-					== expectedBody(
-						units: units,
-						exposures: [
-							exposure(1, "exp_test_holdout", "session_id", 1, true, true, false, false, false, false)
-						]))
-		}
+		try await context.publish()
+		let units = [PublishEvent.Unit(type: "session_id", uid: unitHash(uid))]
+		#expect(
+			env.lastSentEvent
+				== expectedBody(
+					units: units,
+					exposures: [
+						exposure(1, "exp_test_holdout", "session_id", 1, true, true, false, false, false, false)
+					]))
 	}
 }

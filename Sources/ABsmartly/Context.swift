@@ -336,21 +336,39 @@ public final class Context: Sendable {
 			state.refreshTimer?.cancel()
 			state.refreshTimer = nil
 		}
-		// Publishes already in flight finish first (a failed one re-queues its events).
-		while let inFlight = storage.withLock({ $0.inFlightPublishes.values.first }) {
-			_ = await inFlight.value
+		// As in 1.5.0: wait for publishes in flight (a failed one re-queues its events), send what is
+		// queued, and repeat until nothing is queued or in flight. That check and marking the context
+		// closed are one critical section, so a timer publish that starts in between is waited for
+		// and its batch cannot be stranded.
+		var streams: [Int: AsyncStream<Event>.Continuation]?
+		while streams == nil {
+			while let inFlight = storage.withLock({ $0.inFlightPublishes.values.first }) {
+				_ = await inFlight.value
+			}
+			#if DEBUG
+				await Self.closeAwaitedInFlightHook?()
+			#endif
+			streams = storage.withLock { state -> [Int: AsyncStream<Event>.Continuation]? in
+				guard state.inFlightPublishes.isEmpty, state.pendingCount == 0 else { return nil }
+				state.closed = true
+				state.closing = false
+				let streams = state.streams
+				state.streams = [:]
+				return streams
+			}
+			if streams == nil, case .failure(let error) = await flush() {
+				// Reopened with the batch re-queued: the usual automatic publish retries it even if the
+				// app does not call publish() or close() again (a negative delay still needs a call).
+				storage.withLock { state in
+					state.closing = false
+					if state.pendingCount > 0 {
+						schedulePublish(&state)
+					}
+				}
+				return .failure(error)
+			}
 		}
-		if storage.withLock({ $0.pendingCount }) > 0, case .failure(let error) = await flush() {
-			storage.withLock { $0.closing = false }
-			return .failure(error)
-		}
-		let streams = storage.withLock { state in
-			state.closed = true
-			state.closing = false
-			let streams = state.streams
-			state.streams = [:]
-			return streams
-		}
+		guard let streams else { return .success(()) }
 		emit(.close, onMain: true, streams: streams)
 		for continuation in streams.values {
 			continuation.finish()
@@ -385,8 +403,8 @@ public final class Context: Sendable {
 				attributes: state.attributes)
 			let id = state.nextPublishID
 			state.nextPublishID += 1
-			// Registered in the same critical section that drains the queue, so close() never sees an
-			// empty queue and no publish in flight.
+			// Registered in the same critical section that drains the queue, so close()'s idle check
+			// sees either the queued events or the publish in flight.
 			let task = Task { [self] in
 				await self.send(event, id: id, count: count)
 			}
@@ -698,9 +716,19 @@ public final class Context: Sendable {
 	public func track(_ goal: String, properties: [String: JSONValue]? = nil) {
 		guard ensureNotClosed() else { return }
 		let achievement = Goal(name: goal, achievedAt: clock.millis(), properties: properties)
-		storage.withLock { state in
+		// Admitted under the same lock as queueing (as in 1.5.0): once close() has started the goal
+		// is rejected, so it can never be left queued on a closed context.
+		let rejected: ABsmartlyError? = storage.withLock { state in
+			if let error = state.checkNotClosed() {
+				return error
+			}
 			state.goals.append(achievement)
 			state.pendingCount += 1
+			return nil
+		}
+		if let rejected {
+			reportError(rejected)
+			return
 		}
 		didQueue(.goal(achievement))
 	}
@@ -806,6 +834,10 @@ public final class Context: Sendable {
 		/// starts, without touching the process-wide setting other tests use.
 		@TaskLocal static var mainThreadDeliveryOverride: Bool?
 
+		/// Test hook: runs each time close() has waited for the publishes in flight, before it checks
+		/// whether the context is idle (the window in which a timer publish can start).
+		@TaskLocal static var closeAwaitedInFlightHook: (@Sendable () async -> Void)?
+
 		/// Test hook: receives each event routed to the main thread, with its delivery, in place of
 		/// the main queue (which nothing services under Linux tests). Task-local, so tasks the
 		/// context starts inherit it and parallel tests do not see it.
@@ -868,7 +900,7 @@ extension JSONValue {
 		case is Int.Type: return intValue as? T
 		case is Double.Type: return doubleValue as? T
 		default:
-			guard let data = try? JSONEncoder().encode(self) else { return nil }
+			guard let data = try? JSONEncoder.absmartly().encode(self) else { return nil }
 			return try? JSONDecoder().decode(T.self, from: data)
 		}
 	}

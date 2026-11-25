@@ -74,7 +74,7 @@ struct Connection: Sendable {
 	func publish(_ event: PublishEvent) async throws(ABsmartlyError) {
 		let body: Data
 		do {
-			body = try JSONEncoder().encode(event)
+			body = try JSONEncoder.absmartly().encode(event)
 		} catch {
 			// Non-finite numbers encode as null; Foundation can still reject, e.g., very deep nesting.
 			throw .decoding(error.safeDescription)

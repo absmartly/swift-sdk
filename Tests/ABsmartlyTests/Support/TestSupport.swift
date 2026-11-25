@@ -63,12 +63,32 @@ struct FixedClock: Clock {
 	}
 }
 
-final class MutableClock: Clock, @unchecked Sendable {
+/// A fixed clock that can block the next `millis()` read until resumed, to stop a caller at the
+/// point where it reads the time (e.g. between `track()`'s check and its queueing).
+final class PausingClock: Clock, @unchecked Sendable {
 	private let lock = NSLock()
-	private var value: Int64
-	init(_ value: Int64) { self.value = value }
-	func millis() -> Int64 { lock.withLock { value } }
-	func set(_ newValue: Int64) { lock.withLock { value = newValue } }
+	private var pauseNext = false
+	private var paused = false
+	private let resumed = DispatchSemaphore(value: 0)
+
+	func pauseNextRead() { lock.withLock { pauseNext = true } }
+	var isPaused: Bool { lock.withLock { paused } }
+	func resume() { resumed.signal() }
+
+	func millis() -> Int64 {
+		let pause: Bool = lock.withLock {
+			guard pauseNext else { return false }
+			pauseNext = false
+			paused = true
+			return true
+		}
+		if pause {
+			resumed.wait()
+			lock.withLock { paused = false }
+		}
+		return Fixtures.now
+	}
+
 	func sleep(seconds: TimeInterval) async throws {
 		try await TestClock.sleepZeroOrForever(seconds)
 	}

@@ -410,8 +410,7 @@ import Testing
 		#expect(AudienceMatcher.evaluateRules(rules, environmentName: nil, attributes: [:]) == .assign(variant: 1))
 	}
 
-	// Reachable from variableValue when close() starts between listing a key's experiments and
-	// walking them.
+	// A closing context queues no exposure, even from a direct state lookup.
 	@Test func closingContextQueuesNoExposure() {
 		var state = ContextState(application: "website", environment: "production")
 		state.index = DataIndex(Self.contextData(Self.experimentJSON(rules: nil)))

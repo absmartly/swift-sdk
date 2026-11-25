@@ -79,8 +79,7 @@ import Testing
 		("99999999999999999999", .selected(-1)),
 		("1e300", .selected(-1)),
 		// 1e400 overflows a double. 1.5.0's SwiftyJSON (JSONSerialization) rejects the whole
-		// document, so the experiment has no rules; 2.0 parses with the same JSONSerialization and
-		// does the same (JSONDecoder, which 2.0 used before, rejected it as well).
+		// document, so the experiment has no rules; 2.0 parses with the same JSONSerialization.
 		("1e400", .unparseable),
 		("-1e400", negativeOverflowOutcome),
 	]
