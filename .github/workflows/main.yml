@@ -46,7 +46,7 @@ jobs:
         run: swift build --build-tests -Xswiftc -warnings-as-errors
 
       - name: Run tests
-        run: swift test --skip-build
+        run: python3 Tools/run-with-timeout.py 600 swift test --parallel --skip-build
 
       - name: Build for Apple device platforms
         run: |
@@ -90,12 +90,12 @@ jobs:
         run: swift build --build-tests -Xswiftc -warnings-as-errors
 
       - name: Run tests
-        run: swift test --skip-build
+        run: python3 Tools/run-with-timeout.py 600 swift test --parallel --skip-build
 
       # Optimized builds compile out the DEBUG-only test hooks; the rest of the suite must still build
       # and pass.
       - name: Run tests (release)
-        run: swift test -c release -Xswiftc -enable-testing -Xswiftc -warnings-as-errors
+        run: python3 Tools/run-with-timeout.py 600 swift test -c release -Xswiftc -enable-testing -Xswiftc -warnings-as-errors
 
   # swift-format ships with the toolchain; a pinned image, so a new release cannot fail CI by itself.
   lint:
