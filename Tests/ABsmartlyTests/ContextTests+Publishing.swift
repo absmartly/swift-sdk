@@ -658,6 +658,29 @@ extension ContextTests {
 		#expect(env.log.errorMessages == ["ABsmartly Context is finalized."])
 	}
 
+	// The goal passes track()'s first check, then close() starts and blocks on its PUT before the
+	// goal is queued: it is rejected while closing, not slipped into the batch.
+	@Test func goalRacingAnInProgressCloseIsRejected() async throws {
+		let clock = PausingClock()
+		let env = ContextEnv(clock: clock)
+		let context = env.context()
+		context.track("goal1", properties: nil)
+		let gate = env.pendingRequest()
+		let tracking = Thread { context.track("racing", properties: nil) }
+		clock.pauseNextRead()
+		tracking.start()
+		#expect(await eventually(timeout: 5) { clock.isPaused })
+		let closing = Task { try await context.close() }
+		#expect(await eventually(timeout: 5) { env.publishCount == 1 })
+		clock.resume()
+		#expect(await eventually(timeout: 5) { tracking.isFinished })
+		gate.fulfill(ok)
+		try await closing.value
+
+		#expect(env.log.goals.map(\.name) == ["goal1"])
+		#expect(env.log.errorMessages == ["ABsmartly Context is finalizing."])
+	}
+
 	@Test func closeWaitsForInFlightPublish() async throws {
 		let env = ContextEnv()
 		let context = env.context()
