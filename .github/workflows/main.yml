@@ -89,6 +89,11 @@ jobs:
       - name: Build (warnings as errors)
         run: swift build --build-tests -Xswiftc -warnings-as-errors
 
+      - name: Install Python for bounded test runs
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends python3
+
       - name: Run tests
         run: python3 Tools/run-with-timeout.py 600 swift test --parallel --skip-build
 
