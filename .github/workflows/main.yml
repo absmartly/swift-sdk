@@ -92,9 +92,17 @@ jobs:
       - name: Run tests
         run: swift test --skip-build
 
-      # swift-format ships with the toolchain from Swift 6.0; the newest one checks the style.
+  # swift-format ships with the toolchain; a pinned image, so a new release cannot fail CI by itself.
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container: swift:6.2
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
       - name: Lint (swift-format)
-        if: matrix.image == 'swift:latest'
         run: swift format lint --strict --configuration swift-format.json -r Sources Tests Example
 
   pod-lint:

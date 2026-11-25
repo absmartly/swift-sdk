@@ -163,12 +163,49 @@ import Testing
 		// The initial load only; the timer is waiting.
 		#expect(await clock.waitForSleepers())
 		clock.advance(by: 59)
+		// Still the same timer waiting: it has not woken (a shorter sleep would have).
+		#expect(clock.sleeperCount == 1)
+		await pause(0.05)
 		#expect(env.getCount == 1)
 
 		// The timer fires and refreshes, then waits for the next interval.
 		clock.advance(by: 1)
 		#expect(await eventually(timeout: 5) { env.getCount == 2 })
 		#expect(await clock.waitForSleepers())
+		try await context.close()
+	}
+
+	// The refresh timer holds its context weakly and the context cancels it when freed: a dropped
+	// context stops refreshing instead of leaking.
+	@Test func droppedContextStopsItsRefreshTimer() async throws {
+		let clock = TestClock()
+		let env = ContextEnv(clock: clock)
+		var context: Context? = env.context(options: Context.Options(publishDelay: -1, refreshInterval: 60))
+		weak var weakContext = context
+		#expect(await clock.waitForSleepers())
+		context = nil
+
+		#expect(await eventually(timeout: 5) { weakContext == nil })
+		// `var` (Swift 6.0 has no `weak let`), cleared so newer compilers see it mutated.
+		weakContext = nil
+		#expect(await eventually(timeout: 5) { clock.sleeperCount == 0 })
+		clock.advance(by: 600)
+		await pause(0.05)
+		#expect(env.getCount == 0)
+	}
+
+	// A manual refresh does not start a second polling loop next to the timer's.
+	@Test func manualRefreshDoesNotStartASecondRefreshTimer() async throws {
+		let clock = TestClock()
+		let env = ContextEnv(clock: clock)
+		let context = env.context(options: Context.Options(publishDelay: -1, refreshInterval: 60))
+		#expect(await clock.waitForSleepers())
+		env.serveNext("context")
+		try await context.refresh()
+		env.serveNext("context")
+		try await context.refresh()
+		await pause(0.05)
+		#expect(clock.sleeperCount == 1)
 		try await context.close()
 	}
 

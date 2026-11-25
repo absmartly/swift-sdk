@@ -101,6 +101,19 @@ extension ContextTests {
 		#expect(context.customFieldValue("flag", in: "exp")?.boolValue == true)
 	}
 
+	// Owner decision 2026-11-25, as in JavaScript: a `boolean` field is `true` only for exactly
+	// "true"; anything else, including "TRUE", is `false` (1.5.0 gave no value for those).
+	@Test(arguments: [("true", true), ("false", false), ("TRUE", false), ("True", false), ("1", false), ("", false)])
+	func booleanCustomFieldIsTrueOnlyForExactlyTrue(text: String, expected: Bool) {
+		let json = """
+			{"experiments": [{"id": 1, "name": "exp", "customFieldValues": [
+				{"name": "flag", "type": "boolean", "value": "\(text)"}
+			]}]}
+			"""
+		let context = ContextEnv().context(data: ContextFixtures.decode(json))
+		#expect(context.customFieldValue("flag", in: "exp") == .bool(expected), "\(text)")
+	}
+
 	// Installing data is internal (`install(_:)`), reachable here only through `@testable`.
 	@Test func setDataIsNotPublic() {
 		let env = ContextEnv()

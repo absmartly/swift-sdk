@@ -604,6 +604,28 @@ extension ContextTests {
 		#expect(context.pendingEventCount == 0)
 	}
 
+	// An explicit publish() sends the queue and cancels the pending timer; the next event starts a
+	// fresh one.
+	@Test func manualPublishCancelsThePendingTimer() async throws {
+		let clock = TestClock()
+		let env = ContextEnv(clock: clock)
+		let context = env.context(options: Context.Options(publishDelay: 5))
+		context.track("goal1", properties: nil)
+		#expect(await clock.waitForSleepers())
+
+		try await context.publish()
+		#expect(env.publishCount == 1)
+		#expect(await eventually(timeout: 5) { clock.sleeperCount == 0 })
+		clock.advance(by: 5)
+		await pause(0.05)
+		#expect(env.publishCount == 1)
+
+		context.track("goal2", properties: nil)
+		#expect(await clock.waitForSleepers())
+		clock.advance(by: 5)
+		#expect(await eventually(timeout: 5) { env.publishCount == 2 })
+	}
+
 	@Test func setTimeoutNoRaceCondition() async {
 		let clock = TestClock()
 		let env = ContextEnv(clock: clock)

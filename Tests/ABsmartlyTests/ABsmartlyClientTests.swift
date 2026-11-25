@@ -367,7 +367,7 @@ import Testing
 		let harness = Harness(clock: clock)
 		let context = harness.context()
 		_ = context.treatment(for: "exp_test_ab")
-		#expect(clock.sleeperCount == 0)
+		#expect(await clock.waitForSleepers(1, timeout: 0.3) == false)
 		clock.advance(by: 600)
 		await Task.yield()
 		#expect(harness.transport.publishes.isEmpty)

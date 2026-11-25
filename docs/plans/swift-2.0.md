@@ -512,13 +512,14 @@ Behaviour parity is proven, not asserted:
 
 - A `boolean` custom field whose text is neither `"true"` nor `"false"` (e.g. `"TRUE"`) is
   `false` in 2.0; 1.5.0 restored 1.4.0's `Bool(text)` coercion, which gives
-  no value. `"true"` and `"false"` agree. Open for the owner: align 2.0 with 1.5.0 or keep it.
+  no value. `"true"` and `"false"` agree. Owner decision 2026-11-25: keep 2.0's behaviour, which
+  matches JavaScript.
 - Released 1.5.0 also restored other 1.4.0 behaviour (commit c2b5841) that 2.0 keeps in its
   earlier form: `refresh()` on a failed context fetches again and can recover it in 1.5.0 (2.0:
   succeeds without fetching). `match` follows 1.5.0: no pattern/input length limits and no
   nested-quantifier rejection, only the 0.1 s timeout. A negative `publishDelay`
   disables automatic publishing in both. The failed-context refresh difference is final (owner,
-  2026-11-24); only the boolean difference remains open for the owner. The parity probe does not
+  2026-11-24); no difference remains open for the owner. The parity probe does not
   exercise failed-context refresh.
 - An integer literal from 2^63 to 2^64−1 inside an audience or rule (e.g. `9223372036854775808`)
   is converted to text as `"9223372036854776000"`. 1.5.0 on Linux prints it as a negative number
