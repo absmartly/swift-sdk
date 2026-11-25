@@ -1,0 +1,343 @@
+{
+ "experiments": [
+  {
+   "id": 11,
+   "name": "rules_assign",
+   "iteration": 1,
+   "unitType": "session_id",
+   "seedHi": 123,
+   "seedLo": 456,
+   "split": [
+    0.5,
+    0.5
+   ],
+   "trafficSeedHi": 789,
+   "trafficSeedLo": 1011,
+   "trafficSplit": [
+    0,
+    1
+   ],
+   "fullOnVariant": 0,
+   "applications": [
+    {
+     "name": "website"
+    }
+   ],
+   "variants": [
+    {
+     "name": "A",
+     "config": null
+    },
+    {
+     "name": "B",
+     "config": "{\"shared.key\": \"r1\"}"
+    }
+   ],
+   "audienceStrict": false,
+   "audience": null,
+   "assignmentRules": "{\"rules\": [{\"type\": \"assign\", \"variant\": 1, \"conditions\": {\"and\": [{\"eq\": [{\"var\": \"country\"}, {\"value\": \"US\"}]}]}}, {\"type\": \"assign\", \"variant\": 0, \"environments\": [\"staging\"]}]}"
+  },
+  {
+   "id": 12,
+   "name": "rules_split",
+   "iteration": 1,
+   "unitType": "user_id",
+   "seedHi": 123,
+   "seedLo": 456,
+   "split": [
+    0.2,
+    0.3,
+    0.5
+   ],
+   "trafficSeedHi": 111,
+   "trafficSeedLo": 222,
+   "trafficSplit": [
+    0,
+    1
+   ],
+   "fullOnVariant": 0,
+   "applications": [
+    {
+     "name": "website"
+    }
+   ],
+   "variants": [
+    {
+     "name": "A",
+     "config": null
+    },
+    {
+     "name": "B",
+     "config": "{\"shared.key\": \"s1\"}"
+    },
+    {
+     "name": "C",
+     "config": "{\"shared.key\": \"s2\", \"other\": [1, 2]}"
+    }
+   ],
+   "audienceStrict": false,
+   "audience": null,
+   "assignmentRules": "{\"rules\": [{\"type\": \"split\", \"percentages\": \"20/30/50\", \"conditions\": {\"and\": [{\"eq\": [{\"var\": \"language\"}, {\"value\": \"en-US\"}]}]}}]}"
+  },
+  {
+   "id": 13,
+   "name": "semver_gate",
+   "iteration": 1,
+   "unitType": "device_id",
+   "seedHi": 42,
+   "seedLo": 43,
+   "split": [
+    0.5,
+    0.5
+   ],
+   "trafficSeedHi": 44,
+   "trafficSeedLo": 45,
+   "trafficSplit": [
+    0,
+    1
+   ],
+   "fullOnVariant": 0,
+   "applications": [
+    {
+     "name": "website"
+    }
+   ],
+   "variants": [
+    {
+     "name": "A",
+     "config": null
+    },
+    {
+     "name": "B",
+     "config": "{\"feature.on\": true}"
+    }
+   ],
+   "audienceStrict": true,
+   "audience": "{\"filter\": [{\"semver_gte\": [{\"var\": \"app_version\"}, {\"value\": \"2.1.0\"}]}]}"
+  },
+  {
+   "id": 14,
+   "name": "env_audience",
+   "iteration": 1,
+   "unitType": "session_id",
+   "seedHi": 7,
+   "seedLo": 8,
+   "split": [
+    0.34,
+    0.33,
+    0.33
+   ],
+   "trafficSeedHi": 9,
+   "trafficSeedLo": 10,
+   "trafficSplit": [
+    0,
+    1
+   ],
+   "fullOnVariant": 0,
+   "applications": [
+    {
+     "name": "website"
+    }
+   ],
+   "variants": [
+    {
+     "name": "A",
+     "config": null
+    },
+    {
+     "name": "B",
+     "config": null
+    },
+    {
+     "name": "C",
+     "config": "{\"env.flag\": \"x\"}"
+    }
+   ],
+   "audienceStrict": false,
+   "audience": "{\"filter\": [{\"eq\": [{\"var\": \"environment\"}, {\"value\": \"production\"}]}, {\"gte\": [{\"var\": \"age\"}, {\"value\": 20}]}]}"
+  },
+  {
+   "id": 15,
+   "name": "custom_fields",
+   "iteration": 1,
+   "unitType": "email",
+   "seedHi": 1,
+   "seedLo": 2,
+   "split": [
+    0.5,
+    0.5
+   ],
+   "trafficSeedHi": 3,
+   "trafficSeedLo": 4,
+   "trafficSplit": [
+    0,
+    1
+   ],
+   "fullOnVariant": 0,
+   "applications": [
+    {
+     "name": "website"
+    }
+   ],
+   "variants": [
+    {
+     "name": "A",
+     "config": null
+    },
+    {
+     "name": "B",
+     "config": null
+    }
+   ],
+   "audienceStrict": false,
+   "audience": null,
+   "customFieldValues": [
+    {
+     "name": "owner",
+     "type": "text",
+     "value": "team-a"
+    },
+    {
+     "name": "meta",
+     "type": "json",
+     "value": "{\"a\":[1,2,{\"b\":null}],\"n\":1.25}"
+    },
+    {
+     "name": "arr",
+     "type": "json",
+     "value": "[1,\"x\",true]"
+    },
+    {
+     "name": "num",
+     "type": "number",
+     "value": "42.5"
+    },
+    {
+     "name": "flag",
+     "type": "boolean",
+     "value": "TRUE"
+    },
+    {
+     "name": "nulljson",
+     "type": "json",
+     "value": "null"
+    },
+    {
+     "name": "bad",
+     "type": "json",
+     "value": "{oops"
+    }
+   ]
+  },
+  {
+   "id": 16,
+   "name": "bad_rules",
+   "iteration": 1,
+   "unitType": "user_id",
+   "seedHi": 5,
+   "seedLo": 6,
+   "split": [
+    0.5,
+    0.5
+   ],
+   "trafficSeedHi": 7,
+   "trafficSeedLo": 8,
+   "trafficSplit": [
+    0,
+    1
+   ],
+   "fullOnVariant": 0,
+   "applications": [
+    {
+     "name": "website"
+    }
+   ],
+   "variants": [
+    {
+     "name": "A",
+     "config": null
+    },
+    {
+     "name": "B",
+     "config": "{\"shared.key\": \"bad\"}"
+    }
+   ],
+   "audienceStrict": false,
+   "audience": null,
+   "assignmentRules": "{not json"
+  },
+  {
+   "id": 17,
+   "name": "oob_rule",
+   "iteration": 1,
+   "unitType": "session_id",
+   "seedHi": 9,
+   "seedLo": 10,
+   "split": [
+    0.5,
+    0.5
+   ],
+   "trafficSeedHi": 11,
+   "trafficSeedLo": 12,
+   "trafficSplit": [
+    0,
+    1
+   ],
+   "fullOnVariant": 0,
+   "applications": [
+    {
+     "name": "website"
+    }
+   ],
+   "variants": [
+    {
+     "name": "A",
+     "config": null
+    },
+    {
+     "name": "B",
+     "config": null
+    }
+   ],
+   "audienceStrict": false,
+   "audience": null,
+   "assignmentRules": "{\"rules\": [{\"type\": \"assign\", \"variant\": 2147483648}, {\"type\": \"assign\", \"variant\": 1}]}"
+  },
+  {
+   "id": 18,
+   "name": "match_regex",
+   "iteration": 1,
+   "unitType": "session_id",
+   "seedHi": 13,
+   "seedLo": 14,
+   "split": [
+    0.5,
+    0.5
+   ],
+   "trafficSeedHi": 15,
+   "trafficSeedLo": 16,
+   "trafficSplit": [
+    0,
+    1
+   ],
+   "fullOnVariant": 0,
+   "applications": [
+    {
+     "name": "website"
+    }
+   ],
+   "variants": [
+    {
+     "name": "A",
+     "config": null
+    },
+    {
+     "name": "B",
+     "config": null
+    }
+   ],
+   "audienceStrict": true,
+   "audience": "{\"filter\": [{\"match\": [{\"var\": \"language\"}, {\"value\": \"^en(-[A-Z]{2})?$\"}]}]}"
+  }
+ ]
+}

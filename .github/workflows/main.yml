@@ -4,26 +4,31 @@ on:
   push:
     branches:
       - main
+      - 'release/**'
   pull_request:
+    branches:
+      - main
+      - 'release/**'
+
+permissions:
+  contents: read
 
 jobs:
-  test:
+  test-macos:
     name: test (${{ matrix.name }})
     strategy:
       fail-fast: false
       matrix:
         include:
-          # Swift 6.1 provides additional toolchain coverage
-          - name: swift-6.1
+          # Xcode 16.x: the oldest toolchain with Swift 6 language mode
+          - name: xcode-16
             runs-on: macos-15
-            xcode: /Applications/Xcode_16.3.app
+            xcode: /Applications/Xcode_16.4.app
           - name: latest
             runs-on: macos-latest
             xcode: ""
     runs-on: ${{ matrix.runs-on }}
     timeout-minutes: 30
-    permissions:
-      contents: read
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -36,55 +41,43 @@ jobs:
       - name: Show Swift version
         run: swift --version
 
-      - name: Build
-        run: swift build
+      # Swift 6 language mode implies complete strict concurrency checking.
+      - name: Build (warnings as errors)
+        run: swift build --build-tests -Xswiftc -warnings-as-errors
 
       - name: Run tests
-        run: swift test
+        run: python3 Tools/run-with-timeout.py 600 swift test --parallel --skip-build
 
-      # Build for every Apple platform the package supports, so an availability regression fails CI.
-      # Current Xcode cannot target the package's watchOS 3 minimum (its dependencies are clamped
-      # to watchOS 5), so watchOS is built at 5.0; iOS and tvOS build at the package minimums.
-      - name: Build for iOS, tvOS, visionOS and watchOS
-        if: matrix.name == 'latest'
+      - name: Build for Apple device platforms
         run: |
-          xcodebuild build -scheme ABSmartly -destination "generic/platform=iOS" -quiet
-          xcodebuild build -scheme ABSmartly -destination "generic/platform=tvOS" -quiet
-          xcodebuild build -scheme ABSmartly -destination "generic/platform=visionOS" -quiet
-          xcodebuild build -scheme ABSmartly -destination "generic/platform=watchOS" -quiet \
-            WATCHOS_DEPLOYMENT_TARGET=5.0
-
-      # Structural podspec validation (no build). A full `pod lib lint`, and so `pod trunk push`, does
-      # not pass on Xcode 16.3 or 26: the SwiftyJSON 5 pod (macOS 10.9) fails availability checks
-      # while CocoaPods builds the dependencies. See the 1.5.0 CHANGELOG.
-      - name: Lint podspec (quick)
-        if: matrix.name == 'latest'
-        run: pod spec lint ABSmartlySwiftSDK.podspec --quick --allow-warnings
+          for destination in "generic/platform=iOS Simulator" "generic/platform=tvOS Simulator" \
+            "generic/platform=watchOS Simulator" "generic/platform=visionOS Simulator" \
+            "generic/platform=macOS,variant=Mac Catalyst"; do
+            for scheme in ABsmartly ABsmartlyUI; do
+              echo "::group::$scheme $destination"
+              xcodebuild build -scheme "$scheme" -destination "$destination" -quiet \
+                SWIFT_TREAT_WARNINGS_AS_ERRORS=YES || exit 1
+              echo "::endgroup::"
+            done
+          done
 
       # The Example app references this checkout as a local package and has its own lockfile.
       # Resolve strictly from it, so a lockfile that no longer satisfies Package.swift fails CI.
-      - name: Resolve Example app packages from its lockfile
+      - name: Build the Example app from its lockfile
         run: |
-          xcodebuild -resolvePackageDependencies -project Example/Example.xcodeproj -scheme Example \
-            -onlyUsePackageVersionsFromResolvedFile
+          xcodebuild build -project Example/Example.xcodeproj -scheme Example \
+            -destination "generic/platform=iOS Simulator" -onlyUsePackageVersionsFromResolvedFile -quiet \
+            CODE_SIGNING_ALLOWED=NO SWIFT_TREAT_WARNINGS_AS_ERRORS=YES
 
   test-linux:
-    name: test (linux, swift-${{ matrix.swift }})
+    name: test (linux, ${{ matrix.image }})
     strategy:
       fail-fast: false
       matrix:
-        # The oldest toolchain the README promises for Linux, and the one macOS CI also covers.
-        swift: ["5.10", "6.1"]
+        image: ['swift:6.0', 'swift:latest']
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    container:
-      image: swift:${{ matrix.swift }}
-      # Only the 6.1 job runs ThreadSanitizer, which re-executes itself with ASLR disabled via
-      # personality(2); the default container seccomp profile blocks that on current runner images
-      # ("CHECK failed: tsan_platform_linux.cpp ... personality"), aborting before any test runs.
-      options: ${{ matrix.swift == '6.1' && '--security-opt seccomp=unconfined' || '' }}
-    permissions:
-      contents: read
+    container: ${{ matrix.image }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -93,25 +86,42 @@ jobs:
       - name: Show Swift version
         run: swift --version
 
-      - name: Build
-        run: swift build
+      - name: Build (warnings as errors)
+        run: swift build --build-tests -Xswiftc -warnings-as-errors
+
+      - name: Install Python for bounded test runs
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends python3
 
       - name: Run tests
-        run: swift test
+        run: python3 Tools/run-with-timeout.py 600 swift test --parallel --skip-build
 
-      # Optimized builds compile out the DEBUG-only lifecycle test hooks; the rest must still pass.
+      # Optimized builds compile out the DEBUG-only test hooks; the rest of the suite must still build
+      # and pass.
       - name: Run tests (release)
-        run: swift test -c release
+        run: python3 Tools/run-with-timeout.py 600 swift test -c release -Xswiftc -enable-testing -Xswiftc -warnings-as-errors
 
-      # The context lifecycle is lock-based; ThreadSanitizer catches races the assertions cannot.
-      - name: Run concurrency and lifecycle tests under ThreadSanitizer
-        if: matrix.swift == '6.1'
-        run: swift test --sanitize=thread --filter 'ConcurrencyTests|ContextTest|ContextV140BehaviourTest|AsyncAPITest|DefaultClientTest|ContextHoldoutTest'
+  # swift-format ships with the toolchain; a pinned image, so a new release cannot fail CI by itself.
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container: swift:6.2
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
 
-      # Toolchains 5.9+ read Package@swift-5.9.swift; also build from the tools-version 5.3
-      # Package.swift that older toolchains use, so a change to it alone cannot go unnoticed.
-      - name: Build with Package.swift only
-        if: matrix.swift == '6.1'
-        run: |
-          rm Package@swift-5.9.swift
-          swift build
+      - name: Lint (swift-format)
+        run: swift format lint --strict --configuration swift-format.json -r Sources Tests Example
+
+  pod-lint:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Lint podspec
+        run: pod lib lint ABsmartly.podspec --allow-warnings --skip-tests

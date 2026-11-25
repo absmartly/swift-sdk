@@ -19,3 +19,5 @@ COMPLETION_SUMMARY.md
 FIXES_IMPLEMENTED.md
 Packages
 xcuserdata/
+Tools/ParityRecorder/.build/
+Tools/ParityRecorder/Package.resolved

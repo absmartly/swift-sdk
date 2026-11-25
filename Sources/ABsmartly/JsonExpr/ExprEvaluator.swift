@@ -1,0 +1,281 @@
+import Foundation
+
+// The audience and assignment-rule expression language, ported from 1.5.0 onto `JSONValue` with
+// its semantics unchanged, including where they differ from javascript-sdk (see
+// docs/plans/swift-2.0.md, "Known 1.5.0 divergences"). Expressions are `ExprValue`s, so a number
+// parsed as a decimal keeps its exact value; attributes are read as `JSONValue`s.
+
+enum JsonExpr {
+	static func evaluateBoolean(_ expr: ExprValue, vars: [String: JSONValue]) -> Bool {
+		let evaluator = ExprEvaluator(vars: vars)
+		return evaluator.booleanConvert(evaluator.evaluate(expr))
+	}
+
+	static func evaluate(_ expr: ExprValue, vars: [String: JSONValue]) -> ExprValue {
+		ExprEvaluator(vars: vars).evaluate(expr)
+	}
+}
+
+final class ExprEvaluator {
+	private let vars: JSONValue
+	private lazy var formatter: NumberFormatter = {
+		let formatter = NumberFormatter()
+		formatter.numberStyle = .decimal
+		formatter.maximumFractionDigits = 15
+		formatter.minimumIntegerDigits = 1
+		formatter.decimalSeparator = "."
+		formatter.groupingSize = 0
+		return formatter
+	}()
+
+	init(vars: [String: JSONValue]) {
+		self.vars = .object(vars)
+	}
+
+	func evaluate(_ expr: ExprValue) -> ExprValue {
+		switch expr {
+		case .array(let args):
+			return and(args)
+		case .object(let object):
+			// Only the first key is looked at.
+			if let (key, value) = object.first {
+				return apply(key, value)
+			}
+			return .null
+		default:
+			return .null
+		}
+	}
+
+	private func apply(_ op: String, _ args: ExprValue) -> ExprValue {
+		switch op {
+		case "and":
+			guard case .array(let items) = args else { return .null }
+			return and(items)
+		case "or":
+			guard case .array(let items) = args else { return .null }
+			for item in items where booleanConvert(evaluate(item)) {
+				return .bool(true)
+			}
+			return .bool(items.isEmpty)
+		case "value":
+			return args
+		case "var":
+			let path = args.objectCount != nil ? (args["path"] ?? .null) : args
+			if case .string(let path) = path {
+				return extractVar(path)
+			}
+			return .null
+		case "null":
+			return .bool(evaluate(args).isNull)
+		case "not":
+			return .bool(!booleanConvert(evaluate(args)))
+		case "in":
+			return binary(args, inOperator)
+		case "match":
+			return binary(args) { MatchOperator.match(self, $0, $1) }
+		case "eq":
+			return binary(args) { l, r in compare(l, r).map { .bool($0 == 0) } ?? .null }
+		case "gt":
+			return binary(args) { l, r in compare(l, r).map { .bool($0 > 0) } ?? .null }
+		case "gte":
+			return binary(args) { l, r in compare(l, r).map { .bool($0 >= 0) } ?? .null }
+		case "lt":
+			return binary(args) { l, r in compare(l, r).map { .bool($0 < 0) } ?? .null }
+		case "lte":
+			return binary(args) { l, r in compare(l, r).map { .bool($0 <= 0) } ?? .null }
+		case "semver_eq":
+			return binary(args) { l, r in SemverComparator.compare(self, l, r).map { .bool($0 == 0) } ?? .null }
+		case "semver_gt":
+			return binary(args) { l, r in SemverComparator.compare(self, l, r).map { .bool($0 > 0) } ?? .null }
+		case "semver_gte":
+			return binary(args) { l, r in SemverComparator.compare(self, l, r).map { .bool($0 >= 0) } ?? .null }
+		case "semver_lt":
+			return binary(args) { l, r in SemverComparator.compare(self, l, r).map { .bool($0 < 0) } ?? .null }
+		case "semver_lte":
+			return binary(args) { l, r in SemverComparator.compare(self, l, r).map { .bool($0 <= 0) } ?? .null }
+		default:
+			return .null
+		}
+	}
+
+	private func and(_ items: [ExprValue]) -> ExprValue {
+		for item in items where !booleanConvert(evaluate(item)) {
+			return .bool(false)
+		}
+		return .bool(true)
+	}
+
+	// Both operands are evaluated (the right one only when the left is not null); null if either is.
+	private func binary(_ args: ExprValue, _ body: (ExprValue, ExprValue) -> ExprValue) -> ExprValue {
+		guard case .array(let items) = args else { return .null }
+		let lhs = evaluate(items.first ?? .null)
+		guard !lhs.isNull else { return .null }
+		let rhs = evaluate(items.count > 1 ? items[1] : .null)
+		guard !rhs.isNull else { return .null }
+		return body(lhs, rhs)
+	}
+
+	private func inOperator(_ haystack: ExprValue, _ needle: ExprValue) -> ExprValue {
+		switch haystack {
+		case .array, .attributeArray:
+			for index in 0..<haystack.arrayCount! where compare(haystack[index]!, needle) == 0 {
+				return .bool(true)
+			}
+			return .bool(false)
+		case .string(let string):
+			guard let needle = stringConvert(needle) else { return .bool(false) }
+			return .bool(string.contains(needle))
+		case .object(let object):
+			guard let needle = stringConvert(needle) else { return .bool(false) }
+			return .bool(object[needle] != nil)
+		case .attributeObject(let object):
+			guard let needle = stringConvert(needle) else { return .bool(false) }
+			return .bool(object[needle] != nil)
+		default:
+			return .null
+		}
+	}
+
+	// Numbers are true when their integer part is non-zero. A decimal is converted as 1.5.0 did,
+	// through Foundation's `int64Value`, so one beyond Int64 (2^64) is false on Linux.
+	func booleanConvert(_ x: ExprValue) -> Bool {
+		switch x {
+		case .bool(let value):
+			return value
+		case .int(let value):
+			return value != 0
+		case .double(let value):
+			if value.isNaN { return false }
+			guard let truncated = Int64(exactly: value.rounded(.towardZero)) else { return true }
+			return truncated != 0
+		case .decimal(let value):
+			return NSDecimalNumber(decimal: value).int64Value != 0
+		case .string(let value):
+			return value != "false" && value != "0" && value != ""
+		case .null:
+			return false
+		case .array, .object, .attributeArray, .attributeObject:
+			return true
+		}
+	}
+
+	func numberConvert(_ x: ExprValue) -> Double? {
+		switch x {
+		case .int, .double, .decimal:
+			return x.doubleValue
+		case .bool(let value):
+			return value ? 1 : 0
+		case .string(let value):
+			return Double(value)
+		default:
+			return nil
+		}
+	}
+
+	// Numbers are formatted with up to 15 fraction digits, without grouping.
+	func stringConvert(_ x: ExprValue) -> String? {
+		switch x {
+		case .string(let value):
+			return value
+		case .bool(let value):
+			return value ? "true" : "false"
+		case .int, .double, .decimal:
+			return formatter.string(from: Self.scalarNumber(x)!)
+		default:
+			return nil
+		}
+	}
+
+	func extractVar(_ path: String) -> ExprValue {
+		var target = vars
+		for fragment in path.split(separator: "/") {
+			switch target {
+			case .array(let items):
+				guard let index = Int(fragment), items.indices.contains(index) else { return .null }
+				target = items[index]
+			case .object(let object):
+				guard let value = object[String(fragment)] else { return .null }
+				target = value
+			default:
+				return .null
+			}
+		}
+		return ExprValue(attribute: target)
+	}
+
+	/// -1, 0 or 1, or nil when the operands cannot be compared.
+	func compare(_ lhs: ExprValue, _ rhs: ExprValue) -> Int? {
+		switch (lhs, rhs) {
+		case (.null, .null):
+			return 0
+		case (.null, _), (_, .null):
+			return nil
+		default:
+			break
+		}
+
+		switch lhs {
+		case .int, .double, .decimal:
+			guard let rvalue = numberConvert(rhs) else { return nil }
+			let lvalue = lhs.doubleValue!
+			return lvalue == rvalue ? 0 : (lvalue > rvalue ? 1 : -1)
+		case .string(let lvalue):
+			guard let rvalue = stringConvert(rhs) else { return nil }
+			return lvalue.compare(rvalue).rawValue
+		case .bool(let lvalue):
+			let rvalue = booleanConvert(rhs)
+			return lvalue == rvalue ? 0 : (lvalue ? 1 : -1)
+		default:
+			return Self.deepEquals(lhs, rhs) ? 0 : nil
+		}
+	}
+
+	// Arrays and objects compare equal like 1.5.0's Foundation collections: numbers exactly by value
+	// (a decimal as the NSDecimalNumber it was parsed as, so 0.1234567890123456789 and
+	// 0.1234567890123456788 differ), booleans with booleans (and, on Apple platforms only, with 0/1),
+	// strings by UTF-16 code units.
+	static func deepEquals(_ lhs: ExprValue, _ rhs: ExprValue) -> Bool {
+		switch (lhs, rhs) {
+		case (.array(let l), .array(let r)):
+			return l.count == r.count && zip(l, r).allSatisfy { deepEquals($0, $1) }
+		case (.object(let l), .object(let r)):
+			return l.count == r.count && l.allSatisfy { key, value in r[key].map { deepEquals(value, $0) } ?? false }
+		case (.array, .attributeArray), (.attributeArray, .array), (.attributeArray, .attributeArray):
+			let count = lhs.arrayCount!
+			return count == rhs.arrayCount && (0..<count).allSatisfy { deepEquals(lhs[$0]!, rhs[$0]!) }
+		case (.object, .attributeObject), (.attributeObject, .object), (.attributeObject, .attributeObject):
+			return lhs.objectCount == rhs.objectCount
+				&& lhs.allObjectValuesSatisfy { key, value in rhs[key].map { deepEquals(value, $0) } ?? false }
+		case (.string(let l), .string(let r)):
+			return l.utf16.elementsEqual(r.utf16)
+		case (.null, .null):
+			return true
+		case (.bool(let l), .bool(let r)):
+			return l == r
+		case (.bool(let b), let other), (let other, .bool(let b)):
+			// As JSONSerialization-parsed Foundation collections compared in 1.5.0 on each platform:
+			// Apple Foundation equates a boolean with 0/1, Linux Foundation never equates it with a
+			// number (measured in the macOS CI lanes and on Linux).
+			#if canImport(Darwin)
+				guard let n = scalarNumber(other) else { return false }
+				return NSArray(object: NSNumber(value: b)).isEqual(to: [n])
+			#else
+				_ = (b, other)
+				return false
+			#endif
+		default:
+			guard let l = scalarNumber(lhs), let r = scalarNumber(rhs) else { return false }
+			return NSArray(object: l).isEqual(to: [r])
+		}
+	}
+
+	private static func scalarNumber(_ x: ExprValue) -> NSNumber? {
+		switch x {
+		case .int(let value): return NSNumber(value: value)
+		case .double(let value): return NSNumber(value: value)
+		case .decimal(let value): return NSDecimalNumber(decimal: value)
+		default: return nil
+		}
+	}
+}
