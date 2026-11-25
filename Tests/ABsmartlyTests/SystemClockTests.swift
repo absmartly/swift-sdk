@@ -18,6 +18,15 @@ import Testing
 		await #expect(throws: CancellationError.self) { try await sleeping.value }
 	}
 
+	// Delays a caller can configure (`publishDelay`, `refreshInterval`) that do not fit a
+	// nanosecond count are clamped instead of trapping; the sleep is then cancelled.
+	@Test(arguments: [Double.infinity, 1e300, -1, .nan])
+	func sleepClampsDelaysThatDoNotFitNanoseconds(seconds: Double) async {
+		let sleeping = Task { try await SystemClock().sleep(seconds: seconds) }
+		sleeping.cancel()
+		_ = try? await sleeping.value
+	}
+
 	@Test func millisIsTheWallClock() {
 		let now = Int64(Date().timeIntervalSince1970 * 1000)
 		#expect(abs(SystemClock().millis() - now) < 1000)

@@ -33,6 +33,7 @@ release.
 ### Changed
 - The `X-Agent` header is `absmartly-swift-sdk/2.0.0`, so the collector's `agent` column shows 2.0.0 for 2.x clients.
 - A NaN or infinite number in a goal property or attribute is published as `null`, as JavaScript's `JSON.stringify` writes it. Affects apps that track such values: the collector now receives the goal or attribute with a `null` value. 1.5.0 could not encode such a batch and re-queued it, so no later publish or `close()` of that context succeeded.
+- A `boolean` custom field is `true` only for exactly `"true"` and `false` for anything else (including `"TRUE"`), as in JavaScript; 1.5.0 returned no value for text other than exactly `"true"` or `"false"`.
 - `ABsmartlyError` may gain cases in later 2.x releases; a `switch` over it needs a `default` case.
 - A failed context's `contextData` is an empty `ContextData`, as in JavaScript (1.5.0's `getContextData()` returns `nil`).
 - A refresh whose fetch completes after `close()` has started installs nothing and logs no event, whether the fetch succeeds or fails (a failure is still thrown to the caller), as in 1.5.0.
