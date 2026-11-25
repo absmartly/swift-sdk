@@ -7,8 +7,8 @@ import Testing
 private func json(_ value: JSONValue) -> JSONValue { value }
 
 @Suite struct JSONValueTests {
-	// Q3: NaN and infinity are null on the SDK's own encoders (the collector PUT, `description`);
-	// an app's encoder keeps its nonConformingFloatEncodingStrategy.
+	// NaN and infinity are null on the SDK's own encoders (the collector PUT, `description`); an
+	// app's encoder keeps its nonConformingFloatEncodingStrategy.
 	@Test func nonFiniteNumbersFollowTheAppEncodersStrategy() throws {
 		let value: JSONValue = ["nan": .double(.nan), "inf": .double(.infinity)]
 		let strict = JSONEncoder()

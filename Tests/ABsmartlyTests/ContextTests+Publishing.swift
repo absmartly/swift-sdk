@@ -572,17 +572,20 @@ extension ContextTests {
 				fired.value = true
 				clock.advance(by: 5)
 				_ = await eventually(timeout: 5) { env.publishCount == 1 }
-				Task {
-					await pause(0.05)
-					timerPublish.reject(TestError("timer publish failed"))
-				}
+			}
+			// The timer's PUT fails only once close() is waiting for it, so the order does not depend
+			// on timing.
+			let waiting: @Sendable () -> Void = {
+				guard env.publishCount == 1 else { return }
+				timerPublish.reject(TestError("timer publish failed"))
 			}
 			try await Context.$closeAwaitedInFlightHook.withValue(hook) {
-				try await context.close()
+				try await Context.$closeWaitsForInFlightHook.withValue(waiting) {
+					try await context.close()
+				}
 			}
 
 			#expect(context.state == .closed)
-			await pause(0.1)
 			#expect(context.pendingEventCount == 0)
 			#expect(env.publishCount == 2)
 			#expect(env.sentEvents.last?["goals"]?[0]?["name"] == "goal1")
@@ -601,9 +604,15 @@ extension ContextTests {
 		#expect(context.state == .ready)
 
 		#expect(await clock.waitForSleepers())
+		env.log.clear()
 		clock.advance(by: 5)
 		#expect(await eventually(timeout: 5) { env.publishCount == 2 })
 		#expect(await eventually(timeout: 5) { context.pendingEventCount == 0 })
+		// The retry sends the re-queued goal and reports a successful publish.
+		#expect(env.sentEvents.last?["goals"]?[0]?["name"] == "goal1")
+		#expect(await eventually(timeout: 5) { env.log.publishes.count == 1 })
+		#expect(env.log.publishes.first?.goals.map(\.name) == ["goal1"])
+		#expect(env.log.errors == [])
 	}
 
 	// With a negative delay nothing is retried automatically after a failed close.
@@ -679,6 +688,35 @@ extension ContextTests {
 
 		#expect(env.log.goals.map(\.name) == ["goal1"])
 		#expect(env.log.errorMessages == ["ABsmartly Context is finalizing."])
+	}
+
+	// No publish timer for an empty queue or a closed context: a goal's logger that returns after
+	// another caller has closed (and drained) the context starts none, so nothing holds the context.
+	@Test func noPublishTimerWhenTheLoggerReturnsAfterClose() async throws {
+		let clock = TestClock()
+		let env = ContextEnv(clock: clock)
+		let context = env.context(options: Context.Options(publishDelay: 5))
+		let closed = Box(false)
+		env.log.setHook { context, event in
+			guard case .goal = event else { return }
+			let done = DispatchSemaphore(value: 0)
+			Task {
+				try? await context.close()
+				closed.value = true
+				done.signal()
+			}
+			done.wait()
+		}
+		await Task.detached { context.track("goal1", properties: nil) }.value
+		#expect(closed.value)
+		#expect(context.state == .closed)
+		#expect(env.publishCount == 1)
+		await pause(0.05)
+		#expect(clock.sleeperCount == 0)
+
+		let empty = env.context(options: Context.Options(publishDelay: 5))
+		try await empty.publish()
+		#expect(clock.sleeperCount == 0)
 	}
 
 	@Test func closeWaitsForInFlightPublish() async throws {

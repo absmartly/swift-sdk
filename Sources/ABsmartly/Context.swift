@@ -340,15 +340,17 @@ public final class Context: Sendable {
 		// queued, and repeat until nothing is queued or in flight. That check and marking the context
 		// closed are one critical section, so a timer publish that starts in between is waited for
 		// and its batch cannot be stranded.
-		var streams: [Int: AsyncStream<Event>.Continuation]?
-		while streams == nil {
+		while true {
 			while let inFlight = storage.withLock({ $0.inFlightPublishes.values.first }) {
+				#if DEBUG
+					Self.closeWaitsForInFlightHook?()
+				#endif
 				_ = await inFlight.value
 			}
 			#if DEBUG
 				await Self.closeAwaitedInFlightHook?()
 			#endif
-			streams = storage.withLock { state -> [Int: AsyncStream<Event>.Continuation]? in
+			let closedStreams = storage.withLock { state -> [Int: AsyncStream<Event>.Continuation]? in
 				guard state.inFlightPublishes.isEmpty, state.pendingCount == 0 else { return nil }
 				state.closed = true
 				state.closing = false
@@ -356,7 +358,14 @@ public final class Context: Sendable {
 				state.streams = [:]
 				return streams
 			}
-			if streams == nil, case .failure(let error) = await flush() {
+			if let closedStreams {
+				emit(.close, onMain: true, streams: closedStreams)
+				for continuation in closedStreams.values {
+					continuation.finish()
+				}
+				return .success(())
+			}
+			if case .failure(let error) = await flush() {
 				// Reopened with the batch re-queued: the usual automatic publish retries it even if the
 				// app does not call publish() or close() again (a negative delay still needs a call).
 				storage.withLock { state in
@@ -368,12 +377,6 @@ public final class Context: Sendable {
 				return .failure(error)
 			}
 		}
-		guard let streams else { return .success(()) }
-		emit(.close, onMain: true, streams: streams)
-		for continuation in streams.values {
-			continuation.finish()
-		}
-		return .success(())
 	}
 
 	/// Sends the queued events. A failed context drops them instead.
@@ -435,7 +438,10 @@ public final class Context: Sendable {
 	}
 
 	private func schedulePublish(_ state: inout ContextState) {
-		guard state.isReady, publishDelay >= 0, state.publishTimer == nil else { return }
+		// Nothing to send, or a closed context (a logger returning after another caller closed it):
+		// no timer, which would only hold the context for the delay.
+		guard state.isReady, !state.closed, state.pendingCount > 0, publishDelay >= 0, state.publishTimer == nil
+		else { return }
 		let delay = publishDelay
 		// Held strongly until it fires, so goals tracked just before the caller drops its last
 		// reference are still published.
@@ -837,6 +843,9 @@ public final class Context: Sendable {
 		/// Test hook: runs each time close() has waited for the publishes in flight, before it checks
 		/// whether the context is idle (the window in which a timer publish can start).
 		@TaskLocal static var closeAwaitedInFlightHook: (@Sendable () async -> Void)?
+
+		/// Test hook: runs when close() starts waiting for a publish in flight.
+		@TaskLocal static var closeWaitsForInFlightHook: (@Sendable () -> Void)?
 
 		/// Test hook: receives each event routed to the main thread, with its delivery, in place of
 		/// the main queue (which nothing services under Linux tests). Task-local, so tasks the
