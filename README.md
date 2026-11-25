@@ -67,7 +67,9 @@ post_install do |installer|
 end
 ```
 
-Then run `pod install`.
+Then run `pod install`. This hook was measured on Xcode 27.2 (iOS 15, macOS 12, watchOS 9; tvOS
+not measured) with the 1.5.0 sources and the same dependency pods and declared targets as 1.3.4,
+not with the 1.3.4 pod itself.
 
 #### Moving from CocoaPods to Swift Package Manager
 
