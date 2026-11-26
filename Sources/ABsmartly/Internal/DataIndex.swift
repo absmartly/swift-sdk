@@ -37,8 +37,6 @@ struct DataIndex: Sendable {
 	let experiments: [String: Entry]
 	/// For each variable key, the experiments whose variants define it, by ascending unique id.
 	let variableExperiments: [String: [Entry]]
-	/// The holdouts with a non-empty split, by id. A holdout with an empty split is ignored.
-	let holdoutsById: [Int: Experiment]
 
 	static let empty = DataIndex(ContextData())
 
@@ -100,7 +98,6 @@ struct DataIndex: Sendable {
 		self.data = data
 		self.experiments = experiments
 		self.variableExperiments = variableExperiments
-		self.holdoutsById = holdoutsById
 	}
 
 	// A variant config must be a JSON object; anything else gives the variant no variables.
