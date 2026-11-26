@@ -509,8 +509,12 @@ public final class Context: Sendable {
 	}
 
 	/// The value of a variable in the variant of the first experiment defining it (by ascending id)
-	/// that this context is in, or `nil` when there is none or its variant does not define the key.
-	/// With `exposing` (the default) that experiment is exposed; no other experiment is.
+	/// that this context is in, or `nil` when its variant does not define the key. When the context is
+	/// in none of them but a holdout holds it out of one, the first held-out experiment's control value
+	/// (or `nil` when its control does not define the key); otherwise `nil`.
+	/// With `exposing` (the default) that experiment is exposed and no other experiment is, but the
+	/// holdouts covering every experiment checked publish their own exposures; a held-out experiment
+	/// publishes no exposure of its own.
 	public func variableValue(_ key: String, exposing: Bool = true) -> JSONValue? {
 		// One critical section: the ready check, the candidates, their assignments and the winner's
 		// exposure all come from one data install.

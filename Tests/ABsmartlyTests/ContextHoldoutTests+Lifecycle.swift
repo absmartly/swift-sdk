@@ -200,16 +200,18 @@ extension ContextHoldoutTests {
 			[H.experiment(1, "exp_epoch_race", holdoutIds: [11])],
 			holdouts: [H.holdout(11, "holdout_h", seeds: H.holdoutA, iteration: 2)])
 		h.env.serveNext(refreshed)
-		let refreshing = Box<Task<Void, Never>?>(nil)
+		let refreshing = Box<Task<Void, any Error>?>(nil)
 		h.env.log.setHook { context, event in
 			if case .exposure(let exposure) = event, exposure.id == 1 {
-				refreshing.value = Task { try? await context.refresh() }
+				refreshing.value = Task { try await context.refresh() }
 			}
 		}
 
 		#expect(context.treatment(for: "exp_epoch_race") == H.normalVariant)
 		h.env.log.setHook(nil)
-		await refreshing.value?.value
+		// The logger-started refresh must have run and succeeded, or this pins nothing.
+		try await #require(refreshing.value).value
+		#expect(h.env.getCount == 1)
 
 		try await h.expectPublished(
 			context, [H.own(1, "exp_epoch_race", H.normalVariant), H.held(11, "holdout_h", 1)])
@@ -241,9 +243,11 @@ extension ContextHoldoutTests {
 
 		// Each epoch publishes the experiment's exposure with its own holdout exposure, and repeated
 		// reads in an epoch add nothing. The reads may all land before or after the refresh.
-		let ids = h.exposures.map(\.id)
+		// Checked on the published batch: logger delivery order across threads is not the queue order.
+		let published = try await h.publishedExposures(context)
+		let ids = published.map(\.id)
 		#expect(ids == [1, 11, 1, 11] || ids == [1, 11])
-		#expect(h.exposures.filter { $0.id == 11 }.allSatisfy { $0.variant == 1 })
+		#expect(published.filter { $0.id == 11 }.allSatisfy { $0.variant == 1 })
 	}
 
 	// The refresh variant of the race above, deterministic: an iteration-2 holdout installed between

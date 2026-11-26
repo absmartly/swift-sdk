@@ -379,10 +379,14 @@ private typealias H = Holdouts
 	func expectNotHeldOut(
 		_ context: Context, _ holdoutId: Int, sourceLocation: SourceLocation = #_sourceLocation
 	) async throws {
-		_ = context.treatment(for: "verdict_vectors_experiment")
+		let variant = context.treatment(for: "verdict_vectors_experiment")
+		let published = try await h.publishedExposures(context)
+		// Not held out: the experiment publishes its own exposure as well as the holdout's arm 1.
 		#expect(
-			try await h.publishedExposures(context).contains(
-				H.held(holdoutId, "holdout_\(holdoutId)", 1, unitType: Self.verdictUnitType)),
+			published.contains(H.held(holdoutId, "holdout_\(holdoutId)", 1, unitType: Self.verdictUnitType)),
+			sourceLocation: sourceLocation)
+		#expect(
+			published.contains(H.own(9, "verdict_vectors_experiment", variant, unitType: Self.verdictUnitType)),
 			sourceLocation: sourceLocation)
 	}
 
@@ -486,11 +490,12 @@ private typealias H = Holdouts
 	@Test func deserializesHoldoutsFixture() throws {
 		let data = Fixtures.contextData("holdouts_context")
 
-		#expect(data.experiments.count == 1)
+		try #require(data.experiments.count == 1)
 		#expect(data.experiments[0].holdoutIds == [11])
 		#expect(data.experiments[0].holdoutType == nil)
 
 		let holdouts = try #require(data.holdouts)
+		try #require(holdouts.count == 2)
 		#expect(holdouts.map(\.id) == [11, 12])
 		#expect(holdouts.map(\.name) == ["holdout_a", "holdout_b"])
 		#expect(holdouts.map(\.iteration) == [1, 1])
@@ -573,7 +578,10 @@ private typealias H = Holdouts
 			_ = context.variableValue("k")
 			context.track("goal", properties: ["amount": 1])
 			try await context.publish()
-			return try #require(h.env.transport.publishes.last?.body)
+			let body = try #require(h.env.transport.publishes.last?.body)
+			// Key-sorted, so two encodings of the same payload compare equal byte for byte.
+			return try JSONSerialization.data(
+				withJSONObject: JSONSerialization.jsonObject(with: body), options: [.sortedKeys])
 		}
 
 		let experiments = [
@@ -581,24 +589,22 @@ private typealias H = Holdouts
 		]
 		let baseline = try await publishedBody(H.contextData(experiments))
 		// The pre-holdout wire: any holdout field added to the publish shows up here.
-		let sorted = try JSONSerialization.data(
-			withJSONObject: JSONSerialization.jsonObject(with: baseline), options: [.sortedKeys])
 		let expected =
 			"{\"attributes\":[{\"name\":\"country\",\"setAt\":1620000000000,\"value\":\"NL\"}],\"exposures\":["
 			+ "{\"assigned\":true,\"audienceMismatch\":false,\"custom\":false,\"eligible\":true,\"exposedAt\":1620000000000,\"fullOn\":false,\"id\":1,\"name\":\"exp_a\",\"overridden\":false,\"ruleOverride\":false,\"unit\":\"session_id\",\"variant\":1},"
 			+ "{\"assigned\":true,\"audienceMismatch\":false,\"custom\":false,\"eligible\":true,\"exposedAt\":1620000000000,\"fullOn\":true,\"id\":2,\"name\":\"exp_b\",\"overridden\":false,\"ruleOverride\":false,\"unit\":\"session_id\",\"variant\":1}],"
 			+ "\"goals\":[{\"achievedAt\":1620000000000,\"name\":\"goal\",\"properties\":{\"amount\":1}}],"
 			+ "\"hashed\":true,\"publishedAt\":1620000000000,\"units\":[{\"type\":\"session_id\",\"uid\":\"\(unitHash(H.uid))\"}]}"
-		#expect(String(decoding: sorted, as: UTF8.self) == expected)
+		#expect(String(decoding: baseline, as: UTF8.self) == expected)
 
-		// The direct transport normalizes payloads; the baseline assertion above verifies the complete
-		// pre-holdout wire shape. Holdout metadata does not alter the publish payload.
-		#expect(H.contextData(experiments, holdouts: []).holdouts?.isEmpty == true)
+		// An empty holdouts list, and holdout metadata that covers nothing, publish the same bytes.
+		#expect(try await publishedBody(H.contextData(experiments, holdouts: [])) == baseline)
 		var dangling = experiments
 		dangling[0]["holdoutIds"] = [999]
 		dangling[1]["holdoutIds"] = [] as [Int]
-		let ignored = H.contextData(dangling, holdouts: [H.holdout(11, "unreferenced", seeds: H.holdoutA)])
-		#expect(ignored.holdouts?.count == 1)
+		#expect(
+			try await publishedBody(
+				H.contextData(dangling, holdouts: [H.holdout(11, "unreferenced", seeds: H.holdoutA)])) == baseline)
 	}
 
 	// A malformed id in `holdoutIds` is dropped on its own (JavaScript skips ids with no holdout); the
