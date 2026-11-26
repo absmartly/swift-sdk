@@ -695,7 +695,8 @@ extension ContextHoldoutTests {
 	@Test func staleHoldoutReferenceNeverOverwritesNewerPinnedCacheEntry() async throws {
 		let context = h.context(
 			H.contextData(
-				[H.experiment(1, "exp_f", holdoutIds: [11])], holdouts: [H.holdout(11, "holdout_h", seeds: H.holdoutA)]))
+				[H.experiment(1, "exp_f", holdoutIds: [11])], holdouts: [H.holdout(11, "holdout_h", seeds: H.holdoutA)])
+		)
 
 		#expect(context.treatment(for: "exp_f") == 0)
 		#expect(context.pendingEventCount == 1)
@@ -747,7 +748,8 @@ extension ContextHoldoutTests {
 	@Test(arguments: [false, true])
 	func overrideKeepsItsCachedAssignmentWhenTheExperimentIsRemoved(peekFirst: Bool) async throws {
 		let data = H.contextData(
-			[H.experiment(1, "exp_gone", holdoutIds: [11])], holdouts: [H.holdout(11, "holdout_gone", seeds: H.holdoutA)])
+			[H.experiment(1, "exp_gone", holdoutIds: [11])],
+			holdouts: [H.holdout(11, "holdout_gone", seeds: H.holdoutA)])
 		let own = H.own(1, "exp_gone", 1, assigned: false, overridden: true)
 
 		let context = h.context(data, overrides: ["exp_gone": 1])
@@ -830,7 +832,8 @@ extension ContextHoldoutTests {
 		try await h.refresh(
 			context,
 			H.contextData(
-				[H.experiment(1, "exp_dup", holdoutIds: [11])], holdouts: [H.holdout(11, "holdout_a", seeds: H.holdoutB)]))
+				[H.experiment(1, "exp_dup", holdoutIds: [11])],
+				holdouts: [H.holdout(11, "holdout_a", seeds: H.holdoutB)]))
 
 		#expect(context.treatment(for: "exp_dup") == H.normalVariant)
 		#expect(context.pendingEventCount == 2)
@@ -839,7 +842,8 @@ extension ContextHoldoutTests {
 	@Test func refreshRemovingCoverageReResolvesExperiment() async throws {
 		let context = h.context(
 			H.contextData(
-				[H.experiment(1, "exp_cov", holdoutIds: [11])], holdouts: [H.holdout(11, "holdout_a", seeds: H.holdoutA)]))
+				[H.experiment(1, "exp_cov", holdoutIds: [11])],
+				holdouts: [H.holdout(11, "holdout_a", seeds: H.holdoutA)]))
 
 		#expect(context.treatment(for: "exp_cov") == 0)
 		#expect(context.pendingEventCount == 1)

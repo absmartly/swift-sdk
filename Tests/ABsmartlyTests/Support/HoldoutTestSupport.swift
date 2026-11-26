@@ -42,7 +42,9 @@ enum Holdouts {
 			"id": id, "name": name, "unitType": unitType, "iteration": 1, "seedHi": 100, "seedLo": 200,
 			"split": split, "trafficSeedHi": 1, "trafficSeedLo": 2, "trafficSplit": [0.0, 1.0],
 			"fullOnVariant": fullOnVariant, "applications": [["name": "website"]],
-			"variants": configs.enumerated().map { ["name": "\($0.offset)", "config": $0.element as Any? ?? NSNull()] },
+			"variants": configs.enumerated().map {
+				["name": "\($0.offset)", "config": $0.element as Any? ?? NSNull()]
+			},
 			"audienceStrict": audienceStrict, "audience": audience as Any? ?? NSNull(),
 		]
 		if let holdoutIds {

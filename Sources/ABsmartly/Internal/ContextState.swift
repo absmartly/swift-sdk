@@ -388,7 +388,8 @@ struct ContextState {
 			assignment.holdouts = pinned
 			assignment.suppressed = pinned.contains { holdout in
 				guard let arm = holdout.arm else { return false }
-				return Self.isHeldOutBy(arm.variant, armCount: arm.holdoutArmCount, fullOnVariant: entry.data.fullOnVariant)
+				return Self.isHeldOutBy(
+					arm.variant, armCount: arm.holdoutArmCount, fullOnVariant: entry.data.fullOnVariant)
 			}
 		}
 
@@ -504,7 +505,8 @@ struct ContextState {
 		}
 	}
 
-	private mutating func queue(_ assignment: Assignment, name: String, now: () -> Int64, into queued: inout [Exposure]) {
+	private mutating func queue(_ assignment: Assignment, name: String, now: () -> Int64, into queued: inout [Exposure])
+	{
 		let exposure = Exposure(
 			id: assignment.id, name: name, unit: assignment.unitType, variant: assignment.variant,
 			exposedAt: now(), assigned: assignment.assigned, eligible: assignment.eligible,

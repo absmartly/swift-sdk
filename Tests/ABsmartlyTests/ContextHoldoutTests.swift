@@ -240,7 +240,8 @@ private typealias H = Holdouts
 		let context = h.context(
 			H.contextData(
 				[H.experiment(1, "exp_holdout_custom", holdoutIds: [11])],
-				holdouts: [H.holdout(11, "holdout_a", seeds: H.holdoutA)]), customAssignments: ["exp_holdout_custom": 3])
+				holdouts: [H.holdout(11, "holdout_a", seeds: H.holdoutA)]), customAssignments: ["exp_holdout_custom": 3]
+		)
 
 		#expect(context.treatment(for: "exp_holdout_custom", exposing: false) == 0)
 	}
@@ -389,7 +390,8 @@ private typealias H = Holdouts
 		try await expectHeldOutBy(
 			verdictContext("façade", [verdictHoldout(107, seedHi: 0, seedLo: 42, split: [0.1, 0.9])]), 107)
 		try await expectNotHeldOut(
-			verdictContext("unicode_emoji_\u{1F680}_0", [verdictHoldout(107, seedHi: 0, seedLo: 42, split: [0.1, 0.9])]),
+			verdictContext(
+				"unicode_emoji_\u{1F680}_0", [verdictHoldout(107, seedHi: 0, seedLo: 42, split: [0.1, 0.9])]),
 			107)
 	}
 
@@ -403,7 +405,8 @@ private typealias H = Holdouts
 			verdictContext("signed_unit_4", [verdictHoldout(106, seedHi: seedHi, seedLo: seedLo, split: [0.1, 0.9])]),
 			106)
 		try await expectNotHeldOut(
-			verdictContext("signed_unit_b_1", [verdictHoldout(106, seedHi: seedHi, seedLo: seedLo, split: [0.1, 0.9])]),
+			verdictContext(
+				"signed_unit_b_1", [verdictHoldout(106, seedHi: seedHi, seedLo: seedLo, split: [0.1, 0.9])]),
 			106)
 	}
 
@@ -544,7 +547,8 @@ private typealias H = Holdouts
 	@Test(arguments: ["\"oops\"", "{\"id\":11}", "[1, \"x\", {\"id\":11}]", "null"])
 	func malformedHoldoutsDegradeOnlyThemselves(holdouts: String) throws {
 		let experiment = String(
-			decoding: try JSONSerialization.data(withJSONObject: H.experiment(1, "exp", holdoutIds: [11])), as: UTF8.self)
+			decoding: try JSONSerialization.data(withJSONObject: H.experiment(1, "exp", holdoutIds: [11])),
+			as: UTF8.self)
 		let data = H.decode(Data("{\"experiments\":[\(experiment)],\"holdouts\":\(holdouts)}".utf8))
 		#expect(data.experiments.count == 1)
 		#expect(h.context(data).treatment(for: "exp", exposing: false) == H.normalVariant)
@@ -617,14 +621,16 @@ private typealias H = Holdouts
 				[
 					H.experiment(1, "exp_session", holdoutIds: [11]),
 					H.experiment(2, "exp_user", unitType: "user_id", holdoutIds: [11]),
-				], holdouts: [H.holdout(11, "holdout_a", seeds: H.holdoutA)]), units: [UnitType.userID: H.uidNotHeldOut])
+				], holdouts: [H.holdout(11, "holdout_a", seeds: H.holdoutA)]), units: [UnitType.userID: H.uidNotHeldOut]
+		)
 
 		#expect(context.treatment(for: "exp_session") == 0)
 		#expect(context.treatment(for: "exp_user") == 0)
-		#expect(env.exposures == [
-			H.held(11, "holdout_a", 0), H.own(2, "exp_user", 0, unitType: "user_id"),
-			H.held(11, "holdout_a", 1, unitType: "user_id"),
-		])
+		#expect(
+			env.exposures == [
+				H.held(11, "holdout_a", 0), H.own(2, "exp_user", 0, unitType: "user_id"),
+				H.held(11, "holdout_a", 1, unitType: "user_id"),
+			])
 	}
 
 	@Test func failedContextHasNoHoldouts() async {
@@ -638,7 +644,8 @@ private typealias H = Holdouts
 		let data = H.contextData(
 			[H.experiment(1, "exp_holdout_no_mutate_in", holdoutIds: [12, 11]), H.experiment(2, "exp_not_covered")],
 			holdouts: [H.holdout(11, "holdout_no_mutate", seeds: H.holdoutA)])
-		let env = HoldoutEnv(); let context = env.context(data)
+		let env = HoldoutEnv()
+		let context = env.context(data)
 
 		#expect(context.treatment(for: "exp_holdout_no_mutate_in") == 0)
 		#expect(context.treatment(for: "exp_not_covered") == H.normalVariant)
