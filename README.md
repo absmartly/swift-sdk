@@ -33,7 +33,7 @@ To install the A/B Smartly SDK using Swift Package Manager, following these step
 
 - Enter the A/B Smartly Swift SDK GitHub repository: ```https://github.com/absmartly/swift-sdk```
 
-- Select the SDK version (latest recommended)
+- Select the SDK version: 2.x is the latest major version; for 1.x, use "Up to Next Major Version" from `1.5.0`
 
 - Select the ABSmartly library
 
@@ -68,10 +68,11 @@ post_install do |installer|
       setting, minimum = minimums[target.platform_name]
       next unless setting
       target.build_configurations.each do |config|
-        current = config.build_settings[setting] || '0'
-        if Gem::Version.new(current) < Gem::Version.new(minimum)
-          config.build_settings[setting] = minimum
-        end
+        # A target without its own setting inherits the project's; keep that if it is high enough.
+        current = config.build_settings[setting] ||
+                  project.build_configuration_list[config.name]&.build_settings&.[](setting)
+        next if current && Gem::Version.new(current) >= Gem::Version.new(minimum)
+        config.build_settings[setting] = minimum
       end
     end
   end
@@ -79,7 +80,9 @@ end
 ```
 
 A `Podfile` can have only one `post_install` hook: if yours already has one (Flutter projects
-do), add the body of this block to it, keeping what it already does. Then run `pod install`.
+do), add the body of this block to it, keeping what it already does. Then run `pod install`. With
+`incremental_installation: true`, CocoaPods reuses cached pod projects that the hook does not see:
+run `pod install --clean-install` once after adding it.
 
 Raising the pod targets to these minimums was measured on Xcode 27.2: `pod install` and a build of
 the SDK pod with its dependencies succeeded for iOS 15, macOS 12 and watchOS 9 (tvOS not measured).

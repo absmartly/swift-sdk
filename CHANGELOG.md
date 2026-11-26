@@ -8,7 +8,9 @@
   CocoaPods users how to keep building 1.3.4 on current Xcode (a Podfile `post_install` hook that
   raises pod deployment targets) and how to move to Swift Package Manager. The release workflow no
   longer has a CocoaPods trunk step; it still checks that the tag, podspec and SDK version agree and
-  runs the tests. This replaces the 1.5.0 notes about a trunk push behind `COCOAPODS_PUBLISH`.
+  runs the tests. This supersedes the 1.5.0 notes below about a trunk push behind
+  `COCOAPODS_PUBLISH` (*Added*) and the CocoaPods note under *Compatibility*: there is no such
+  switch any more.
   PR CI no longer runs the quick podspec lint, as the podspec is not published; the release check
   and `DefaultClientTest` still read its version.
 
@@ -70,9 +72,9 @@ security fixes, from the `release/1.x` branch) for 12 months after 2.0 ships.
   for `.close`), `readyError()`, `getCustomFieldKeys(experimentName:)`.
 - `Hashing` is public, with `hash(String)`, `hash(Double)`, `utf8Bytes`, `base64UrlNoPadding`;
   `ABSmartlyError` is public.
-- Historical note: the 1.5.0 release notes below describe a former, disabled CocoaPods publishing
-  path. The repository no longer publishes 1.x after 1.3.4 to CocoaPods; `COCOAPODS_PUBLISH` is
-  not used by the current release workflow.
+- A `v*` tag can publish the podspec to the CocoaPods trunk (the tag, podspec and SDK version must
+  agree). The job is off until the repository variable `COCOAPODS_PUBLISH` is `true`; see the
+  CocoaPods note under Compatibility.
 
 ### Changed (cross-SDK contract)
 - Holdouts configured in A/B Smartly take effect (v1.4.0 ignored them; see *Added*). A unit held out by
@@ -199,11 +201,12 @@ security fixes, from the `release/1.x` branch) for 12 months after 2.0 ships.
 - The declared minimum platforms are unchanged (iOS 10, macOS 10.14 for Swift Package Manager / 10.10
   for CocoaPods, tvOS 10, watchOS 3). Current Xcode cannot build for watchOS below 5, so CI builds
   watchOS at 5.0 and iOS/tvOS at the package minimums.
-- Historical CocoaPods note: `pod lib lint` / `pod trunk push` failed on the then-current Xcode
-  16.3 and 26 while building dependency pods. The v1.5.0 tag was not published because the former
-  publish job's trunk push was disabled (`COCOAPODS_PUBLISH`). The current policy is that 1.3.4 is
-  the last CocoaPods release and later 1.x versions are Swift Package Manager only; the current
-  workflow no longer has a CocoaPods trunk step. The SDK itself builds for every Apple platform
-  with Swift Package Manager.
+- CocoaPods: `pod lib lint` / `pod trunk push` currently fail on Xcode 16.3 and 26 while building
+  the dependency pods, before the SDK is compiled: SwiftyJSON 5 declares macOS 10.9 (availability
+  errors) and, on Xcode 26, PromiseKit 6's iOS 8 target needs the removed `libarclite`. The SDK
+  itself builds for every Apple platform with Swift Package Manager. So the `v1.5.0` tag does not
+  publish 1.5.0 to the CocoaPods trunk: the publish job's trunk push is off (`COCOAPODS_PUBLISH`),
+  and that switch only affects tags pushed after it is set. A 1.5.x pod needs the dependency pods to
+  validate on the publishing Xcode; raising this podspec's own targets does not change theirs.
 - Toolchains 5.9 and later read `Package@swift-5.9.swift`, which is identical to `Package.swift` except
   that the SwiftyJSON dependency also names Mac Catalyst and visionOS.
