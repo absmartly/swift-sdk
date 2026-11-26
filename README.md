@@ -56,11 +56,19 @@ your `Podfile`; use `MACOSX_DEPLOYMENT_TARGET`, `TVOS_DEPLOYMENT_TARGET` or
 
 ```ruby
 post_install do |installer|
+  minimums = {
+    ios: ['IPHONEOS_DEPLOYMENT_TARGET', '15.0'],
+    osx: ['MACOSX_DEPLOYMENT_TARGET', '12.0'],
+    tvos: ['TVOS_DEPLOYMENT_TARGET', '15.0'],
+    watchos: ['WATCHOS_DEPLOYMENT_TARGET', '9.0']
+  }
   installer.pods_project.targets.each do |target|
+    setting, minimum = minimums[target.platform_name.to_sym]
+    next unless setting
     target.build_configurations.each do |config|
-      current = config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] || '0'
-      if Gem::Version.new(current) < Gem::Version.new('15.0')
-        config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
+      current = config.build_settings[setting] || '0'
+      if Gem::Version.new(current) < Gem::Version.new(minimum)
+        config.build_settings[setting] = minimum
       end
     end
   end
