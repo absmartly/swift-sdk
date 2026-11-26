@@ -50,9 +50,10 @@ pod 'ABSmartlySwiftSDK', '1.3.4'
 ```
 
 Current Xcode does not build pods below iOS 15 / macOS 12 / watchOS 9 (Xcode 27.2), and
-ABSmartlySwiftSDK 1.3.4 and its dependency pods declare lower targets. Raise the pods' targets in
-your `Podfile`; use `MACOSX_DEPLOYMENT_TARGET`, `TVOS_DEPLOYMENT_TARGET` or
-`WATCHOS_DEPLOYMENT_TARGET` and your app's version for other platforms:
+ABSmartlySwiftSDK 1.3.4 and its dependency pods declare lower targets. Raise the pods' deployment
+targets in your `Podfile`. This hook raises any pod target below those minimums for its platform
+(the tvOS minimum, 15.0, matches iOS but was not measured) and leaves higher targets unchanged. It
+also covers the separate pod projects that `generate_multiple_pod_projects: true` creates.
 
 ```ruby
 post_install do |installer|
@@ -62,32 +63,42 @@ post_install do |installer|
     tvos: ['TVOS_DEPLOYMENT_TARGET', '15.0'],
     watchos: ['WATCHOS_DEPLOYMENT_TARGET', '9.0']
   }
-  installer.pods_project.targets.each do |target|
-    setting, minimum = minimums[target.platform_name.to_sym]
-    next unless setting
-    target.build_configurations.each do |config|
-      current = config.build_settings[setting] || '0'
-      if Gem::Version.new(current) < Gem::Version.new(minimum)
-        config.build_settings[setting] = minimum
+  installer.generated_projects.each do |project|
+    project.targets.each do |target|
+      setting, minimum = minimums[target.platform_name]
+      next unless setting
+      target.build_configurations.each do |config|
+        current = config.build_settings[setting] || '0'
+        if Gem::Version.new(current) < Gem::Version.new(minimum)
+          config.build_settings[setting] = minimum
+        end
       end
     end
   end
 end
 ```
 
-Then run `pod install`. This hook was measured on Xcode 27.2 (iOS 15, macOS 12, watchOS 9; tvOS
-not measured) with the 1.5.0 sources and the same dependency pods and declared targets as 1.3.4,
-not with the 1.3.4 pod itself.
+A `Podfile` can have only one `post_install` hook: if yours already has one (Flutter projects
+do), add the body of this block to it, keeping what it already does. Then run `pod install`.
+
+Raising the pod targets to these minimums was measured on Xcode 27.2: `pod install` and a build of
+the SDK pod with its dependencies succeeded for iOS 15, macOS 12 and watchOS 9 (tvOS not measured).
+That run used the 1.5.0 sources with the same dependency pods and declared targets as 1.3.4, and a
+hook that set the targets unconditionally; this exact hook and the 1.3.4 pod itself were not built.
 
 #### Moving from CocoaPods to Swift Package Manager
 
 1. Remove `pod 'ABSmartlySwiftSDK'` from your `Podfile` and run `pod install` (or `pod deintegrate`
    if it was your only pod).
-2. Add the package as described under [Swift Package Manager](#swift-package-manager) and select
-   the `ABSmartly` library. The module name is the same, so `import ABSmartly` is unchanged.
+2. Add the package as described under [Swift Package Manager](#swift-package-manager), but choose
+   a 1.x version: in Xcode, the dependency rule "Up to Next Major Version" from `1.5.0` (in
+   `Package.swift`, `.package(url: "https://github.com/absmartly/swift-sdk", "1.5.0"..<"2.0.0")`).
+   The latest release is 2.x, which has a different module name (`ABsmartly`), API and minimum
+   platforms. Then select the `ABSmartly` library. The module name is the same as the pod's, so
+   `import ABSmartly` is unchanged.
 3. The package brings in PromiseKit, SwiftyJSON and swift-atomics through Swift Package Manager.
-   If your app also uses PromiseKit or SwiftyJSON from CocoaPods, move those to Swift Package
-   Manager too, so each module is linked once.
+   If your app also uses PromiseKit, SwiftyJSON or SwiftAtomics (module `Atomics`) from CocoaPods,
+   move those to Swift Package Manager too, so each module is linked once.
 4. Read the [CHANGELOG](CHANGELOG.md) for the changes since 1.3.4. Swift Package Manager needs
    macOS 10.14 (CocoaPods 1.3.4 supported 10.10); apps that must support macOS 10.10 to 10.13 stay
    on 1.3.4.
