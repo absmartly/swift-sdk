@@ -25,7 +25,7 @@ and 2.x in the same app: a Swift package graph holds one major version of a pack
 
 ## Step by step
 
-1. Update the dependency: `from: "2.0.0"` in SwiftPM (product `ABsmartly`), or `pod 'ABsmartly', '~> 2.0'`
+1. Update the dependency: `from: "2.1.0"` in SwiftPM (product `ABsmartly`), or `pod 'ABsmartly', '~> 2.1'`
    (the 1.x pod was `ABSmartlySwiftSDK`).
 2. Replace `import ABSmartly` with `import ABsmartly`, and remove `import PromiseKit` and
    `import SwiftyJSON` if you only used them for the SDK.

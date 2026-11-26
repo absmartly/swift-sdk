@@ -87,6 +87,37 @@ import Testing
 		#endif
 	}
 
+	// The holdout-set check is skipped when neither the data nor the cached assignment has holdouts,
+	// so warmed reads of an experiment without holdouts (here with an override too) compare nothing.
+	@Test(.enabled(if: countsCacheWrites)) func warmedReadsWithoutHoldoutsSkipTheHoldoutSetCheck() {
+		#if DEBUG
+			let context = Harness().context()
+			context.setOverride(1, for: "exp_test_abc")
+			#expect(context.treatment(for: "exp_test_ab") == 1)
+			#expect(context.treatment(for: "exp_test_abc") == 1)
+			for _ in 0..<100 {
+				#expect(context.treatment(for: "exp_test_ab", exposing: false) == 1)
+				#expect(context.treatment(for: "exp_test_abc", exposing: false) == 1)
+				#expect(context.variableValue("banner.size") == "large")
+			}
+			#expect(context.holdoutSetComparisonCount == 0)
+		#endif
+	}
+
+	// A covered experiment does compare its holdout set on a cached read.
+	@Test(.enabled(if: countsCacheWrites)) func warmedReadsWithHoldoutsCompareTheHoldoutSet() {
+		#if DEBUG
+			let h = HoldoutEnv()
+			let context = h.context(
+				Holdouts.contextData(
+					[Holdouts.experiment(1, "exp_cov", holdoutIds: [11])],
+					holdouts: [Holdouts.holdout(11, "holdout_a", seeds: Holdouts.holdoutB)]))
+			#expect(context.treatment(for: "exp_cov") == Holdouts.normalVariant)
+			#expect(context.treatment(for: "exp_cov") == Holdouts.normalVariant)
+			#expect(context.holdoutSetComparisonCount == 1)
+		#endif
+	}
+
 	@Test(.enabled(if: countsCacheWrites)) func warmedReadsDoNotWriteAssignmentCache() {
 		#if DEBUG
 			let context = Harness().context()

@@ -19,15 +19,19 @@ can move to 2.x.
 ## 2.0.0 (2026-11-25)
 
 A new API for Swift 6 over the 1.5.0 engine. Assignment, audiences, assignment rules, exposures,
-goals and the publish payload retain 1.5.0 behaviour apart from the extreme
+goals and the publish payload retain 1.5.0 behaviour apart from holdouts (below) and the extreme
 unsigned-number rounding described in [MIGRATING.md](MIGRATING.md#behaviour-notes) (a parity test replays 1.5.0's
 recorded output); the `X-Agent` header is `absmartly-swift-sdk/2.0.0`. See [MIGRATING.md](MIGRATING.md) for every
 1.x API and its replacement, and [SUPPORT.md](SUPPORT.md) for the 1.x support window.
 
-2.0.0 does not apply holdouts: the payload's holdout data is ignored, so every unit is assigned and
-exposed as if no holdout existed. Holdouts are supported from 2.1.0.
+**2.0.0 does not support holdouts.** Holdout data in the context payload (`holdouts`, `holdoutIds`)
+is ignored, as 1.4.0 ignored it: every unit is assigned and exposed as if no holdout existed, and no
+holdout exposure is published. Apps that rely on holdouts should stay on 1.5.x, which supports them
+(released, and maintained on `release/1.x`). Holdouts come in a later 2.x
+release. (They are supported from 2.1.0.)
 
 ### BREAKING (everyone moves)
+- Holdouts are not supported (1.5.0 supports them): holdout data is ignored, so a unit a holdout would hold out is assigned and exposed normally, and no holdout exposure is published. Stay on 1.5.x if you use holdouts; they come in a later 2.x release.
 - Module and pod renamed to `ABsmartly` (was module `ABSmartly`, pod `ABSmartlySwiftSDK`); the entry type is `ABsmartlyClient`. Update `import` lines and the dependency.
 - `async`/`await` replaces PromiseKit: `ready()`, `publish()`, `refresh()`, `close()` and `fetchContextData()` are `async throws(ABsmartlyError)`.
 - `JSONValue` replaces SwiftyJSON's `JSON` in every API (attributes, variables, goal properties, custom fields, unit values).

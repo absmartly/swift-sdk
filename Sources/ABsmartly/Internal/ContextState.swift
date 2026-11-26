@@ -68,6 +68,7 @@ struct ContextState {
 	#if DEBUG
 		var assignmentCacheWrites = 0
 		var revalidations = 0
+		var holdoutSetComparisons = 0
 	#endif
 
 	var hashedUnits: [String: [UInt8]] = [:]
@@ -238,15 +239,20 @@ struct ContextState {
 
 	// The covering holdouts are the same (id, iteration) pairs the assignment was resolved with. A
 	// same-iteration seed or split edit is not a change, so it never forces a second exposure.
-	private static func holdoutSetMatches(_ entry: DataIndex.Entry, _ assignment: Assignment) -> Bool {
-		// The common case, no holdouts on either side, stays off the comparison on every cached read.
-		if entry.holdouts == nil && assignment.holdouts == nil {
-			return true
-		}
+	// Callers skip it when neither side has holdouts (`holdoutsUnchanged`), the common case on every
+	// cached read.
+	private mutating func holdoutSetMatches(_ entry: DataIndex.Entry, _ assignment: Assignment) -> Bool {
+		#if DEBUG
+			holdoutSetComparisons += 1
+		#endif
 		let fresh = entry.holdouts ?? []
 		let pinned = assignment.holdouts ?? []
 		guard fresh.count == pinned.count else { return false }
 		return zip(fresh, pinned).allSatisfy { $0.id == $1.definition.id && $0.iteration == $1.definition.iteration }
+	}
+
+	private mutating func holdoutsUnchanged(_ entry: DataIndex.Entry, _ assignment: Assignment) -> Bool {
+		(entry.holdouts == nil && assignment.holdouts == nil) || holdoutSetMatches(entry, assignment)
 	}
 
 	// Arm 0 always holds the experiment out. In a 3-arm holdout, arm 1 holds out only an experiment
@@ -355,7 +361,7 @@ struct ContextState {
 		if let assignment = assignmentCache[experimentName] {
 			if let override = overrides[experimentName] {
 				if assignment.overridden && assignment.variant == override
-					&& (entry.map { Self.holdoutSetMatches($0, assignment) } ?? true)
+					&& (entry.map { holdoutsUnchanged($0, assignment) } ?? true)
 				{
 					return assignment
 				}
@@ -367,7 +373,7 @@ struct ContextState {
 				let custom = customAssignments[experimentName]
 				if custom == nil || custom == assignment.variant || assignment.ruleOverride || assignment.suppressed {
 					if Self.experimentMatches(entry.data, assignment) && audienceMatches(entry, assignment)
-						&& Self.holdoutSetMatches(entry, assignment)
+						&& holdoutsUnchanged(entry, assignment)
 					{
 						return assignment
 					}

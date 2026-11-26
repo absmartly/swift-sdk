@@ -943,5 +943,10 @@ extension JSONValue {
 		var revalidationCount: Int {
 			storage.withLock { $0.revalidations }
 		}
+
+		/// Test hook: how many times a cached assignment's holdout set was compared with the data's.
+		var holdoutSetComparisonCount: Int {
+			storage.withLock { $0.holdoutSetComparisons }
+		}
 	}
 #endif
