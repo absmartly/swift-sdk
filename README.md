@@ -46,8 +46,8 @@ and choose the `ABsmartly` (and optionally `ABsmartlyUI`) product.
 ### CocoaPods
 
 ```ruby
-pod 'ABsmartly', '~> 2.0'        # core
-pod 'ABsmartly/UI', '~> 2.0'     # with the SwiftUI property wrappers
+pod 'ABsmartly', '~> 2.1'        # core
+pod 'ABsmartly/UI', '~> 2.1'     # with the SwiftUI property wrappers
 ```
 
 The CocoaPods trunk stops accepting new versions on 2026-12-02. Releases after that are published
