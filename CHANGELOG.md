@@ -16,6 +16,10 @@ can move to 2.x.
 - A malformed holdout entry, a holdout with an empty or missing `split`, or a malformed or unknown id in `holdoutIds` is ignored on its own.
 - `ContextData(experiments:holdouts:)` and `Experiment(...holdoutIds:holdoutType:)` initializers.
 
+### Changed
+- Apps on 2.0.x whose context payload contains holdouts: a held-out unit now gets control for each covered experiment, and the holdout's exposure replaces that experiment's own, so assignments and exposure counts change. 2.0.0 ignored the holdout data.
+- The `X-Agent` header is `absmartly-swift-sdk/2.1.0`, so the collector's `agent` column shows 2.1.0 for these clients.
+
 ## 2.0.0 (2026-11-25)
 
 A new API for Swift 6 over the 1.5.0 engine. Assignment, audiences, assignment rules, exposures,

@@ -708,6 +708,20 @@ private typealias H = Holdouts
 		try await h.expectPublished(context, [H.own(1, "exp_dup", H.normalVariant), H.held(11, "holdout_a", 1)])
 	}
 
+	// Two holdout entries with one id: the last one wins, as in javascript-sdk and 1.5.0.
+	@Test func lastEntryWinsWhenTwoHoldoutsShareAnId() async throws {
+		let context = h.context(
+			H.contextData(
+				[H.experiment(1, "exp_dup_holdout_id", holdoutIds: [11])],
+				holdouts: [
+					H.holdout(11, "holdout_first", seeds: H.holdoutA), H.holdout(11, "holdout_last", seeds: H.holdoutB),
+				]))
+
+		#expect(context.treatment(for: "exp_dup_holdout_id") == H.normalVariant)
+		try await h.expectPublished(
+			context, [H.own(1, "exp_dup_holdout_id", H.normalVariant), H.held(11, "holdout_last", 1)])
+	}
+
 	@Test func holdoutExposuresAreInIdOrder() async throws {
 		let context = h.context(
 			H.contextData(
