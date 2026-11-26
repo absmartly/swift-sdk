@@ -188,7 +188,7 @@ extension ContextHoldoutTests {
 		#expect(context.treatment(for: "exp_stranded_flush") == 0)
 
 		#expect(await eventually(timeout: 5) { h.env.publishCount == 1 })
-		#expect(h.env.log.publishes.last?.exposures == [H.held(11, "holdout_a", 0)])
+		#expect(h.lastSentExposures == [H.held(11, "holdout_a", 0)])
 	}
 
 	@Test func variablePathHoldoutExposureSchedulesFlushWithoutAnyOtherEvent() async throws {
@@ -208,7 +208,7 @@ extension ContextHoldoutTests {
 
 		#expect(h.value(context, "flush_key") == "from_assigned")
 		#expect(await eventually(timeout: 5) { h.env.publishCount == 2 })
-		#expect(h.env.log.publishes.last?.exposures == [H.held(11, "holdout_flush", 0)])
+		#expect(h.lastSentExposures == [H.held(11, "holdout_flush", 0)])
 	}
 
 	// Every exposure one read queues is in the queue before the logger hears of any, so a logger that
@@ -232,7 +232,7 @@ extension ContextHoldoutTests {
 
 		#expect(h.env.publishCount == 1)
 		#expect(
-			h.env.log.publishes.last?.exposures == [
+			h.lastSentExposures == [
 				H.own(1, "exp_close", H.normalVariant), H.held(11, "holdout_a", 1), H.held(12, "holdout_b", 1),
 			])
 		#expect(context.pendingEventCount == 0)

@@ -158,7 +158,24 @@ struct HoldoutEnv {
 		let before = env.publishCount
 		try await context.publish()
 		#expect(env.publishCount == before + 1)
-		return env.log.publishes.last?.exposures ?? []
+		return lastSentExposures
+	}
+
+	/// The exposures in the last request the transport received: the bytes the collector gets, read
+	/// without waiting on the logger (which hears of a publish on the main queue on Apple platforms).
+	var lastSentExposures: [Exposure] {
+		guard case .array(let exposures)? = env.lastSentEvent?["exposures"] else { return [] }
+		return exposures.map { exposure in
+			Exposure(
+				id: exposure["id"]?.intValue ?? 0, name: exposure["name"]?.stringValue ?? "",
+				unit: exposure["unit"]?.stringValue, variant: exposure["variant"]?.intValue ?? 0,
+				exposedAt: Int64(exposure["exposedAt"]?.intValue ?? 0),
+				assigned: exposure["assigned"]?.boolValue ?? false, eligible: exposure["eligible"]?.boolValue ?? false,
+				overridden: exposure["overridden"]?.boolValue ?? false, fullOn: exposure["fullOn"]?.boolValue ?? false,
+				custom: exposure["custom"]?.boolValue ?? false,
+				audienceMismatch: exposure["audienceMismatch"]?.boolValue ?? false,
+				ruleOverride: exposure["ruleOverride"]?.boolValue ?? false)
+		}
 	}
 
 	/// Publishes and expects exactly these exposures (and attributes) for one unit.
