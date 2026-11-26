@@ -10,7 +10,11 @@ public struct ContextData: Sendable, Equatable, Codable {
 	/// has none.
 	public var holdouts: [Experiment]?
 
-	public init(experiments: [Experiment] = [], holdouts: [Experiment]? = nil) {
+	public init(experiments: [Experiment] = []) {
+		self.experiments = experiments
+	}
+
+	public init(experiments: [Experiment], holdouts: [Experiment]?) {
 		self.experiments = experiments
 		self.holdouts = holdouts
 	}
@@ -64,7 +68,25 @@ public struct Experiment: Sendable, Equatable, Codable {
 		split: [Double], trafficSeedHi: Int = 0, trafficSeedLo: Int = 0, trafficSplit: [Double] = [0, 1],
 		fullOnVariant: Int = 0, applications: [ExperimentApplication] = [], variants: [ExperimentVariant],
 		audienceStrict: Bool = false, audience: String? = nil, customFieldValues: [CustomFieldValue] = [],
-		assignmentRules: String? = nil, holdoutIds: [Int]? = nil, holdoutType: String? = nil
+		assignmentRules: String? = nil
+	) {
+		self.init(
+			id: id, name: name, unitType: unitType, iteration: iteration, seedHi: seedHi, seedLo: seedLo, split: split,
+			trafficSeedHi: trafficSeedHi, trafficSeedLo: trafficSeedLo, trafficSplit: trafficSplit,
+			fullOnVariant: fullOnVariant, applications: applications, variants: variants,
+			audienceStrict: audienceStrict,
+			audience: audience, customFieldValues: customFieldValues, assignmentRules: assignmentRules, holdoutIds: nil,
+			holdoutType: nil)
+	}
+
+	/// An experiment or a holdout entry with its holdout fields. The 2.0.0 initializer above is kept
+	/// unchanged, so code built against 2.0.0 keeps resolving it.
+	public init(
+		id: Int, name: String, unitType: String?, iteration: Int = 1, seedHi: Int = 0, seedLo: Int = 0,
+		split: [Double], trafficSeedHi: Int = 0, trafficSeedLo: Int = 0, trafficSplit: [Double] = [0, 1],
+		fullOnVariant: Int = 0, applications: [ExperimentApplication] = [], variants: [ExperimentVariant],
+		audienceStrict: Bool = false, audience: String? = nil, customFieldValues: [CustomFieldValue] = [],
+		assignmentRules: String? = nil, holdoutIds: [Int]?, holdoutType: String?
 	) {
 		self.id = id
 		self.name = name

@@ -601,6 +601,208 @@ private typealias H = Holdouts
 		#expect(ignored.holdouts?.count == 1)
 	}
 
+	// A malformed id in `holdoutIds` is dropped on its own (JavaScript skips ids with no holdout); the
+	// valid ids still cover the experiment.
+	@Test func malformedHoldoutIdIsDroppedAlone() {
+		var covered = H.experiment(1, "exp_mixed_ids", holdoutIds: [])
+		covered["holdoutIds"] = [11, "x", NSNull(), 1.5, ["id": 12]] as [Any]
+		let data = H.contextData([covered], holdouts: [H.holdout(11, "holdout_a", seeds: H.holdoutA)])
+
+		#expect(data.experiments[0].holdoutIds == [11])
+		let context = h.context(data)
+		#expect(context.treatment(for: "exp_mixed_ids") == 0)
+		#expect(h.exposures == [H.held(11, "holdout_a", 0)])
+	}
+
+	@Test func contextDataConstructorsAndEquality() {
+		let experiments = H.contextData([H.experiment(1, "exp", holdoutIds: [11])]).experiments
+		let holdouts = H.contextData([], holdouts: [H.holdout(11, "holdout_a", seeds: H.holdoutA)]).holdouts
+
+		#expect(ContextData().holdouts == nil)
+		#expect(ContextData(experiments: experiments).holdouts == nil)
+		#expect(ContextData(experiments: experiments) == ContextData(experiments: experiments, holdouts: nil))
+		#expect(ContextData(experiments: experiments, holdouts: holdouts).holdouts == holdouts)
+		#expect(ContextData(experiments: experiments) != ContextData(experiments: experiments, holdouts: holdouts))
+
+		let withIds = H.contextData([H.experiment(1, "exp", holdoutIds: [11])]).experiments[0]
+		let withOtherIds = H.contextData([H.experiment(1, "exp", holdoutIds: [12])]).experiments[0]
+		let typed = H.contextData([], holdouts: [H.holdout(1, "exp", seeds: H.holdoutA)]).holdouts![0]
+		let untyped = H.contextData([], holdouts: [H.holdout(1, "exp", seeds: H.holdoutA, holdoutType: nil)]).holdouts![
+			0]
+		#expect(withIds != withOtherIds)
+		#expect(typed != untyped)
+	}
+
+	// The 2.0.0 initializers keep their exact signatures (a binary built against 2.0.0 still links), and
+	// give no holdout fields; the holdout overloads carry them.
+	@Test func twoZeroInitializersAreKeptAndGiveNoHoldoutFields() {
+		let make: ([Experiment]) -> ContextData = ContextData.init(experiments:)
+		#expect(make([]).holdouts == nil)
+		let twoZero:
+			(
+				Int, String, String?, Int, Int, Int, [Double], Int, Int, [Double], Int, [ExperimentApplication],
+				[ExperimentVariant], Bool, String?, [CustomFieldValue], String?
+			) -> Experiment = Experiment.init(
+				id:name:unitType:iteration:seedHi:seedLo:split:trafficSeedHi:trafficSeedLo:trafficSplit:fullOnVariant:
+				applications:variants:audienceStrict:audience:customFieldValues:assignmentRules:)
+		let experiment = twoZero(1, "exp", "session_id", 1, 0, 0, [1], 0, 0, [0, 1], 0, [], [], false, nil, [], nil)
+		#expect(experiment.holdoutIds == nil)
+		#expect(experiment.holdoutType == nil)
+		#expect(
+			Experiment(id: 1, name: "exp", unitType: "session_id", split: [1], variants: [])
+				== Experiment(
+					id: 1, name: "exp", unitType: "session_id", split: [1], variants: [], holdoutIds: nil,
+					holdoutType: nil))
+	}
+
+	// The public initializers carry the holdout fields, and a context built from them applies the
+	// holdout like a decoded payload.
+	@Test func publicInitializersCarryHoldoutFields() {
+		let experiment = Experiment(
+			id: 1, name: "exp_init", unitType: H.unitType, seedHi: 100, seedLo: 200, split: [0.5, 0.5],
+			trafficSeedHi: 1, trafficSeedLo: 2,
+			variants: [.init(name: "0", config: nil), .init(name: "1", config: nil)],
+			holdoutIds: [11], holdoutType: nil)
+		let holdout = Experiment(
+			id: 11, name: "holdout_a", unitType: H.unitType, seedHi: H.holdoutA.seedHi, seedLo: H.holdoutA.seedLo,
+			split: [0.1, 0.9], variants: [], holdoutIds: nil, holdoutType: "full")
+		#expect(experiment.holdoutIds == [11])
+		#expect(holdout.holdoutType == "full")
+
+		let data = ContextData(experiments: [experiment], holdouts: [holdout])
+		#expect(data.holdouts == [holdout])
+		let context = h.context(data)
+		#expect(context.treatment(for: "exp_init") == 0)
+		#expect(h.exposures == [H.held(11, "holdout_a", 0)])
+	}
+
+	// Encoding writes the holdout fields, so a `ContextData` survives an encode/decode round trip.
+	@Test func holdoutFieldsSurviveEncodeDecodeRoundTrip() throws {
+		let data = Fixtures.contextData("holdouts_context")
+		let decoded = try JSONDecoder().decode(ContextData.self, from: JSONEncoder().encode(data))
+		#expect(decoded == data)
+		#expect(decoded.holdouts?.map(\.id) == [11, 12])
+		#expect(decoded.experiments[0].holdoutIds == [11])
+
+		let bare = try JSONDecoder().decode(ContextData.self, from: JSONEncoder().encode(ContextData(experiments: [])))
+		#expect(bare.holdouts == nil)
+	}
+
+	// MARK: - JavaScript contracts beyond the Java suite
+
+	// H1: a duplicated holdout id is one holdout (JS dedups with insertUniqueSorted): one exposure.
+	@Test func duplicateHoldoutIdsPublishOneExposure() async throws {
+		let context = h.context(
+			H.contextData(
+				[H.experiment(1, "exp_dup", holdoutIds: [11, 11, 11])],
+				holdouts: [H.holdout(11, "holdout_a", seeds: H.holdoutB)]))
+
+		#expect(context.treatment(for: "exp_dup") == H.normalVariant)
+
+		try await h.expectPublished(context, [H.own(1, "exp_dup", H.normalVariant), H.held(11, "holdout_a", 1)])
+	}
+
+	@Test func holdoutExposuresAreInIdOrder() async throws {
+		let context = h.context(
+			H.contextData(
+				[H.experiment(1, "exp_order", holdoutIds: [12, 11])],
+				holdouts: [
+					H.holdout(12, "holdout_b", seeds: H.holdoutB), H.holdout(11, "holdout_a", seeds: H.holdoutA),
+				]
+			))
+
+		#expect(context.treatment(for: "exp_order") == 0)
+
+		try await h.expectPublished(context, [H.held(11, "holdout_a", 0), H.held(12, "holdout_b", 1)])
+	}
+
+	// H7: a strict audience mismatch on a covered, not-held-out experiment still fires the holdout.
+	@Test func strictAudienceMismatchOnNotHeldOutExperimentStillFiresHoldout() async throws {
+		let context = h.context(
+			H.contextData(
+				[
+					H.experiment(
+						1, "exp_strict", holdoutIds: [11],
+						audience: "{\"filter\":[{\"gte\":[{\"var\":\"age\"},{\"value\":20}]}]}", audienceStrict: true)
+				], holdouts: [H.holdout(11, "holdout_a", seeds: H.holdoutB)]))
+		context.setAttribute("age", to: 5)
+
+		#expect(context.treatment(for: "exp_strict") == 0)
+
+		try await h.expectPublished(
+			context,
+			[H.own(1, "exp_strict", 0, assigned: false, audienceMismatch: true), H.held(11, "holdout_a", 1)],
+			attributes: [attribute("age", 5)])
+	}
+
+	// A suppressed experiment skips the audience entirely, like JavaScript and the collector: a
+	// later attribute change cannot rebuild it and its exposure stays the holdout's alone.
+	@Test func suppressedExperimentSkipsAudienceEvaluation() {
+		let context = h.context(
+			H.contextData(
+				[
+					H.experiment(
+						1, "exp_held_audience", holdoutIds: [11],
+						audience: "{\"filter\":[{\"gte\":[{\"var\":\"age\"},{\"value\":20}]}]}", audienceStrict: true)
+				], holdouts: [H.holdout(11, "holdout_a", seeds: H.holdoutA)]))
+		context.setAttribute("age", to: 5)
+
+		#expect(context.treatment(for: "exp_held_audience") == 0)
+		context.setAttribute("age", to: 50)
+		#expect(context.treatment(for: "exp_held_audience") == 0)
+		#expect(h.exposures == [H.held(11, "holdout_a", 0)])
+	}
+
+	// The arm is hashed with the covered experiment's unit type, never the holdout's own (scenario 227).
+	@Test func holdoutArmUsesTheCoveredExperimentsUnitType() {
+		let context = h.context(
+			H.contextData(
+				[H.experiment(1, "exp_session", holdoutIds: [11])],
+				holdouts: [H.holdout(11, "holdout_user", unitType: "user_id", seeds: H.holdoutA)]),
+			units: [UnitType.userID: H.uidNotHeldOut])
+
+		// `uid` (session_id) is held out by these seeds; `uidNotHeldOut` (user_id) would not be.
+		#expect(context.treatment(for: "exp_session") == 0)
+		#expect(h.exposures == [H.held(11, "holdout_user", 0, unitType: "session_id")])
+	}
+
+	// Arity comes from the split's length, never `holdoutType` (scenario 222).
+	@Test(arguments: [nil, "full", "all_full_on", "unknown"] as [String?])
+	func arityComesFromSplitNotHoldoutType(holdoutType: String?) {
+		let context = h.context(
+			H.contextData(
+				[
+					H.experiment(1, "exp_non_fullon", holdoutIds: [21]),
+					H.experiment(2, "exp_fullon", fullOnVariant: 2, holdoutIds: [21]),
+				],
+				holdouts: [H.holdout(21, "h", seeds: H.threeArm1, split: H.threeArmSplit, holdoutType: holdoutType)]))
+		#expect(context.treatment(for: "exp_non_fullon") == 0)
+		#expect(context.treatment(for: "exp_fullon") == 2)
+	}
+
+	// A two-arm split read as "all_full_on" keeps arm 1 as "not held out".
+	@Test func twoArmSplitTypedAllFullOnKeepsArmOneNotHeldOut() {
+		let context = h.context(
+			H.contextData(
+				[H.experiment(1, "exp_two_arm", holdoutIds: [11])],
+				holdouts: [H.holdout(11, "h", seeds: H.holdoutB, holdoutType: "all_full_on")]))
+		#expect(context.treatment(for: "exp_two_arm") == H.normalVariant)
+	}
+
+	// A 4-arm holdout: only arm 0 holds out (arm 1's full-on rule is for exactly 3 arms).
+	@Test func isHeldOutByTable() {
+		for fullOnVariant in [0, 2] {
+			#expect(ContextState.isHeldOutBy(0, armCount: 2, fullOnVariant: fullOnVariant))
+			#expect(ContextState.isHeldOutBy(0, armCount: 3, fullOnVariant: fullOnVariant))
+			#expect(ContextState.isHeldOutBy(0, armCount: 4, fullOnVariant: fullOnVariant))
+			#expect(!ContextState.isHeldOutBy(1, armCount: 2, fullOnVariant: fullOnVariant))
+			#expect(!ContextState.isHeldOutBy(1, armCount: 4, fullOnVariant: fullOnVariant))
+			#expect(!ContextState.isHeldOutBy(2, armCount: 3, fullOnVariant: fullOnVariant))
+		}
+		#expect(ContextState.isHeldOutBy(1, armCount: 3, fullOnVariant: 0))
+		#expect(!ContextState.isHeldOutBy(1, armCount: 3, fullOnVariant: 2))
+	}
+
 	// A 4-arm holdout through a context: arm 1 does not hold out a non-full-on experiment.
 	@Test func fourArmHoldoutArmOneDoesNotHoldOut() {
 		let split = [0.25, 0.25, 0.25, 0.25]
