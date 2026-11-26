@@ -94,8 +94,45 @@ extension ContextHoldoutTests {
 		try await h.expectPublished(
 			context,
 			[
-				H.held(11, "holdout_a", 0), H.own(2, "exp_assigned", H.normalVariant), H.held(12, "holdout_b", 1),
+				H.held(11, "holdout_a", 0), H.held(12, "holdout_b", 1), H.own(2, "exp_assigned", H.normalVariant),
 			])
+	}
+
+	// One covered, not-held-out candidate: its holdout's exposure is queued before its own, as in
+	// javascript-sdk and 1.5.0 (`treatment(for:)` queues the experiment first).
+	@Test func variableReadQueuesTheWinnersHoldoutBeforeItsOwnExposure() async throws {
+		let context = h.context(
+			H.contextData(
+				[H.experiment(1, "exp_single", holdoutIds: [12], configs: H.withVariables("k"))],
+				holdouts: [H.holdout(12, "holdout_b", seeds: H.holdoutB)]))
+
+		#expect(h.value(context, "k") == "treatment")
+
+		try await h.expectPublished(context, [H.held(12, "holdout_b", 1), H.own(1, "exp_single", H.normalVariant)])
+	}
+
+	// A closing context queues nothing from a variable read, holdout exposures included, even from a
+	// direct state lookup (the public reads reject a closing context before reaching it).
+	@Test func closingContextQueuesNoHoldoutExposureFromAVariableRead() {
+		var state = ContextState(application: "website", environment: "production")
+		state.index = DataIndex(
+			H.contextData(
+				[
+					H.experiment(1, "exp_held", holdoutIds: [11], configs: H.withVariables("k")),
+					H.experiment(2, "exp_assigned", holdoutIds: [12], configs: H.withVariables("k")),
+				],
+				holdouts: [
+					H.holdout(11, "holdout_a", seeds: H.holdoutA), H.holdout(12, "holdout_b", seeds: H.holdoutB),
+				]))
+		try? state.putUnit(H.unitType, .string(H.uid))
+		state.ready = true
+		state.closing = true
+
+		let (value, exposures) = state.variableValue("k", peek: false, now: { 0 })
+		#expect(value == "treatment")
+		#expect(exposures.isEmpty)
+		#expect(state.exposures.isEmpty)
+		#expect(state.pendingCount == 0)
 	}
 
 	// MARK: - Event logger and publish scheduling
@@ -279,8 +316,8 @@ extension ContextHoldoutTests {
 		try await h.expectPublished(
 			context,
 			[
-				H.own(1, "exp_holdout_rules", 1, assigned: false, ruleOverride: true),
 				H.held(11, "holdout_rules_suppression", 0),
+				H.own(1, "exp_holdout_rules", 1, assigned: false, ruleOverride: true),
 			], attributes: [attribute("country", "US")])
 	}
 

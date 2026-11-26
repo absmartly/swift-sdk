@@ -24,6 +24,9 @@ unsigned-number rounding described in [MIGRATING.md](MIGRATING.md#behaviour-note
 recorded output); the `X-Agent` header is `absmartly-swift-sdk/2.0.0`. See [MIGRATING.md](MIGRATING.md) for every
 1.x API and its replacement, and [SUPPORT.md](SUPPORT.md) for the 1.x support window.
 
+2.0.0 does not apply holdouts: the payload's holdout data is ignored, so every unit is assigned and
+exposed as if no holdout existed. Holdouts are supported from 2.1.0.
+
 ### BREAKING (everyone moves)
 - Module and pod renamed to `ABsmartly` (was module `ABSmartly`, pod `ABSmartlySwiftSDK`); the entry type is `ABsmartlyClient`. Update `import` lines and the dependency.
 - `async`/`await` replaces PromiseKit: `ready()`, `publish()`, `refresh()`, `close()` and `fetchContextData()` are `async throws(ABsmartlyError)`.

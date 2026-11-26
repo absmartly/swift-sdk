@@ -488,8 +488,8 @@ extension ContextHoldoutTests {
 		try await h.expectPublished(
 			context,
 			[
-				H.own(1, "exp_detached_variable_winner", 1, unitType: "user_id", fullOn: true),
 				H.held(11, "holdout_detached_variable", 1, unitType: "user_id"),
+				H.own(1, "exp_detached_variable_winner", 1, unitType: "user_id", fullOn: true),
 			], unitType: "user_id")
 	}
 

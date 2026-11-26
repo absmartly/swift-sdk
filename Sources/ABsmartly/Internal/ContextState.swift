@@ -239,6 +239,10 @@ struct ContextState {
 	// The covering holdouts are the same (id, iteration) pairs the assignment was resolved with. A
 	// same-iteration seed or split edit is not a change, so it never forces a second exposure.
 	private static func holdoutSetMatches(_ entry: DataIndex.Entry, _ assignment: Assignment) -> Bool {
+		// The common case, no holdouts on either side, stays off the comparison on every cached read.
+		if entry.holdouts == nil && assignment.holdouts == nil {
+			return true
+		}
 		let fresh = entry.holdouts ?? []
 		let pinned = assignment.holdouts ?? []
 		guard fresh.count == pinned.count else { return false }
@@ -536,14 +540,16 @@ struct ContextState {
 		var suppressedFallback: Assignment?
 		for candidate in candidates {
 			let assignment = lookup(candidate.data.name)
+			// Each visited candidate's holdouts first, then the selected experiment's own exposure, as
+			// in javascript-sdk and 1.5.0.
+			if !peek {
+				exposeHoldouts(assignment, now: now, into: &queued)
+			}
 			if assignment.assigned || assignment.overridden || assignment.ruleOverride {
 				if !peek {
 					expose(assignment, now: now, into: &queued)
 				}
 				return (assignment.variables?[key], queued)
-			}
-			if !peek {
-				exposeHoldouts(assignment, now: now, into: &queued)
 			}
 			if assignment.suppressed && suppressedFallback == nil {
 				suppressedFallback = assignment
