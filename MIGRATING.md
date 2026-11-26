@@ -17,10 +17,8 @@ typing, `X-Application-Version` normalisation and more). Read the 1.5.0 **BREAKI
 sections of [CHANGELOG.md](CHANGELOG.md) first; the easiest path is to upgrade to 1.5.0, check your
 experiments, then move to 2.0.
 
-**Using holdouts? Stay on 1.5.x for now.** 2.0.0 does not support holdouts: it ignores holdout
-data in the context payload, so every unit is assigned and exposed as if no holdout existed and no
-holdout exposure is published. 1.5.x supports holdouts (released, and
-maintained on `release/1.x`); they come to 2.x in a later release.
+**Using holdouts?** Move to 2.1.0 or later, which applies holdouts as 1.5.0 does. 2.0.0 ignored the
+payload's holdout data.
 
 1.x stays supported on the `release/1.x` branch (see [SUPPORT.md](SUPPORT.md)). You cannot use 1.x
 and 2.x in the same app: a Swift package graph holds one major version of a package.
@@ -191,7 +189,7 @@ main thread on Apple platforms.
 | `ContextData` (class) | `ContextData` (struct) |
 | `Experiment`, `ExperimentVariant`, `CustomFieldValue` | Same names, now structs with public initializers; `applications` and `customFieldValues` are non-optional (empty when absent) |
 | `Application` | `ExperimentApplication` |
-| `ContextData(experiments:holdouts:)`, `ContextData.holdouts`, `Experiment.holdoutIds`, `Experiment.holdoutType` (1.5.0) | Not in 2.0.0: holdouts are not supported, and the payload's holdout data is ignored. Use `ContextData(experiments:)` |
+| `ContextData(experiments:holdouts:)`, `ContextData.holdouts`, `Experiment.holdoutIds`, `Experiment.holdoutType` (1.5.0) | Same names, from 2.1.0 (`holdouts`, `holdoutIds` and `holdoutType` are `var`s) |
 | `Exposure`, `PublishEvent` | Same names (structs) |
 | `GoalAchievement` | `Goal` |
 | `Unit`, `Attribute` (publish payload) | `PublishEvent.Unit`, `PublishEvent.Attribute` |
@@ -199,12 +197,8 @@ main thread on Apple platforms.
 
 ## Behaviour notes
 
-Assignment and publishing retain 1.5.0 behaviour apart from holdouts and these extreme-number
-differences (see also the note for 1.4.x users at the top):
-
-- Holdouts are ignored (1.5.0 applies them). A unit that a holdout covering an experiment would
-  hold out gets its normal variant and variables, the experiment's own exposure is published, and
-  no holdout exposure is. Experiments without holdouts behave exactly as in 1.5.0.
+Assignment and publishing retain 1.5.0 behaviour (holdouts from 2.1.0) apart from these
+extreme-number differences (see also the note for 1.4.x users at the top):
 
 - `UInt64`/`UInt` attributes above `Int64.max` are stored as doubles: `12345678901234567890` is
   published as `1.2345678901234567e+19`, not the exact integer. String operators see the double's

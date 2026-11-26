@@ -6,9 +6,26 @@ import Foundation
 /// every field except `name` falls back to its default when it is missing or has the wrong type.
 public struct ContextData: Sendable, Equatable, Codable {
 	public var experiments: [Experiment]
+	/// The holdouts that experiments reference through `Experiment.holdoutIds`; nil when the payload
+	/// has none.
+	public var holdouts: [Experiment]?
 
-	public init(experiments: [Experiment] = []) {
+	public init(experiments: [Experiment] = [], holdouts: [Experiment]? = nil) {
 		self.experiments = experiments
+		self.holdouts = holdouts
+	}
+
+	private enum CodingKeys: String, CodingKey {
+		case experiments, holdouts
+	}
+
+	public init(from decoder: Decoder) throws {
+		let container = try decoder.container(keyedBy: CodingKeys.self)
+		experiments = try container.decode([Experiment].self, forKey: .experiments)
+		// Lenient: a malformed holdout entry (or a malformed `holdouts` field) is dropped on its own, so
+		// it only uncovers the experiments that reference it.
+		holdouts = (try? container.decodeIfPresent([Lenient<Experiment>].self, forKey: .holdouts))?
+			.compactMap(\.value)
 	}
 }
 
@@ -33,13 +50,21 @@ public struct Experiment: Sendable, Equatable, Codable {
 	public var customFieldValues: [CustomFieldValue]
 	/// The assignment rules, a JSON string of the form `{"rules": [...]}`.
 	public var assignmentRules: String?
+	/// The ids of the `ContextData.holdouts` entries covering this experiment.
+	public var holdoutIds: [Int]?
+	/// On a `ContextData.holdouts` entry, the holdout's type (`"full"`, `"all_full_on"`).
+	/// Informational: the SDK derives a holdout's arms from its `split`.
+	public var holdoutType: String?
+	// Holdouts never apply to an experiment whose randomization type is "switchback". Internal until
+	// the SDK serves switchbacks.
+	var randomizationType: String?
 
 	public init(
 		id: Int, name: String, unitType: String?, iteration: Int = 1, seedHi: Int = 0, seedLo: Int = 0,
 		split: [Double], trafficSeedHi: Int = 0, trafficSeedLo: Int = 0, trafficSplit: [Double] = [0, 1],
 		fullOnVariant: Int = 0, applications: [ExperimentApplication] = [], variants: [ExperimentVariant],
 		audienceStrict: Bool = false, audience: String? = nil, customFieldValues: [CustomFieldValue] = [],
-		assignmentRules: String? = nil
+		assignmentRules: String? = nil, holdoutIds: [Int]? = nil, holdoutType: String? = nil
 	) {
 		self.id = id
 		self.name = name
@@ -58,12 +83,17 @@ public struct Experiment: Sendable, Equatable, Codable {
 		self.audience = audience
 		self.customFieldValues = customFieldValues
 		self.assignmentRules = assignmentRules
+		self.holdoutIds = holdoutIds
+		self.holdoutType = holdoutType
 	}
 
 	private enum CodingKeys: String, CodingKey {
 		case id, name, unitType, iteration, seedHi, seedLo, split, trafficSeedHi, trafficSeedLo, trafficSplit
 		case fullOnVariant, applications, variants, audienceStrict, audience, customFieldValues, assignmentRules
+		case holdoutIds, holdoutType, randomizationType
 	}
+
+	var isSwitchback: Bool { randomizationType == "switchback" }
 
 	public init(from decoder: Decoder) throws {
 		let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -93,6 +123,11 @@ public struct Experiment: Sendable, Equatable, Codable {
 		{
 			Log.error("Ignoring assignmentRules: expected a JSON string.", detail: "Experiment '\(name)'.")
 		}
+
+		// A malformed id is dropped on its own.
+		holdoutIds = (try? container.decodeIfPresent([Lenient<Int>].self, forKey: .holdoutIds))?.compactMap(\.value)
+		holdoutType = try? container.decodeIfPresent(String.self, forKey: .holdoutType)
+		randomizationType = try? container.decodeIfPresent(String.self, forKey: .randomizationType)
 	}
 }
 
@@ -127,5 +162,14 @@ public struct CustomFieldValue: Sendable, Equatable, Codable {
 		self.name = name
 		self.type = type
 		self.value = value
+	}
+}
+
+/// Decodes an array element, or nil when it does not decode, so one bad element does not fail the array.
+private struct Lenient<Element: Decodable>: Decodable {
+	let value: Element?
+
+	init(from decoder: Decoder) throws {
+		value = try? Element(from: decoder)
 	}
 }

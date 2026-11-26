@@ -1,21 +1,30 @@
 # Changelog
 
-## 2.0.0 (unreleased)
+## 2.1.0 (unreleased)
+
+Holdouts, matching 1.5.0 and the JavaScript SDK. The `X-Agent` header is `absmartly-swift-sdk/2.1.0`.
+2.0.0 ignored the payload's holdout data; 2.1.0 applies it, so apps on 1.5.x that rely on holdouts
+can move to 2.x.
+
+### Added
+- Holdouts. `ContextData.holdouts` lists the holdouts and `Experiment.holdoutIds` the ones covering each experiment (`Experiment.holdoutType` is informational: arms come from the holdout's `split`). A unit held out by any covering holdout gets control (variant `0`) and its control variables, and the experiment publishes no exposure of its own; each covering holdout publishes its own exposure (its name and arm) once per arm, the first time an exposing read meets it, even when the unit is not held out. Arm 0 holds the unit out; in a three-arm holdout, arm 1 holds out only experiments that are not full-on.
+- An override or a matching assignment rule still wins over a holdout, and the experiment's own exposure is still published; a custom assignment does not.
+- Peeking (`exposing: false`) publishes nothing, holdout exposures included.
+- `variable(_:default:)` and `variableValue(_:)`: when no candidate experiment wins a shared key and the unit is held out of one, the first held-out candidate's control value is returned (nil, or the default, when its control does not define the key). The holdouts of every candidate visited publish their exposures.
+- A refresh keeps a unit's holdout arms and exposures while the holdout's iteration is unchanged (a same-iteration seed or split edit changes nothing); a new iteration, or a change in which holdouts cover an experiment, re-resolves it.
+- Holdouts never apply to a switchback experiment (`randomizationType: "switchback"`).
+- A malformed holdout entry, a holdout with an empty or missing `split`, or a malformed or unknown id in `holdoutIds` is ignored on its own.
+- `ContextData(experiments:holdouts:)` and `Experiment(...holdoutIds:holdoutType:)` initializers.
+
+## 2.0.0 (2026-11-25)
 
 A new API for Swift 6 over the 1.5.0 engine. Assignment, audiences, assignment rules, exposures,
-goals and the publish payload retain 1.5.0 behaviour apart from holdouts (below) and the extreme
+goals and the publish payload retain 1.5.0 behaviour apart from the extreme
 unsigned-number rounding described in [MIGRATING.md](MIGRATING.md#behaviour-notes) (a parity test replays 1.5.0's
 recorded output); the `X-Agent` header is `absmartly-swift-sdk/2.0.0`. See [MIGRATING.md](MIGRATING.md) for every
 1.x API and its replacement, and [SUPPORT.md](SUPPORT.md) for the 1.x support window.
 
-**2.0.0 does not support holdouts.** Holdout data in the context payload (`holdouts`, `holdoutIds`)
-is ignored, as 1.4.0 ignored it: every unit is assigned and exposed as if no holdout existed, and no
-holdout exposure is published. Apps that rely on holdouts should stay on 1.5.x, which supports them
-(released, and maintained on `release/1.x`). Holdouts come in a later 2.x
-release.
-
 ### BREAKING (everyone moves)
-- Holdouts are not supported (1.5.0 supports them): holdout data is ignored, so a unit a holdout would hold out is assigned and exposed normally, and no holdout exposure is published. Stay on 1.5.x if you use holdouts; they come in a later 2.x release.
 - Module and pod renamed to `ABsmartly` (was module `ABSmartly`, pod `ABSmartlySwiftSDK`); the entry type is `ABsmartlyClient`. Update `import` lines and the dependency.
 - `async`/`await` replaces PromiseKit: `ready()`, `publish()`, `refresh()`, `close()` and `fetchContextData()` are `async throws(ABsmartlyError)`.
 - `JSONValue` replaces SwiftyJSON's `JSON` in every API (attributes, variables, goal properties, custom fields, unit values).

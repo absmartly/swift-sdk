@@ -476,24 +476,22 @@ public final class Context: Sendable {
 		// One critical section: the ready check, the lookup and (on first exposure) the queueing. The
 		// clock is read only when an exposure is queued.
 		let clock = clock
-		let result: Result<(Int, Exposure?), ABsmartlyError> = storage.withLock { state in
+		let result: Result<(Int, [Exposure]), ABsmartlyError> = storage.withLock { state in
 			if let error = state.checkReady(expectNotClosed: true) {
 				return .failure(error)
 			}
 			if exposing {
-				let (assignment, exposure) = state.lookupExposing(experiment, now: { clock.millis() })
-				return .success((assignment.variant, exposure))
+				let (assignment, exposures) = state.lookupExposing(experiment, now: { clock.millis() })
+				return .success((assignment.variant, exposures))
 			}
-			return .success((state.lookup(experiment).variant, nil))
+			return .success((state.lookup(experiment).variant, []))
 		}
 		switch result {
 		case .failure(let error):
 			reportError(error)
 			return 0
-		case .success((let variant, let exposure)):
-			if let exposure {
-				didQueue(.exposure(exposure))
-			}
+		case .success((let variant, let exposures)):
+			didQueue(exposures)
 			return variant
 		}
 	}
@@ -517,7 +515,7 @@ public final class Context: Sendable {
 		// One critical section: the ready check, the candidates, their assignments and the winner's
 		// exposure all come from one data install.
 		let clock = clock
-		let result: Result<(JSONValue?, Exposure?), ABsmartlyError> = storage.withLock { state in
+		let result: Result<(JSONValue?, [Exposure]), ABsmartlyError> = storage.withLock { state in
 			if let error = state.checkReady(expectNotClosed: true) {
 				return .failure(error)
 			}
@@ -527,10 +525,8 @@ public final class Context: Sendable {
 		case .failure(let error):
 			reportError(error)
 			return nil
-		case .success((let value, let exposure)):
-			if let exposure {
-				didQueue(.exposure(exposure))
-			}
+		case .success((let value, let exposures)):
+			didQueue(exposures)
 			return value
 		}
 	}
@@ -775,6 +771,16 @@ public final class Context: Sendable {
 	// each one before the call that queued it returns.
 	private func didQueue(_ event: Event) {
 		emit(event, onMain: false)
+		storage.withLock { schedulePublish(&$0) }
+	}
+
+	// Every exposure one read queued is in the queue before the logger hears of any, so a logger
+	// that closes the context cannot flush between them.
+	private func didQueue(_ exposures: [Exposure]) {
+		guard !exposures.isEmpty else { return }
+		for exposure in exposures {
+			emit(.exposure(exposure), onMain: false)
+		}
 		storage.withLock { schedulePublish(&$0) }
 	}
 
