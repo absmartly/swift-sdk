@@ -779,11 +779,18 @@ public final class Context: Sendable {
 	}
 
 	// Every exposure one read queued is in the queue before the logger hears of any, so a logger
-	// that closes the context cannot flush between them.
+	// that closes the context cannot flush between them. Streams get the whole batch, in queue order,
+	// before the logger runs, so a logger that closes the context cannot finish them mid-batch.
 	private func didQueue(_ exposures: [Exposure]) {
 		guard !exposures.isEmpty else { return }
+		let streams = storage.withLock { $0.streams }
 		for exposure in exposures {
-			emit(.exposure(exposure), onMain: false)
+			for continuation in streams.values {
+				continuation.yield(.exposure(exposure))
+			}
+		}
+		for exposure in exposures {
+			emit(.exposure(exposure), onMain: false, streams: [:])
 		}
 		storage.withLock { schedulePublish(&$0) }
 	}
@@ -947,6 +954,11 @@ extension JSONValue {
 		/// Test hook: how many times a cached assignment's holdout set was compared with the data's.
 		var holdoutSetComparisonCount: Int {
 			storage.withLock { $0.holdoutSetComparisons }
+		}
+
+		/// Test hook: how many times a covered assignment's holdouts were visited to queue exposures.
+		var holdoutVisitCount: Int {
+			storage.withLock { $0.holdoutVisits }
 		}
 	}
 #endif

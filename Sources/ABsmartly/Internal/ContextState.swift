@@ -34,7 +34,6 @@ final class Assignment {
 	// On a holdout arm: the holdout split's length when `variant` was drawn.
 	var holdoutArmCount = 0
 
-	// A covering holdout was resolved while the unit was missing.
 	var holdoutMissingUnit: Bool {
 		holdouts?.contains { $0.arm == nil } ?? false
 	}
@@ -69,6 +68,7 @@ struct ContextState {
 		var assignmentCacheWrites = 0
 		var revalidations = 0
 		var holdoutSetComparisons = 0
+		var holdoutVisits = 0
 	#endif
 
 	var hashedUnits: [String: [UInt8]] = [:]
@@ -258,13 +258,7 @@ struct ContextState {
 	// Arm 0 always holds the experiment out. In a 3-arm holdout, arm 1 holds out only an experiment
 	// that is not full-on. The arm count comes from the holdout's split, never its `holdoutType`.
 	static func isHeldOutBy(_ holdoutVariant: Int, armCount: Int, fullOnVariant: Int) -> Bool {
-		if holdoutVariant == 0 {
-			return true
-		}
-		if armCount == 3 && holdoutVariant == 1 {
-			return fullOnVariant == 0
-		}
-		return false
+		holdoutVariant == 0 || (armCount == 3 && holdoutVariant == 1 && fullOnVariant == 0)
 	}
 
 	// The unit's arm in a holdout, hashed with the covered experiment's unit type, or nil while that
@@ -280,7 +274,6 @@ struct ContextState {
 
 		let arm = Assignment()
 		arm.id = holdout.id
-		arm.name = holdout.name
 		arm.iteration = holdout.iteration
 		arm.unitType = unitType
 		arm.variant = assigner(unitType, uid).assign(holdout.split, seedHi: holdout.seedHi, seedLo: holdout.seedLo)
@@ -424,9 +417,7 @@ struct ContextState {
 			if let rule {
 				assignment.variant = rule.variant
 				assignment.ruleOverride = true
-			} else if assignment.suppressed {
-				assignment.variant = 0
-			} else {
+			} else if !assignment.suppressed {
 				if let audience = data.audience, !audience.isEmpty,
 					let result = AudienceMatcher.evaluate(entry.audience, attributeMap())
 				{
@@ -488,8 +479,11 @@ struct ContextState {
 	}
 
 	// A held-out experiment queues no exposure of its own (an override or a matching rule still
-	// does); its covering holdouts queue theirs.
-	private mutating func expose(_ assignment: Assignment, now: () -> Int64, into queued: inout [Exposure]) {
+	// does); its covering holdouts queue theirs, after it. A variable read has already queued the
+	// holdouts of every candidate it visited, so it passes `holdoutsQueued`.
+	private mutating func expose(
+		_ assignment: Assignment, now: () -> Int64, into queued: inout [Exposure], holdoutsQueued: Bool = false
+	) {
 		guard !assignment.exposed, !closed, !closing else {
 			return
 		}
@@ -498,7 +492,9 @@ struct ContextState {
 		if !assignment.suppressed || assignment.overridden || assignment.ruleOverride {
 			queue(assignment, name: assignment.name, now: now, into: &queued)
 		}
-		exposeHoldouts(assignment, now: now, into: &queued)
+		if !holdoutsQueued {
+			exposeHoldouts(assignment, now: now, into: &queued)
+		}
 	}
 
 	// Every holdout covering the assignment queues its own exposure once per arm, from the arms
@@ -507,6 +503,11 @@ struct ContextState {
 		guard !closed, !closing else {
 			return
 		}
+		#if DEBUG
+			if assignment.holdouts != nil {
+				holdoutVisits += 1
+			}
+		#endif
 		for holdout in assignment.holdouts ?? [] {
 			if let arm = holdout.arm, !arm.exposed {
 				arm.exposed = true
@@ -553,7 +554,7 @@ struct ContextState {
 			}
 			if assignment.assigned || assignment.overridden || assignment.ruleOverride {
 				if !peek {
-					expose(assignment, now: now, into: &queued)
+					expose(assignment, now: now, into: &queued, holdoutsQueued: true)
 				}
 				return (assignment.variables?[key], queued)
 			}
@@ -565,7 +566,7 @@ struct ContextState {
 			return (nil, queued)
 		}
 		if !peek {
-			expose(suppressedFallback, now: now, into: &queued)
+			expose(suppressedFallback, now: now, into: &queued, holdoutsQueued: true)
 		}
 		return (suppressedFallback.variables?[key], queued)
 	}

@@ -597,7 +597,6 @@ private typealias H = Holdouts
 			+ "\"hashed\":true,\"publishedAt\":1620000000000,\"units\":[{\"type\":\"session_id\",\"uid\":\"\(unitHash(H.uid))\"}]}"
 		#expect(String(decoding: baseline, as: UTF8.self) == expected)
 
-		// An empty holdouts list, and holdout metadata that covers nothing, publish the same bytes.
 		#expect(try await publishedBody(H.contextData(experiments, holdouts: [])) == baseline)
 		var dangling = experiments
 		dangling[0]["holdoutIds"] = [999]

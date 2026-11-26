@@ -209,7 +209,6 @@ extension ContextHoldoutTests {
 
 		#expect(context.treatment(for: "exp_epoch_race") == H.normalVariant)
 		h.env.log.setHook(nil)
-		// The logger-started refresh must have run and succeeded, or this pins nothing.
 		try await #require(refreshing.value).value
 		#expect(h.env.getCount == 1)
 
@@ -713,7 +712,6 @@ extension ContextHoldoutTests {
 
 		#expect(context.treatment(for: "exp_g") == H.normalVariant)
 		#expect(context.pendingEventCount == 3)
-		// exp_f is rebuilt for iteration 2 and reuses the exposed iteration-2 arm.
 		#expect(context.treatment(for: "exp_f") == H.normalVariant)
 		#expect(context.pendingEventCount == 4)
 
@@ -765,6 +763,7 @@ extension ContextHoldoutTests {
 
 	// A same-iteration rename keeps the arm, and the exposure carries the name of the definition the
 	// assignment was resolved with, as in JavaScript.
+	// A newly resolved assignment publishes its holdout under the current definition's name.
 	@Test func holdoutExposureUsesTheResolvedDefinitionsName() async throws {
 		let context = h.context(
 			H.contextData(
@@ -779,10 +778,28 @@ extension ContextHoldoutTests {
 
 		#expect(context.treatment(for: "exp_b") == 0)
 		#expect(h.exposures == [H.held(11, "new_name", 0)])
-		// exp_a was resolved with the old definition, whose name its pinned arm is published under; the
-		// arm is already exposed, so nothing more is queued.
+	}
+
+	// A same-iteration rename keeps an assignment resolved before it: its first exposing read
+	// publishes the holdout under the name it was resolved with, not the refreshed one (as in
+	// javascript-sdk, which queues `holdouts[i].data.name` from the pinned list).
+	@Test func previouslyResolvedAssignmentPublishesItsPinnedHoldoutName() async throws {
+		let context = h.context(
+			H.contextData(
+				[H.experiment(1, "exp_a", holdoutIds: [11])], holdouts: [H.holdout(11, "old_name", seeds: H.holdoutA)]))
+		#expect(context.treatment(for: "exp_a", exposing: false) == 0)
+
+		try await h.refresh(
+			context,
+			H.contextData(
+				[H.experiment(1, "exp_a", holdoutIds: [11]), H.experiment(2, "exp_b", holdoutIds: [11])],
+				holdouts: [H.holdout(11, "new_name", seeds: H.holdoutA)]))
+
 		#expect(context.treatment(for: "exp_a") == 0)
-		#expect(h.exposures == [H.held(11, "new_name", 0)])
+		#expect(h.exposures == [H.held(11, "old_name", 0)])
+		// The arm is now exposed, so the other covered experiment queues nothing more.
+		#expect(context.treatment(for: "exp_b") == 0)
+		#expect(h.exposures == [H.held(11, "old_name", 0)])
 	}
 
 	// 1.5.0's publisher (handler) waited on a refresh from inside publish. In 2.x the transport is
@@ -790,7 +807,6 @@ extension ContextHoldoutTests {
 	@Test func publisherWaitingOnRefreshDoesNotDeadlock() async throws {
 		let context = h.context(H.contextData([H.experiment(1, "exp_a")]))
 		h.env.transport.enqueue { _ in
-			// The refresh's GET is served by the default handler.
 			try await context.refresh()
 			return HTTPResponse(statusCode: 200, body: Data("{}".utf8))
 		}

@@ -5,6 +5,12 @@ import Testing
 
 private typealias H = Holdouts
 
+#if DEBUG
+	private let countsHoldoutVisits = true
+#else
+	private let countsHoldoutVisits = false
+#endif
+
 // Holdouts on the variable path, assignment rules over holdouts, and the event logger: the rest of
 // 1.5.0's `ContextHoldoutTest`.
 extension ContextHoldoutTests {
@@ -96,6 +102,32 @@ extension ContextHoldoutTests {
 			[
 				H.held(11, "holdout_a", 0), H.held(12, "holdout_b", 1), H.own(2, "exp_assigned", H.normalVariant),
 			])
+	}
+
+	// A variable read visits each covered candidate's holdouts once, the selected one included.
+	@Test(.enabled(if: countsHoldoutVisits)) func variableReadVisitsEachCandidatesHoldoutsOnce() {
+		#if DEBUG
+			let context = h.context(
+				H.contextData(
+					[
+						H.experiment(1, "exp_suppressed", holdoutIds: [11], configs: H.withVariables("k")),
+						H.experiment(2, "exp_assigned", holdoutIds: [12], configs: H.withVariables("k")),
+					],
+					holdouts: [
+						H.holdout(11, "holdout_a", seeds: H.holdoutA), H.holdout(12, "holdout_b", seeds: H.holdoutB),
+					]))
+			#expect(h.value(context, "k") == "treatment")
+			#expect(context.holdoutVisitCount == 2)
+
+			// All held out: the fallback candidate is exposed without a second visit either.
+			let all = HoldoutEnv()
+			let suppressed = all.context(
+				H.contextData(
+					[H.experiment(1, "exp_suppressed", holdoutIds: [11], configs: H.withVariables("k"))],
+					holdouts: [H.holdout(11, "holdout_a", seeds: H.holdoutA)]))
+			#expect(all.value(suppressed, "k") == "control")
+			#expect(suppressed.holdoutVisitCount == 1)
+		#endif
 	}
 
 	// One covered, not-held-out candidate: its holdout's exposure is queued before its own, as in
@@ -212,7 +244,9 @@ extension ContextHoldoutTests {
 	}
 
 	// Every exposure one read queues is in the queue before the logger hears of any, so a logger that
-	// closes the context on the first one publishes them all in one batch.
+	// closes the context on the first one publishes them all in one batch. A stream that was open
+	// before the read receives the whole batch too: the logger finishing the close (here, before its
+	// callback returns) cannot cut the stream off mid-batch.
 	@Test func loggerClosingOnFirstExposurePublishesEveryHoldoutExposure() async throws {
 		let context = h.context(
 			H.contextData(
@@ -220,22 +254,35 @@ extension ContextHoldoutTests {
 				holdouts: [
 					H.holdout(11, "holdout_a", seeds: H.holdoutB), H.holdout(12, "holdout_b", seeds: H.holdoutB),
 				]))
-		let closing = Box<Task<Void, Never>?>(nil)
+		let events = context.events
+		let closed = Box(false)
 		h.env.log.setHook { context, event in
-			if case .exposure(let exposure) = event, exposure.id == 1, closing.value == nil {
-				closing.value = Task { try? await context.close() }
+			guard case .exposure(let exposure) = event, exposure.id == 1, !closed.value else { return }
+			closed.value = true
+			let done = DispatchSemaphore(value: 0)
+			Task.detached {
+				try? await context.close()
+				done.signal()
 			}
+			done.wait()
 		}
 
 		#expect(context.treatment(for: "exp_close") == H.normalVariant)
-		await closing.value?.value
 
+		let expected = [
+			H.own(1, "exp_close", H.normalVariant), H.held(11, "holdout_a", 1), H.held(12, "holdout_b", 1),
+		]
 		#expect(h.env.publishCount == 1)
-		#expect(
-			h.lastSentExposures == [
-				H.own(1, "exp_close", H.normalVariant), H.held(11, "holdout_a", 1), H.held(12, "holdout_b", 1),
-			])
+		#expect(h.lastSentExposures == expected)
 		#expect(context.pendingEventCount == 0)
+
+		var streamed: [Exposure] = []
+		for await event in events {
+			if case .exposure(let exposure) = event {
+				streamed.append(exposure)
+			}
+		}
+		#expect(streamed == expected)
 	}
 
 	// MARK: - Assignment rules
