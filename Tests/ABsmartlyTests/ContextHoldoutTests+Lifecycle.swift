@@ -909,3 +909,44 @@ extension ContextHoldoutTests {
 		try await h.expectPublished(context, [H.own(2, "exp_b", H.normalVariant)])
 	}
 }
+
+// Cache reuse across a refresh, pinned to the javascript-sdk and 1.5.0 behaviour this port matches
+// exactly (context.ts `_assign`, 1.5.0 `lookupAssignment`): changing either is a cross-SDK decision.
+extension ContextHoldoutTests {
+	// An up-to-date override is revalidated against the holdout (id, iteration) set only, so a refresh
+	// that moves the experiment to another unit type keeps the override's pinned unit and arm.
+	@Test func overrideKeepsItsPinnedUnitTypeWhenARefreshChangesTheExperimentsUnitType() async throws {
+		let context = h.context(
+			H.contextData(
+				[H.experiment(1, "exp_ov", holdoutIds: [11])], holdouts: [H.holdout(11, "holdout_a", seeds: H.holdoutA)]
+			),
+			units: [UnitType.userID: H.uidNotHeldOut], overrides: ["exp_ov": 1])
+		#expect(context.treatment(for: "exp_ov", exposing: false) == 1)
+		try await h.refresh(
+			context,
+			H.contextData(
+				[H.experiment(1, "exp_ov", unitType: "user_id", holdoutIds: [11])],
+				holdouts: [H.holdout(11, "holdout_a", seeds: H.holdoutA)]))
+
+		#expect(context.treatment(for: "exp_ov") == 1)
+		#expect(
+			h.exposures == [
+				H.own(1, "exp_ov", 1, assigned: false, overridden: true), H.held(11, "holdout_a", 0),
+			])
+	}
+
+	// A removed experiment reuses a cached assignment that is neither assigned nor rule-won, as a
+	// not-running experiment does; a held-out one keeps its pinned arm, so its holdout still fires once.
+	@Test func removedExperimentReusesItsPeekedSuppressedAssignment() async throws {
+		let context = h.context(
+			H.contextData(
+				[H.experiment(1, "exp_gone", holdoutIds: [11])],
+				holdouts: [H.holdout(11, "holdout_a", seeds: H.holdoutA)]))
+		#expect(context.treatment(for: "exp_gone", exposing: false) == 0)
+		try await h.refresh(context, H.contextData([], holdouts: [H.holdout(11, "holdout_a", seeds: H.holdoutA)]))
+
+		#expect(context.treatment(for: "exp_gone") == 0)
+		#expect(context.treatment(for: "exp_gone") == 0)
+		#expect(h.exposures == [H.held(11, "holdout_a", 0)])
+	}
+}
