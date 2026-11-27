@@ -169,8 +169,8 @@ extension ContextHoldoutTests {
 
 	// MARK: - Event logger and publish scheduling
 
-	// 1.5.0 ported Java's throwing-logger tests as a logger that re-enters the context while an
-	// exposure is delivered; 2.x delivers exposures outside the lock, so the same re-entry applies.
+	// A logger that re-enters the context while an exposure is delivered loses no sibling exposure
+	// and makes none retryable.
 	@Test func throwingLoggerDoesNotPermanentlyLoseSiblingHoldoutExposure() {
 		let context = h.context(
 			H.contextData(

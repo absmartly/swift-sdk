@@ -185,10 +185,8 @@ extension ContextHoldoutTests {
 		#expect(context.treatment(for: "exp_arity_consistency_pre") == H.normalVariant)
 	}
 
-	// 1.5.0 refreshed from the logger while the experiment's own exposure was delivered (between the
-	// suppression decision and the holdout trigger). In 2.x every exposure of a read is queued in the
-	// read's critical section before the logger runs, so a refresh started by the logger lands after
-	// both; the published pair still comes from one epoch.
+	// A refresh started by the logger while a read's exposures are delivered lands after both are
+	// queued, so the published experiment and holdout exposures come from one epoch.
 	@Test func triggerFiresHoldoutExposureFromDecisionEpochDespiteRefreshRacingBetweenDecisionAndTrigger()
 		async throws
 	{
@@ -216,10 +214,8 @@ extension ContextHoldoutTests {
 			context, [H.own(1, "exp_epoch_race", H.normalVariant), H.held(11, "holdout_h", 1)])
 	}
 
-	// 1.5.0 injected a refresh between an assignment lookup's experiment read and its arm draw
-	// (`afterExperimentLookup`). In 2.x the whole lookup runs under the context's one lock and a
-	// refresh installs its index under the same lock, so they cannot interleave; this pins the
-	// epoch accounting of a refresh between two reads, from many threads at once.
+	// A refresh racing reads from many threads never pairs one epoch's experiment exposure with
+	// another epoch's holdout arm.
 	@Test func refreshDuringAssignmentResolutionDoesNotPairEpochs() async throws {
 		let context = h.context(
 			H.contextData(
@@ -690,11 +686,8 @@ extension ContextHoldoutTests {
 
 	// MARK: - Cache invariants
 
-	// 1.5.0 resolved a stale holdout reference (an older iteration's definition) through a DEBUG hook
-	// and checked it returned the live, exposed entry. In 2.x an assignment draws arms from the
-	// definitions of the index it was resolved with, and the arm cache is keyed by (id, unit type) and
-	// checked by iteration, so the observable invariant is that the iteration-2 arm, once exposed, is
-	// never redrawn or re-exposed by a later read of either experiment.
+	// Once the iteration-2 arm is exposed, a later read of either covered experiment neither redraws
+	// nor re-exposes it.
 	@Test func staleHoldoutReferenceNeverOverwritesNewerPinnedCacheEntry() async throws {
 		let context = h.context(
 			H.contextData(
@@ -724,8 +717,7 @@ extension ContextHoldoutTests {
 	}
 
 	// The arm count is pinned with the arm from the live split: a 3-arm iteration-2 holdout reads arm 1
-	// as "full-on only" even though the context first saw it with 2 arms (1.5.0 checked this through a
-	// stale-reference DEBUG hook; 2.x never holds a stale reference).
+	// as "full-on only" even though the context first saw it with 2 arms.
 	@Test func staleHoldoutReferencePinsTheLiveArmCount() async throws {
 		let context = h.context(
 			H.contextData(
@@ -802,8 +794,7 @@ extension ContextHoldoutTests {
 		#expect(h.exposures == [H.held(11, "old_name", 0)])
 	}
 
-	// 1.5.0's publisher (handler) waited on a refresh from inside publish. In 2.x the transport is
-	// called outside the context's lock, so a transport that waits for a refresh to finish completes.
+	// A transport that waits for a refresh while publishing does not deadlock.
 	@Test func publisherWaitingOnRefreshDoesNotDeadlock() async throws {
 		let context = h.context(H.contextData([H.experiment(1, "exp_a")]))
 		h.env.transport.enqueue { _ in
@@ -923,6 +914,27 @@ extension ContextHoldoutTests {
 		_ = context.treatment(for: "exp_b")
 
 		try await h.expectPublished(context, [H.own(2, "exp_b", H.normalVariant)])
+	}
+}
+
+// A refresh that swaps one covering holdout for another of the same count and iteration re-resolves
+// the experiment: the holdout set is compared by id at every position, not only the first.
+extension ContextHoldoutTests {
+	@Test func refreshSwappingTheSecondCoveringHoldoutReResolves() async throws {
+		let context = h.context(
+			H.contextData(
+				[H.experiment(1, "exp_swap", holdoutIds: [11, 12])],
+				holdouts: [H.holdout(11, "h_b1", seeds: H.holdoutB), H.holdout(12, "h_b2", seeds: H.holdoutB)]))
+		#expect(context.treatment(for: "exp_swap") == H.normalVariant)
+
+		try await h.refresh(
+			context,
+			H.contextData(
+				[H.experiment(1, "exp_swap", holdoutIds: [11, 13])],
+				holdouts: [H.holdout(11, "h_b1", seeds: H.holdoutB), H.holdout(13, "h_a", seeds: H.holdoutA)]))
+
+		#expect(context.treatment(for: "exp_swap") == 0)
+		#expect(try await h.publishedExposures(context).map(\.name).contains("h_a"))
 	}
 }
 
