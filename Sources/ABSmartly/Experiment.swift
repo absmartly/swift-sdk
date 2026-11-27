@@ -210,13 +210,14 @@ extension Experiment: Equatable {
 			&& lhs.fullOnVariant == rhs.fullOnVariant && lhs.applications == rhs.applications
 			&& lhs.variants == rhs.variants && lhs.customFieldValues == rhs.customFieldValues
 			&& lhs.assignmentRules == rhs.assignmentRules && lhs.holdoutIds == rhs.holdoutIds
-			&& lhs.holdoutType == rhs.holdoutType && lhs.randomizationType == rhs.randomizationType
+			&& lhs.holdoutType == rhs.holdoutType && SwitchbackServing.sameKey(lhs.randomizationType, rhs.randomizationType)
 			&& lhs.switchbackClusters == rhs.switchbackClusters
-			&& lhs.switchbackClusterValues == rhs.switchbackClusterValues
+			&& SwitchbackServing.sameKeys(lhs.switchbackClusterValues, rhs.switchbackClusterValues)
 			&& lhs.switchbackStartAt == rhs.switchbackStartAt && lhs.switchbackPeriodMs == rhs.switchbackPeriodMs
 			&& lhs.switchbackCarryoverDurationMs == rhs.switchbackCarryoverDurationMs
 			&& lhs.switchbackBurnInDurationMs == rhs.switchbackBurnInDurationMs
 			&& lhs.switchbackBurnOutDurationMs == rhs.switchbackBurnOutDurationMs
-			&& lhs.switchbackDesignType == rhs.switchbackDesignType && lhs.switchbackEstimand == rhs.switchbackEstimand
+			&& SwitchbackServing.sameKey(lhs.switchbackDesignType, rhs.switchbackDesignType)
+			&& SwitchbackServing.sameKey(lhs.switchbackEstimand, rhs.switchbackEstimand)
 	}
 }

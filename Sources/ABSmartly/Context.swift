@@ -1703,9 +1703,9 @@ public final class Context {
 		guard experiment.isSwitchback == assignment.switchback else { return false }
 		guard let slot = assignment.switchbackSlot else { return true }
 		let data = experiment.data
-		return data.switchbackClusters == slot.clusters && data.switchbackClusterValues == slot.clusterValues
+		return data.switchbackClusters == slot.clusters && SwitchbackServing.sameKeys(data.switchbackClusterValues, slot.clusterValues)
 			&& data.switchbackStartAt == slot.startAt && data.switchbackPeriodMs == slot.periodMs
-			&& data.switchbackDesignType == slot.designType
+			&& SwitchbackServing.sameKey(data.switchbackDesignType, slot.designType)
 	}
 
 
@@ -1719,9 +1719,9 @@ public final class Context {
 		let a = previous.data
 		let b = installed.data
 		return a.id == b.id && a.iteration == b.iteration && a.switchbackClusters == b.switchbackClusters
-			&& a.switchbackClusterValues == b.switchbackClusterValues && a.switchbackStartAt == b.switchbackStartAt
-			&& a.switchbackPeriodMs == b.switchbackPeriodMs && a.switchbackDesignType == b.switchbackDesignType
-			&& ((previous.switchbackSources != nil && installed.switchbackSources != nil) || a.unitType == b.unitType)
+			&& SwitchbackServing.sameKeys(a.switchbackClusterValues, b.switchbackClusterValues) && a.switchbackStartAt == b.switchbackStartAt
+			&& a.switchbackPeriodMs == b.switchbackPeriodMs && SwitchbackServing.sameKey(a.switchbackDesignType, b.switchbackDesignType)
+			&& ((previous.switchbackSources != nil && installed.switchbackSources != nil) || SwitchbackServing.sameKey(a.unitType, b.unitType))
 	}
 
 	// An epoch is stale once the installed definition is absent, not a switchback, or of another

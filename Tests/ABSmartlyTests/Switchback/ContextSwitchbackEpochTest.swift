@@ -23,6 +23,40 @@ final class ContextSwitchbackEpochTest: SwitchbackTestCase {
 		XCTAssertEqual(2, context.getPendingCount())
 	}
 
+	func testUnicodeAllowListAndPathEditsStartFreshEpochsInTheSamePeriod() {
+		let composed = "caf\u{E9}"
+		let decomposed = "cafe\u{301}"
+		for editPath in [false, true] {
+			var a = SB.switchback(arms: 2, periodMs: SB.hour,
+				clusters: [(SB.unitType, editPath ? composed : "city")])
+			a["switchbackClusterValues"] = [composed]
+			var b = a
+			if editPath {
+				b["switchbackClusters"] = SB.OrderedObject([(SB.unitType, decomposed)])
+			} else {
+				b["switchbackClusterValues"] = [decomposed]
+			}
+			let context = createContext(SB.data([a]), clusterAttribute: false)
+			clock.now = SB.anchor + 10
+			context.setAttribute(name: editPath ? composed : "city", value: JSON(composed))
+			_ = context.getTreatment("exp_sb")
+			XCTAssertEqual(1, context.getPendingCount())
+			refresh(context, SB.data([b]))
+			if editPath {
+				// Even if Foundation's dictionary treats equivalent attribute names alike, the new path
+				// identity starts a new slot and exposure.
+				_ = context.getTreatment("exp_sb")
+				XCTAssertEqual(2, context.getPendingCount())
+			} else {
+				XCTAssertEqual(0, context.getTreatment("exp_sb"))
+				XCTAssertEqual(1, context.getPendingCount())
+			}
+			refresh(context, SB.data([a]))
+			_ = context.getTreatment("exp_sb")
+			XCTAssertEqual(editPath ? 3 : 2, context.getPendingCount())
+		}
+	}
+
 	// One getVariableValue call takes one clock reading (SWITCHBACK.md "Serving"; java-sdk
 	// reads `now` once per call), so every switchback visited on a shared key resolves in the same period:
 	// the strict-mismatched first candidate consumes the only pre-boundary reading, and the winner still

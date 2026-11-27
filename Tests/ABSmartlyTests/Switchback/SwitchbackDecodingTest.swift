@@ -488,7 +488,7 @@ extension SwitchbackDecodingTest {
 	#if DEBUG
 	// A unit type key escaped in the payload is still read from the bytes.
 	func testEscapedSwitchbackKeyStillScans() throws {
-		let payload = Data(#"{"experiments":[{"id":1,"name":"e","\u0072andomizationType":"switchback","switchbackClusters":{"b":"x","a":"y"}}]}"#.utf8)
+		let payload = Data(#"{"experiments":[{"id":1,"name":"e","\u0072andomizationType":"\u0073witchback","\u0073witchbackClusters":{"b":"x","a":"y"}}]}"#.utf8)
 		SwitchbackClusterOrder.scanCount = 0
 		let decoded = try ContextData.decode(from: payload)
 		XCTAssertEqual("switchback", decoded.experiments[0].randomizationType)
@@ -503,6 +503,13 @@ extension SwitchbackDecodingTest {
 			.switchbackClusters
 		XCTAssertEqual(2, clusters?.count)
 		XCTAssertEqual(["x", "y"], clusters?.map { $0.attributePath ?? "" })
+	}
+
+	func testDuplicateRootArraysDoNotMixMetadata() throws {
+		let payload = Data(#"{"experiments":[{"id":1,"name":"unit"}],"experiments":[{"id":2,"name":"sb","randomizationType":"switchback","switchbackClusters":{"b":"x","a":"y"}}]}"#.utf8)
+		let plain = try JSONDecoder().decode(ContextData.self, from: payload)
+		let ordered = try ContextData.decode(from: payload)
+		XCTAssertEqual(plain, ordered)
 	}
 
 }

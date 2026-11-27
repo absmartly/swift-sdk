@@ -79,6 +79,23 @@ struct SwitchbackServing {
 		return a.utf16.elementsEqual(b.utf16)
 	}
 
+	static func sameKey(_ a: String?, _ b: String?) -> Bool {
+		switch (a, b) {
+		case (.none, .none): return true
+		case (.some(let a), .some(let b)): return sameKey(a, b)
+		default: return false
+		}
+	}
+
+	static func sameKeys(_ a: [String]?, _ b: [String]?) -> Bool {
+		switch (a, b) {
+		case (.none, .none): return true
+		case (.some(let a), .some(let b)):
+			return a.count == b.count && zip(a, b).allSatisfy { sameKey($0, $1) }
+		default: return false
+		}
+	}
+
 	// The Collector normalizes the published JSON, not the attribute's in-memory NSNumber type.
 	// Keep the released attribute encoder unchanged: it can write a whole Double as an integer (3.0
 	// -> 3), and a large whole Decimal as an exponent. Only an integer token gives a numeric key;

@@ -11,6 +11,12 @@ public struct SwitchbackCluster: Codable, Equatable {
 		self.unitType = unitType
 		self.attributePath = attributePath
 	}
+
+	public static func == (lhs: SwitchbackCluster, rhs: SwitchbackCluster) -> Bool {
+		return SwitchbackServing.sameKey(lhs.unitType, rhs.unitType)
+			&& SwitchbackServing.sameKey(lhs.attributePath, rhs.attributePath)
+	}
+
 }
 
 // Carries raw context bytes to `Experiment.init(from:)` through `JSONDecoder.userInfo`: cluster
@@ -118,12 +124,21 @@ struct OrderedJSONScanner {
 		}
 		skipWhitespace()
 		guard peek() == UInt8(ascii: "{") else { return false }
-		return scanObject { scanner, key in
+		var seen: Set<String> = []
+		var ambiguous: Set<String> = []
+		let ok = scanObject { scanner, key in
 			if key == "experiments" || key == "holdouts" {
+				if !seen.insert(key).inserted { ambiguous.insert(key) }
 				return scanner.scanExperiments(key)
 			}
 			return scanner.skipValue()
 		}
+		// Foundation's duplicate-root choice varies by platform. Never overlay metadata from a
+		// different occurrence onto the experiments the caller's decoder chose.
+		for field in ambiguous {
+			result = result.filter { !$0.key.hasPrefix(field + "/") }
+		}
+		return ok
 	}
 
 	private mutating func scanExperiments(_ field: String) -> Bool {
