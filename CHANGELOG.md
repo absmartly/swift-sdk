@@ -1,5 +1,24 @@
 # Changelog
 
+## 2.2.0 (unreleased)
+
+Switchback experiments, matching the Java SDK (java-sdk#15, 1.10.0) and the JavaScript SDK
+(javascript-sdk#69, 1.14.1). The `X-Agent` header is `absmartly-swift-sdk/2.2.0`. A payload without
+switchbacks is served and published exactly as in 2.1.0.
+
+### Added
+- Switchback experiments (R33, cluster-defined). An experiment with `randomizationType: "switchback"` is served by cluster and time: the first context unit, in `switchbackClusters` order, whose attribute path gives a value serves it, and the variant is the balanced-block draw for that raw cluster key and the period `floorDiv(now - switchbackStartAt, switchbackPeriodMs)`. Units that disagree, a value outside `switchbackClusterValues`, a missing value, no linked unit, a time before `switchbackStartAt` or an unservable schedule (an anchor that is unset, not hour aligned or out of range, a period that is not positive, fewer than two arms) give the control variant with no exposure.
+- Precedence: an override, then a matching assignment rule (a split rule randomizes over the serving unit), then a strict audience mismatch, then full-on, then traffic (on the serving unit), then a custom assignment, then the draw. Exposure flags are those of a unit experiment in the same case. Holdouts never apply to a switchback.
+- One exposure per experiment and period, stamped with the clock reading that chose the period (a read takes one reading). The cluster is read once per period, from the latest attribute set at or before the read. The two most recent periods stay cached.
+- A refresh keeps a switchback's cached periods while its identity (id, iteration, the ordered cluster map, `switchbackClusterValues`, `switchbackStartAt`, `switchbackPeriodMs`, `switchbackDesignType`) is unchanged; seed, split and the analysis-only fields are not identity.
+- `Experiment` fields `randomizationType` (now public), `switchbackClusters` (`[SwitchbackCluster]`, in declared order), `switchbackClusterValues`, `switchbackStartAt`, `switchbackPeriodMs`, `switchbackCarryoverDurationMs`, `switchbackBurnInDurationMs`, `switchbackBurnOutDurationMs`, `switchbackDesignType` and `switchbackEstimand`, all optional. A field of the wrong shape is nil on its own; an allow-list that is not an array of strings drops the cluster map with it, so the switchback serves only control.
+- `ContextData(json:)` decodes the body of `GET /context` keeping each `switchbackClusters` object in its JSON key order; the SDK's own fetch uses it. `JSONDecoder().decode(ContextData.self, from:)` still works but cannot see that order, so a switchback with more than one linked unit type decoded that way serves only control (and logs an error). Encoding writes the cluster map as an ordered array, which round-trips through any decoder.
+- `Diagnostics.switchbackVariant(clusterUnit:periodIndex:seed:armCount:)` and `Diagnostics.switchbackPermutation(clusterUnit:cycleIndex:seed:armCount:)` (`@_spi(Diagnostics)`), the platform's schedule draw, for conformance tooling.
+
+### Changed
+- Apps on 2.1.x whose payload contains switchback experiments: 2.1.x served them as unit experiments (a sticky assignment from `split`/`seedHi`/`seedLo` on `unitType`); 2.2.0 serves the cluster's variant for the current period and publishes under the serving unit, once per period, so assignments and exposure counts for those experiments change.
+- The `X-Agent` header is `absmartly-swift-sdk/2.2.0`, so the collector's `agent` column shows 2.2.0 for these clients.
+
 ## 2.1.0 (unreleased)
 
 Holdouts, matching 1.5.0 and the JavaScript SDK. The `X-Agent` header is `absmartly-swift-sdk/2.1.0`.

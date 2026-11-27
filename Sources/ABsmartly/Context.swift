@@ -158,7 +158,7 @@ public final class Context: Sendable {
 			if onlyWhileLoading && state.isReady {
 				return nil
 			}
-			state.index = index
+			state.install(index)
 			markReady(&state)
 			let waiters = state.readyWaiters
 			state.readyWaiters = []
@@ -190,7 +190,7 @@ public final class Context: Sendable {
 			if state.isReady {
 				return nil
 			}
-			state.index = .empty
+			state.install(.empty)
 			state.failure = error
 			state.failed = true
 			let waiters = state.readyWaiters
@@ -257,7 +257,7 @@ public final class Context: Sendable {
 							return .discarded
 						}
 						let loading = !state.ready
-						state.index = index
+						state.install(index)
 						markReady(&state)
 						guard loading else {
 							// As in 1.5.0: events still queued (e.g. a failed publish) get a publish timer.
@@ -484,7 +484,7 @@ public final class Context: Sendable {
 				let (assignment, exposures) = state.lookupExposing(experiment, now: { clock.millis() })
 				return .success((assignment.variant, exposures))
 			}
-			return .success((state.lookup(experiment).variant, []))
+			return .success((state.lookup(experiment, now: { clock.millis() }).variant, []))
 		}
 		switch result {
 		case .failure(let error):

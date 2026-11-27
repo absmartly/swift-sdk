@@ -19,6 +19,20 @@ public struct ContextData: Sendable, Equatable, Codable {
 		self.holdouts = holdouts
 	}
 
+	/// Decodes the body of `GET /context`, keeping each experiment's `switchbackClusters` in its JSON
+	/// key order, which decides which unit serves a switchback. Use it for context data you fetch
+	/// yourself: `JSONDecoder` cannot see that order, so a switchback with more than one linked unit
+	/// type decoded that way serves only control (and logs an error).
+	public init(json: Data) throws(ABsmartlyError) {
+		let decoder = JSONDecoder()
+		decoder.userInfo[SwitchbackClusterOrder.userInfoKey] = SwitchbackClusterOrder(json: json)
+		do {
+			self = try decoder.decode(ContextData.self, from: json)
+		} catch {
+			throw .decoding(error.safeDescription)
+		}
+	}
+
 	private enum CodingKeys: String, CodingKey {
 		case experiments, holdouts
 	}
@@ -59,9 +73,27 @@ public struct Experiment: Sendable, Equatable, Codable {
 	/// On a `ContextData.holdouts` entry, the holdout's type (`"full"`, `"all_full_on"`).
 	/// Informational: the SDK derives a holdout's arms from its `split`.
 	public var holdoutType: String?
-	// Holdouts never apply to an experiment whose randomization type is "switchback". Internal until
-	// the SDK serves switchbacks.
-	var randomizationType: String?
+	/// `"switchback"` for a switchback experiment; `"unit"` or nil for a unit experiment. Holdouts never
+	/// apply to a switchback.
+	public var randomizationType: String?
+	/// A switchback's linked unit types and the attribute path holding each one's cluster value, in
+	/// serving order: the first unit, in this order, whose path gives a value serves the experiment.
+	/// Nil when the payload has none, or has several whose order is not known (see
+	/// `ContextData(json:)`).
+	public var switchbackClusters: [SwitchbackCluster]?
+	/// The cluster values a switchback serves; nil or empty serves every value.
+	public var switchbackClusterValues: [String]?
+	/// The start of a switchback's period grid, epoch milliseconds (hour aligned).
+	public var switchbackStartAt: Int64?
+	/// The length of a switchback period, milliseconds.
+	public var switchbackPeriodMs: Int64?
+	/// Analysis-only switchback windows and design fields; the SDK serves without them, except
+	/// `switchbackDesignType`, a change of which starts a new switchback schedule.
+	public var switchbackCarryoverDurationMs: Int64?
+	public var switchbackBurnInDurationMs: Int64?
+	public var switchbackBurnOutDurationMs: Int64?
+	public var switchbackDesignType: String?
+	public var switchbackEstimand: String?
 
 	public init(
 		id: Int, name: String, unitType: String?, iteration: Int = 1, seedHi: Int = 0, seedLo: Int = 0,
@@ -113,6 +145,9 @@ public struct Experiment: Sendable, Equatable, Codable {
 		case id, name, unitType, iteration, seedHi, seedLo, split, trafficSeedHi, trafficSeedLo, trafficSplit
 		case fullOnVariant, applications, variants, audienceStrict, audience, customFieldValues, assignmentRules
 		case holdoutIds, holdoutType, randomizationType
+		case switchbackClusters, switchbackClusterValues, switchbackStartAt, switchbackPeriodMs
+		case switchbackCarryoverDurationMs, switchbackBurnInDurationMs, switchbackBurnOutDurationMs
+		case switchbackDesignType, switchbackEstimand
 	}
 
 	var isSwitchback: Bool { randomizationType == "switchback" }
@@ -150,6 +185,96 @@ public struct Experiment: Sendable, Equatable, Codable {
 		holdoutIds = (try? container.decodeIfPresent([Lenient<Int>].self, forKey: .holdoutIds))?.compactMap(\.value)
 		holdoutType = try? container.decodeIfPresent(String.self, forKey: .holdoutType)
 		randomizationType = try? container.decodeIfPresent(String.self, forKey: .randomizationType)
+
+		// A switchback field of the wrong shape is nil on its own, as 2.1.0 ignored these fields.
+		switchbackStartAt = try? container.decodeIfPresent(Int64.self, forKey: .switchbackStartAt)
+		switchbackPeriodMs = try? container.decodeIfPresent(Int64.self, forKey: .switchbackPeriodMs)
+		switchbackCarryoverDurationMs = try? container.decodeIfPresent(
+			Int64.self, forKey: .switchbackCarryoverDurationMs)
+		switchbackBurnInDurationMs = try? container.decodeIfPresent(Int64.self, forKey: .switchbackBurnInDurationMs)
+		switchbackBurnOutDurationMs = try? container.decodeIfPresent(Int64.self, forKey: .switchbackBurnOutDurationMs)
+		switchbackDesignType = try? container.decodeIfPresent(String.self, forKey: .switchbackDesignType)
+		switchbackEstimand = try? container.decodeIfPresent(String.self, forKey: .switchbackEstimand)
+
+		// An allow-list that is not an array of strings cannot be applied, so the cluster map is dropped
+		// with it: the switchback then serves only control, never every value.
+		if container.contains(.switchbackClusterValues),
+			(try? container.decodeNil(forKey: .switchbackClusterValues)) == false
+		{
+			switchbackClusterValues = try? container.decode([String].self, forKey: .switchbackClusterValues)
+			if switchbackClusterValues == nil {
+				Log.error(
+					"Ignoring switchbackClusters: switchbackClusterValues is not an array of strings.",
+					detail: "Experiment '\(name)'.")
+				return
+			}
+		}
+		switchbackClusters = Self.decodeSwitchbackClusters(container, decoder: decoder, name: name)
+	}
+
+	// The wire form is an object read in its JSON key order; `encode(to:)` writes an array of
+	// `SwitchbackCluster`s, which keeps the order through any encoder. Nil when the field is absent,
+	// null or neither shape, or when the order of a map with several entries is not known.
+	private static func decodeSwitchbackClusters(
+		_ container: KeyedDecodingContainer<CodingKeys>, decoder: Decoder, name: String
+	) -> [SwitchbackCluster]? {
+		let key = CodingKeys.switchbackClusters
+		guard container.contains(key), (try? container.decodeNil(forKey: key)) == false else {
+			return nil
+		}
+		if let clusters = try? container.decode([SwitchbackCluster].self, forKey: key) {
+			var unique: [SwitchbackCluster] = []
+			for cluster in clusters where !unique.contains(where: { $0.unitType == cluster.unitType }) {
+				unique.append(cluster)
+			}
+			return unique
+		}
+		guard let object = try? container.nestedContainer(keyedBy: AnyKey.self, forKey: key) else {
+			return nil
+		}
+		var paths: [String: String?] = [:]
+		for entry in object.allKeys where paths[entry.stringValue] == nil {
+			paths[entry.stringValue] = .some(try? object.decode(String.self, forKey: entry))
+		}
+		if paths.count < 2 {
+			return paths.map { SwitchbackCluster(unitType: $0.key, attributePath: $0.value) }
+		}
+		let order = (decoder.userInfo[SwitchbackClusterOrder.userInfoKey] as? SwitchbackClusterOrder)?
+			.keys(at: decoder.codingPath)
+		guard let order, order.count == paths.count, Set(order) == Set(paths.keys) else {
+			Log.error(
+				"Ignoring switchbackClusters: the order of its entries is not known. Decode the context data with ContextData(json:).",
+				detail: "Experiment '\(name)'.")
+			return nil
+		}
+		return order.map { SwitchbackCluster(unitType: $0, attributePath: paths[$0] ?? nil) }
+	}
+}
+
+/// One `Experiment.switchbackClusters` entry: a linked unit type and the attribute path holding its
+/// cluster value.
+public struct SwitchbackCluster: Sendable, Equatable, Codable {
+	public var unitType: String
+	/// The attribute path, `/`-separated; nil when the payload's value is not a string, which makes
+	/// the experiment's cluster map unreadable.
+	public var attributePath: String?
+
+	public init(unitType: String, attributePath: String?) {
+		self.unitType = unitType
+		self.attributePath = attributePath
+	}
+}
+
+private struct AnyKey: CodingKey {
+	let stringValue: String
+	var intValue: Int? { nil }
+
+	init?(stringValue: String) {
+		self.stringValue = stringValue
+	}
+
+	init?(intValue: Int) {
+		return nil
 	}
 }
 

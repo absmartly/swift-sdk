@@ -249,7 +249,7 @@ import Testing
 		#expect(request.headers["X-Environment"] == "test")
 		#expect(request.headers["X-Application"] == "test_app")
 		#expect(request.headers["X-Agent"] == "absmartly-swift-sdk/\(SDKVersion.version)")
-		#expect(request.headers["X-Agent"] == "absmartly-swift-sdk/2.1.0")
+		#expect(request.headers["X-Agent"] == "absmartly-swift-sdk/2.2.0")
 		#expect(request.body != nil)
 	}
 
@@ -421,7 +421,7 @@ import Testing
 	}
 
 	@Test func sdkVersionAgent() {
-		#expect(SDKVersion.version == "2.1.0")
+		#expect(SDKVersion.version == "2.2.0")
 		#expect(SDKVersion.agent == "absmartly-swift-sdk/\(SDKVersion.version)")
 	}
 

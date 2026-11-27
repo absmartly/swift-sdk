@@ -110,6 +110,12 @@ private enum CheckoutVariant: Int {
 		overridden.setCustomAssignment(1, for: "exp_search")
 		let current = overridden.overrides
 
+		// README: Switchback experiments
+		try context.setUnit("store_id", to: "store-42")
+		context.setAttribute("store", to: ["region": "north"])
+		let storeVariant = context.treatment(for: "exp_store_layout")
+		let decoded = try ContextData(json: Data(#"{"experiments":[]}"#.utf8))
+
 		// README: Attributes and units
 		context.setAttribute("plan", to: "pro")
 		context.setAttributes(["age": 42, "country": "PT"])
@@ -126,6 +132,7 @@ private enum CheckoutVariant: Int {
 		#expect(variant == 1 && peeked == 1 && style == .single)
 		#expect(color == "red" && limit == 10 && config.steps == 3 && raw == nil)
 		#expect(current == ["exp_checkout": 2, "exp_search": 2])
+		#expect(storeVariant == 0 && decoded.experiments.isEmpty)
 	}
 
 	@Test func stateAndEvents() async throws {

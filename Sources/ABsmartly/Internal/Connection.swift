@@ -8,7 +8,7 @@ import Foundation
 // `spec.version`: the release workflow refuses to publish a tag where they differ.
 enum SDKVersion {
 	static let name = "absmartly-swift-sdk"
-	static let version = "2.1.0"
+	static let version = "2.2.0"
 	static let agent = "\(name)/\(version)"
 }
 
@@ -64,11 +64,7 @@ struct Connection: Sendable {
 
 	func fetchContextData() async throws(ABsmartlyError) -> ContextData {
 		let response = try await send(method: "GET", url: url, body: nil)
-		do {
-			return try JSONDecoder().decode(ContextData.self, from: response.body)
-		} catch {
-			throw .decoding(error.safeDescription)
-		}
+		return try ContextData(json: response.body)
 	}
 
 	func publish(_ event: PublishEvent) async throws(ABsmartlyError) {

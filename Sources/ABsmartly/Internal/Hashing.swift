@@ -147,4 +147,19 @@ public enum Diagnostics {
 	public static func utf8Bytes(_ value: String) -> [UInt8] {
 		Array(value.utf8)
 	}
+
+	/// The switchback variant of the raw cluster key `clusterUnit` in period `periodIndex`, with
+	/// `seed = (seedHi << 32) | (seedLo & 0xffffffff)`; nil when `armCount` is less than 2.
+	public static func switchbackVariant(clusterUnit: String, periodIndex: Int64, seed: Int64, armCount: Int) -> Int? {
+		armCount >= 2
+			? SwitchbackAssigner.assign(clusterUnit, periodIndex: periodIndex, seed: seed, armCount: armCount) : nil
+	}
+
+	/// The switchback order of `0..<armCount` over cycle `cycleIndex`; nil when `armCount` is less than 2.
+	public static func switchbackPermutation(clusterUnit: String, cycleIndex: Int64, seed: Int64, armCount: Int)
+		-> [Int]?
+	{
+		armCount >= 2
+			? SwitchbackAssigner.permutation(clusterUnit, cycleIndex: cycleIndex, seed: seed, armCount: armCount) : nil
+	}
 }
