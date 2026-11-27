@@ -12,16 +12,19 @@ struct DataIndex: Sendable {
 		let rules: [ExprValue]?
 		let audience: AudienceMatcher.Audience
 		let customFields: [String: CustomField]
+		/// The holdouts covering the experiment, by ascending unique id; nil when none applies.
+		let holdouts: [Experiment]?
 
 		init(
 			data: Experiment, variables: [[String: JSONValue]], rules: [ExprValue]?,
-			audience: AudienceMatcher.Audience, customFields: [String: CustomField]
+			audience: AudienceMatcher.Audience, customFields: [String: CustomField], holdouts: [Experiment]?
 		) {
 			self.data = data
 			self.variables = variables
 			self.rules = rules
 			self.audience = audience
 			self.customFields = customFields
+			self.holdouts = holdouts
 		}
 	}
 
@@ -41,7 +44,22 @@ struct DataIndex: Sendable {
 		var experiments: [String: Entry] = [:]
 		var variableExperiments: [String: [Entry]] = [:]
 
+		var holdoutsById: [Int: Experiment] = [:]
+		for holdout in data.holdouts ?? [] where !holdout.split.isEmpty {
+			holdoutsById[holdout.id] = holdout
+		}
+
 		for experiment in data.experiments {
+			// Holdouts never apply to a switchback. An id with no (usable) holdout is ignored.
+			var holdouts: [Experiment] = []
+			if !experiment.isSwitchback {
+				for holdoutId in experiment.holdoutIds ?? [] {
+					if let holdout = holdoutsById[holdoutId] {
+						holdouts.insertUniqueSorted(holdout) { $0.id < $1.id }
+					}
+				}
+			}
+
 			var rules: [ExprValue]?
 			if let assignmentRules = experiment.assignmentRules, !assignmentRules.isEmpty {
 				rules = AudienceMatcher.parseRules(assignmentRules)
@@ -68,7 +86,8 @@ struct DataIndex: Sendable {
 				variables: variables,
 				rules: rules,
 				audience: experiment.audience.map(AudienceMatcher.parseAudience) ?? .none,
-				customFields: Self.customFields(experiment))
+				customFields: Self.customFields(experiment),
+				holdouts: holdouts.isEmpty ? nil : holdouts)
 
 			for key in keys {
 				variableExperiments[key, default: []].insertUniqueSorted(entry) { $0.data.id < $1.data.id }

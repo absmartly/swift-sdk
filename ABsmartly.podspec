@@ -1,6 +1,6 @@
 Pod::Spec.new do |spec|
   spec.name = 'ABsmartly'
-  spec.version = '2.0.0'
+  spec.version = '2.1.0'
   spec.summary = 'ABsmartly Swift SDK'
   spec.description = 'ABsmartly A/B testing SDK for iOS, macOS, tvOS, watchOS and visionOS: async/await, Swift 6 strict concurrency, no third-party dependencies.'
 

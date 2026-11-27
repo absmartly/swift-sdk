@@ -416,8 +416,8 @@ import Testing
 		state.index = DataIndex(Self.contextData(Self.experimentJSON(rules: nil)))
 		state.ready = true
 		state.closing = true
-		let (_, exposure) = state.lookupExposing("exp", now: { 0 })
-		#expect(exposure == nil)
+		let (_, exposures) = state.lookupExposing("exp", now: { 0 })
+		#expect(exposures.isEmpty)
 		#expect(state.exposures.isEmpty)
 		#expect(state.pendingCount == 0)
 	}

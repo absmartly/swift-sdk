@@ -142,7 +142,7 @@ import Testing
 			#expect(request.header("X-Application") == "integration-app")
 			#expect(request.header("X-Environment") == "integration-env")
 			#expect(request.header("X-Application-Version") == "42")
-			#expect(request.header("X-Agent") == "absmartly-swift-sdk/2.0.0")
+			#expect(request.header("X-Agent") == "absmartly-swift-sdk/2.1.0")
 			#expect(request.header("Content-Type") == "application/json; charset=utf-8")
 		}
 		let body = try JSONDecoder().decode(JSONValue.self, from: put.body)

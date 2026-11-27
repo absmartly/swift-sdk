@@ -87,6 +87,79 @@ import Testing
 		#endif
 	}
 
+	// A warmed read of a holdout-covered experiment costs about the same as an uncovered one: checking
+	// the pinned holdouts compares ids and iterations in place, without copying each holdout definition
+	// (copying them made covered reads ~3.7x slower). Optimized builds only, where timing means
+	// something. A coarse guard: covered reads measure ~1.1x today, and 2x still leaves room for a
+	// noisy shared CI runner.
+	@Test(.enabled(if: !countsCacheWrites)) func warmedCoveredReadsCostAboutTheSameAsUncoveredOnes() {
+		func experiment(holdoutIds: [Int]?) -> Experiment {
+			Experiment(
+				id: 1, name: "exp", unitType: "session_id", seedHi: 100, seedLo: 200, split: [0.5, 0.5],
+				trafficSeedHi: 1,
+				trafficSeedLo: 2,
+				variants: [.init(name: "0", config: "{\"k\":0}"), .init(name: "1", config: "{\"k\":1}")],
+				holdoutIds: holdoutIds, holdoutType: nil)
+		}
+		func holdout(_ id: Int) -> Experiment {
+			Experiment(
+				id: id, name: "h\(id)", unitType: "session_id", seedHi: 1, seedLo: 222, split: [0.1, 0.9], variants: [],
+				holdoutIds: nil, holdoutType: "full")
+		}
+		// Best of several batches, so one slow batch on a busy runner does not count.
+		func nanosecondsPerRead(_ data: ContextData) -> Double {
+			let context = Harness().context(data: data, units: [.sessionID: Holdouts.uidNotHeldOut])
+			_ = context.treatment(for: "exp")
+			_ = context.variableValue("k")
+			var best = Double.infinity
+			for _ in 0..<7 {
+				let start = DispatchTime.now().uptimeNanoseconds
+				for _ in 0..<20_000 {
+					_ = context.treatment(for: "exp")
+					_ = context.variableValue("k")
+				}
+				best = min(best, Double(DispatchTime.now().uptimeNanoseconds - start) / 20_000)
+			}
+			return best
+		}
+
+		let uncovered = nanosecondsPerRead(ContextData(experiments: [experiment(holdoutIds: nil)]))
+		let covered = nanosecondsPerRead(
+			ContextData(experiments: [experiment(holdoutIds: [11, 12])], holdouts: [holdout(11), holdout(12)]))
+		#expect(covered < uncovered * 2, "covered \(covered) ns/read vs uncovered \(uncovered) ns/read")
+	}
+
+	// The holdout-set check is skipped when neither the data nor the cached assignment has holdouts,
+	// so warmed reads of an experiment without holdouts (here with an override too) compare nothing.
+	@Test(.enabled(if: countsCacheWrites)) func warmedReadsWithoutHoldoutsSkipTheHoldoutSetCheck() {
+		#if DEBUG
+			let context = Harness().context()
+			context.setOverride(1, for: "exp_test_abc")
+			#expect(context.treatment(for: "exp_test_ab") == 1)
+			#expect(context.treatment(for: "exp_test_abc") == 1)
+			for _ in 0..<100 {
+				#expect(context.treatment(for: "exp_test_ab", exposing: false) == 1)
+				#expect(context.treatment(for: "exp_test_abc", exposing: false) == 1)
+				#expect(context.variableValue("banner.size") == "large")
+			}
+			#expect(context.holdoutSetComparisonCount == 0)
+		#endif
+	}
+
+	// A covered experiment does compare its holdout set on a cached read.
+	@Test(.enabled(if: countsCacheWrites)) func warmedReadsWithHoldoutsCompareTheHoldoutSet() {
+		#if DEBUG
+			let h = HoldoutEnv()
+			let context = h.context(
+				Holdouts.contextData(
+					[Holdouts.experiment(1, "exp_cov", holdoutIds: [11])],
+					holdouts: [Holdouts.holdout(11, "holdout_a", seeds: Holdouts.holdoutB)]))
+			#expect(context.treatment(for: "exp_cov") == Holdouts.normalVariant)
+			#expect(context.treatment(for: "exp_cov") == Holdouts.normalVariant)
+			#expect(context.holdoutSetComparisonCount == 1)
+		#endif
+	}
+
 	@Test(.enabled(if: countsCacheWrites)) func warmedReadsDoNotWriteAssignmentCache() {
 		#if DEBUG
 			let context = Harness().context()

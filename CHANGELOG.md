@@ -1,6 +1,26 @@
 # Changelog
 
-## 2.0.0 (unreleased)
+## 2.1.0 (unreleased)
+
+Holdouts, matching 1.5.0 and the JavaScript SDK. The `X-Agent` header is `absmartly-swift-sdk/2.1.0`.
+2.0.0 ignored the payload's holdout data; 2.1.0 applies it, so apps on 1.5.x that rely on holdouts
+can move to 2.x.
+
+### Added
+- Holdouts. `ContextData.holdouts` lists the holdouts and `Experiment.holdoutIds` the ones covering each experiment (`Experiment.holdoutType` is informational: arms come from the holdout's `split`). A unit held out by any covering holdout gets control (variant `0`) and its control variables, and the experiment publishes no exposure of its own; each covering holdout publishes its own exposure (its name and arm) once per arm, the first time an exposing read meets it, even when the unit is not held out. Arm 0 holds the unit out; in a three-arm holdout, arm 1 holds out only experiments that are not full-on.
+- An override or a matching assignment rule still wins over a holdout, and the experiment's own exposure is still published; a custom assignment does not.
+- Peeking (`exposing: false`) publishes nothing, holdout exposures included.
+- `variable(_:default:)` and `variableValue(_:)`: when no candidate experiment wins a shared key and the unit is held out of one, the first held-out candidate's control value is returned (nil, or the default, when its control does not define the key). The holdouts of every candidate visited publish their exposures.
+- A refresh keeps a unit's holdout arms and exposures while the holdout's iteration is unchanged (a same-iteration seed or split edit changes nothing); a new iteration, or a change in which holdouts cover an experiment, re-resolves it.
+- Holdouts never apply to a switchback experiment (`randomizationType: "switchback"`).
+- A malformed holdout entry, a holdout with an empty or missing `split`, or a malformed or unknown id in `holdoutIds` is ignored on its own.
+- `ContextData(experiments:holdouts:)` and `Experiment(...holdoutIds:holdoutType:)` initializers.
+
+### Changed
+- Apps on 2.0.x whose context payload contains holdouts: a held-out unit now gets control for each covered experiment, and the holdout's exposure replaces that experiment's own, so assignments and exposure counts change. 2.0.0 ignored the holdout data.
+- The `X-Agent` header is `absmartly-swift-sdk/2.1.0`, so the collector's `agent` column shows 2.1.0 for these clients.
+
+## 2.0.0 (2026-11-25)
 
 A new API for Swift 6 over the 1.5.0 engine. Assignment, audiences, assignment rules, exposures,
 goals and the publish payload retain 1.5.0 behaviour apart from holdouts (below) and the extreme

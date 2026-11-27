@@ -476,24 +476,22 @@ public final class Context: Sendable {
 		// One critical section: the ready check, the lookup and (on first exposure) the queueing. The
 		// clock is read only when an exposure is queued.
 		let clock = clock
-		let result: Result<(Int, Exposure?), ABsmartlyError> = storage.withLock { state in
+		let result: Result<(Int, [Exposure]), ABsmartlyError> = storage.withLock { state in
 			if let error = state.checkReady(expectNotClosed: true) {
 				return .failure(error)
 			}
 			if exposing {
-				let (assignment, exposure) = state.lookupExposing(experiment, now: { clock.millis() })
-				return .success((assignment.variant, exposure))
+				let (assignment, exposures) = state.lookupExposing(experiment, now: { clock.millis() })
+				return .success((assignment.variant, exposures))
 			}
-			return .success((state.lookup(experiment).variant, nil))
+			return .success((state.lookup(experiment).variant, []))
 		}
 		switch result {
 		case .failure(let error):
 			reportError(error)
 			return 0
-		case .success((let variant, let exposure)):
-			if let exposure {
-				didQueue(.exposure(exposure))
-			}
+		case .success((let variant, let exposures)):
+			didQueue(exposures)
 			return variant
 		}
 	}
@@ -511,13 +509,17 @@ public final class Context: Sendable {
 	}
 
 	/// The value of a variable in the variant of the first experiment defining it (by ascending id)
-	/// that this context is in, or `nil` when there is none or its variant does not define the key.
-	/// With `exposing` (the default) that experiment is exposed; no other experiment is.
+	/// that this context is in, or `nil` when its variant does not define the key. When the context is
+	/// in none of them but a holdout holds it out of one, the first held-out experiment's control value
+	/// (or `nil` when its control does not define the key); otherwise `nil`.
+	/// With `exposing` (the default) that experiment is exposed and no other experiment is, but the
+	/// holdouts covering every experiment checked publish their own exposures; a held-out experiment
+	/// publishes no exposure of its own.
 	public func variableValue(_ key: String, exposing: Bool = true) -> JSONValue? {
 		// One critical section: the ready check, the candidates, their assignments and the winner's
 		// exposure all come from one data install.
 		let clock = clock
-		let result: Result<(JSONValue?, Exposure?), ABsmartlyError> = storage.withLock { state in
+		let result: Result<(JSONValue?, [Exposure]), ABsmartlyError> = storage.withLock { state in
 			if let error = state.checkReady(expectNotClosed: true) {
 				return .failure(error)
 			}
@@ -527,10 +529,8 @@ public final class Context: Sendable {
 		case .failure(let error):
 			reportError(error)
 			return nil
-		case .success((let value, let exposure)):
-			if let exposure {
-				didQueue(.exposure(exposure))
-			}
+		case .success((let value, let exposures)):
+			didQueue(exposures)
 			return value
 		}
 	}
@@ -778,6 +778,23 @@ public final class Context: Sendable {
 		storage.withLock { schedulePublish(&$0) }
 	}
 
+	// Every exposure one read queued is in the queue before the logger hears of any, so a logger
+	// that closes the context cannot flush between them. Streams get the whole batch, in queue order,
+	// before the logger runs, so a logger that closes the context cannot finish them mid-batch.
+	private func didQueue(_ exposures: [Exposure]) {
+		guard !exposures.isEmpty else { return }
+		let streams = storage.withLock { $0.streams }
+		for exposure in exposures {
+			for continuation in streams.values {
+				continuation.yield(.exposure(exposure))
+			}
+		}
+		for exposure in exposures {
+			emit(.exposure(exposure), onMain: false, streams: [:])
+		}
+		storage.withLock { schedulePublish(&$0) }
+	}
+
 	// Streams see every event at once, in order. The logger sees `ready`/`refresh`/`publish`/`close`
 	// and the errors of background work (load, refresh, publish) on the main thread on Apple
 	// platforms (`onMain`), as in 1.x, without the work waiting for it.
@@ -932,6 +949,16 @@ extension JSONValue {
 		/// Test hook: how many times cached assignments were re-evaluated against their rules/audience.
 		var revalidationCount: Int {
 			storage.withLock { $0.revalidations }
+		}
+
+		/// Test hook: how many times a cached assignment's holdout set was compared with the data's.
+		var holdoutSetComparisonCount: Int {
+			storage.withLock { $0.holdoutSetComparisons }
+		}
+
+		/// Test hook: how many times a covered assignment's holdouts were visited to queue exposures.
+		var holdoutVisitCount: Int {
+			storage.withLock { $0.holdoutVisits }
 		}
 	}
 #endif

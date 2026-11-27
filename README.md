@@ -23,17 +23,13 @@ platforms (swift-crypto is linked on Linux only).
 
 Building needs Swift 6.0 or later (Xcode 16 or later).
 
-**Holdouts are not supported in 2.0.0.** Holdout data is ignored: units are assigned and exposed as
-if no holdout existed. Use 1.5.x if you rely on holdouts (released, and
-maintained on the `release/1.x` branch); they come to 2.x in a later release.
-
 ## Installation
 
 ### Swift Package Manager
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/absmartly/swift-sdk.git", from: "2.0.0")
+    .package(url: "https://github.com/absmartly/swift-sdk.git", from: "2.1.0")
 ],
 targets: [
     .target(name: "App", dependencies: [
@@ -50,8 +46,8 @@ and choose the `ABsmartly` (and optionally `ABsmartlyUI`) product.
 ### CocoaPods
 
 ```ruby
-pod 'ABsmartly', '~> 2.0'        # core
-pod 'ABsmartly/UI', '~> 2.0'     # with the SwiftUI property wrappers
+pod 'ABsmartly', '~> 2.1'        # core
+pod 'ABsmartly/UI', '~> 2.1'     # with the SwiftUI property wrappers
 ```
 
 The CocoaPods trunk stops accepting new versions on 2026-12-02. Releases after that are published
@@ -212,7 +208,9 @@ Reading a variable exposes the experiment that provides it. Pass `exposing: fals
 When several experiments define the same variable key, they are checked in ascending experiment id
 order and the first one this context is in (assigned, overridden or set by an assignment rule) wins.
 Only that experiment is exposed. If its variant does not define the key, the read returns the default;
-a later experiment's value is never used. As in the Java SDK, an assignment already resolved in the
+a later experiment's value is never used. If the context is in none of them but is held out of one
+(see [Holdouts](#holdouts)), the first held-out experiment's control value is returned, or the default
+when its control does not define the key. As in the Java SDK, an assignment already resolved in the
 context keeps its variant's variables until the experiment's iteration (or another assignment input)
 changes, so a refresh that changes only variant configs does not replace them.
 
@@ -234,6 +232,29 @@ let current = context.overrides   // ["exp_checkout": 2, "exp_search": 2]
 `setOverride(_:for:)` and `setOverrides(_:)` update atomically, so they are safe from any thread.
 Assigning the `overrides` property (`context.overrides["x"] = 1`) also works, but replaces the whole
 dictionary: two threads doing it at the same time can overwrite each other.
+
+### Holdouts
+
+Holdouts are set up in the ABsmartly dashboard and need no code. The context data lists them in
+`ContextData.holdouts`, and each experiment names the holdouts covering it in `Experiment.holdoutIds`.
+The SDK draws the unit's arm in each covering holdout (hashed with the experiment's unit type):
+
+- Arm 0 holds the unit out: the experiment returns the control variant (`0`) and its variables'
+  control values, and publishes no exposure of its own.
+- In a holdout with three arms, arm 1 also holds the unit out of experiments that are not full-on;
+  full-on experiments are assigned as usual. Every other arm leaves the experiment alone.
+
+A unit held out by any covering holdout is held out. An exposing read of a covered experiment
+publishes one exposure per covering holdout (its name and arm) the first time, even when the unit is
+not held out; peeking (`exposing: false`) publishes nothing. An override and a matching assignment
+rule still win over a holdout, and the experiment's own exposure is still published; a custom
+assignment does not. Holdouts never apply to switchback experiments. A malformed holdout entry, or a
+malformed id in `holdoutIds`, is ignored on its own.
+
+```swift
+// Held out by a covering holdout: 0, and only the holdout's exposure is published.
+let variant = context.treatment(for: "exp_checkout")
+```
 
 ### Attributes and units
 
