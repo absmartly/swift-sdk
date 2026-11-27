@@ -883,6 +883,53 @@ import Testing
 		#expect(context.pendingEventCount == 2, "\(change)")
 	}
 
+	// Reordering two agreeing linked units is identity: the new first unit serves, and is exposed.
+	@Test func reorderedClusterMapStartsANewEpochUnderTheNewFirstUnit() async throws {
+		let clusters: [(String, Any)] = [(SB.unitType, SB.clusterPath), ("user_id", "city")]
+		let units: [UnitType: String] = [UnitType(SB.unitType): SB.uid, .userID: "u1"]
+		let attributes: [String: JSONValue] = [SB.clusterPath: "store-42", "city": "store-42"]
+		let sb = SwitchbackEnv()
+		let context = sb.context(SB.data([SB.switchback(clusters: clusters)]), units: units, attributes: attributes)
+		_ = context.treatment(for: "exp_sb")
+		try await sb.refresh(context, SB.data([SB.switchback(clusters: Array(clusters.reversed()))]))
+		_ = context.treatment(for: "exp_sb")
+		#expect(
+			try await sb.publish(context) == [
+				SB.exposure(SB.expected2Arms[0], SB.anchor),
+				SB.exposure(SB.expected2Arms[0], SB.anchor, unit: "user_id"),
+			])
+	}
+
+	// Carryover, burn-in, burn-out and estimand are analysis-only: editing them keeps the period.
+	@Test(arguments: [
+		"switchbackCarryoverDurationMs", "switchbackBurnInDurationMs", "switchbackBurnOutDurationMs",
+		"switchbackEstimand",
+	])
+	func analysisOnlyEditKeepsThePeriod(_ field: String) async throws {
+		let sb = SwitchbackEnv()
+		let context = sb.context(SB.data([SB.switchback(arms: 10)]))
+		_ = context.treatment(for: "exp_sb")
+		let value: Any = field == "switchbackEstimand" ? "other" : SB.hour
+		try await sb.refresh(context, SB.data([SB.switchback(arms: 10, extra: [field: value])]))
+		#expect(context.treatment(for: "exp_sb") == SB.expected10Arms[0])
+		#expect(context.pendingEventCount == 1, "\(field)")
+	}
+
+	// A linked unit type matches a context unit by its exact bytes, as in Java and JavaScript.
+	@Test func linkedUnitTypesMatchByExactBytes() async throws {
+		let composed = "unit_\u{E9}"
+		let decomposed = "unit_e\u{301}"
+		let sb = SwitchbackEnv()
+		let other = sb.context(
+			SB.data([SB.switchback(clusters: [(composed, SB.clusterPath)])]), units: [UnitType(decomposed): SB.uid])
+		#expect(other.treatment(for: "exp_sb") == 0)
+		#expect(other.pendingEventCount == 0)
+		let same = sb.context(
+			SB.data([SB.switchback(clusters: [(composed, SB.clusterPath)])]), units: [UnitType(composed): SB.uid])
+		#expect(same.treatment(for: "exp_sb") == SB.expected2Arms[0])
+		#expect(try await sb.publish(same) == [SB.exposure(SB.expected2Arms[0], SB.anchor, unit: composed)])
+	}
+
 	// A period-length change is identity even when the period index stays the same.
 	@Test func periodLengthChangeAtTheSamePeriodIndexStartsANewEpoch() async throws {
 		let sb = SwitchbackEnv(now: SB.anchor + 10)

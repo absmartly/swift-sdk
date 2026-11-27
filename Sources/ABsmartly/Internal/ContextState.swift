@@ -146,7 +146,7 @@ struct ContextState {
 		preserveAttributeFloatSyntax =
 			preserveAttributeFloatSyntax || newIndex.data.experiments.contains { $0.isSwitchback }
 		var generations: [String: Int] = [:]
-		for (name, entry) in newIndex.experiments where entry.data.isSwitchback {
+		for (name, entry) in newIndex.experiments where entry.isSwitchback {
 			if let previous = index.experiments[name], let generation = switchbackGenerations[name],
 				SwitchbackSchedule.sameIdentity(previous, entry)
 			{
@@ -408,11 +408,16 @@ struct ContextState {
 	private mutating func lookup(_ experimentName: String, reading: inout Int64?, now: () -> Int64) -> Assignment {
 		let entry = index.experiments[experimentName]
 
-		if let entry, entry.data.isSwitchback {
+		if let entry, entry.isSwitchback {
 			let time = reading ?? now()
 			reading = time
 			return lookupSwitchback(experimentName, entry, now: time)
 		}
+		return lookupUnit(experimentName, entry)
+	}
+
+	// `lookup` for everything but a switchback: 2.1.0's path.
+	private mutating func lookupUnit(_ experimentName: String, _ entry: DataIndex.Entry?) -> Assignment {
 		// An epoch is dropped once its experiment is no longer that switchback, so a unit experiment
 		// never reads a switchback slot. A context that never resolved a switchback has no epochs.
 		if !switchbackEpochs.isEmpty, switchbackEpochs[experimentName] != nil {

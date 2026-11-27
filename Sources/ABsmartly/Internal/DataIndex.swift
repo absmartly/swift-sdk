@@ -17,12 +17,15 @@ struct DataIndex: Sendable {
 		/// A switchback's linked unit types and parsed cluster paths in declared order; nil for a unit
 		/// experiment and for a cluster map that is missing, empty or unreadable (the legacy path).
 		let switchbackSources: [SwitchbackSource]?
+		/// `data.isSwitchback`, computed once: every read checks it.
+		let isSwitchback: Bool
 
 		init(
 			data: Experiment, variables: [[String: JSONValue]], rules: [ExprValue]?,
 			audience: AudienceMatcher.Audience, customFields: [String: CustomField], holdouts: [Experiment]?
 		) {
-			switchbackSources = data.isSwitchback ? SwitchbackSource.sources(data.switchbackClusters) : nil
+			isSwitchback = data.isSwitchback
+			switchbackSources = isSwitchback ? SwitchbackSource.sources(data.switchbackClusters) : nil
 			self.data = data
 			self.variables = variables
 			self.rules = rules
