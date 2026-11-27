@@ -90,7 +90,8 @@ import Testing
 	// A warmed read of a holdout-covered experiment costs about the same as an uncovered one: checking
 	// the pinned holdouts compares ids and iterations in place, without copying each holdout definition
 	// (copying them made covered reads ~3.7x slower). Optimized builds only, where timing means
-	// something; 2.5x leaves room for shared CI runners while still catching that regression.
+	// something. A coarse guard: covered reads measure ~1.1x today, and 2x still leaves room for a
+	// noisy shared CI runner.
 	@Test(.enabled(if: !countsCacheWrites)) func warmedCoveredReadsCostAboutTheSameAsUncoveredOnes() {
 		func experiment(holdoutIds: [Int]?) -> Experiment {
 			Experiment(
@@ -125,7 +126,7 @@ import Testing
 		let uncovered = nanosecondsPerRead(ContextData(experiments: [experiment(holdoutIds: nil)]))
 		let covered = nanosecondsPerRead(
 			ContextData(experiments: [experiment(holdoutIds: [11, 12])], holdouts: [holdout(11), holdout(12)]))
-		#expect(covered < uncovered * 2.5, "covered \(covered) ns/read vs uncovered \(uncovered) ns/read")
+		#expect(covered < uncovered * 2, "covered \(covered) ns/read vs uncovered \(uncovered) ns/read")
 	}
 
 	// The holdout-set check is skipped when neither the data nor the cached assignment has holdouts,

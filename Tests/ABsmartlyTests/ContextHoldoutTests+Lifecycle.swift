@@ -917,6 +917,27 @@ extension ContextHoldoutTests {
 	}
 }
 
+// A refresh that swaps one covering holdout for another of the same count and iteration re-resolves
+// the experiment: the holdout set is compared by id at every position, not only the first.
+extension ContextHoldoutTests {
+	@Test func refreshSwappingTheSecondCoveringHoldoutReResolves() async throws {
+		let context = h.context(
+			H.contextData(
+				[H.experiment(1, "exp_swap", holdoutIds: [11, 12])],
+				holdouts: [H.holdout(11, "h_b1", seeds: H.holdoutB), H.holdout(12, "h_b2", seeds: H.holdoutB)]))
+		#expect(context.treatment(for: "exp_swap") == H.normalVariant)
+
+		try await h.refresh(
+			context,
+			H.contextData(
+				[H.experiment(1, "exp_swap", holdoutIds: [11, 13])],
+				holdouts: [H.holdout(11, "h_b1", seeds: H.holdoutB), H.holdout(13, "h_a", seeds: H.holdoutA)]))
+
+		#expect(context.treatment(for: "exp_swap") == 0)
+		#expect(try await h.publishedExposures(context).map(\.name).contains("h_a"))
+	}
+}
+
 // Cache reuse across a refresh, pinned to the javascript-sdk and 1.5.0 behaviour this port matches
 // exactly (context.ts `_assign`, 1.5.0 `lookupAssignment`): changing either is a cross-SDK decision.
 extension ContextHoldoutTests {
