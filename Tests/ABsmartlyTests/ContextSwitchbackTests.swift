@@ -14,6 +14,279 @@ import Testing
 	// An audience the default context never matches (no "tier" attribute).
 	static let goldAudience = "{\"filter\":[{\"eq\":[{\"var\":\"tier\"},{\"value\":\"gold\"}]}]}"
 
+	// Float syntax must survive the real PUT, not only the in-memory serving decision.
+	@Test func floatAttributesStayFloatsOnTheSwitchbackWire() async throws {
+		struct Wire<Value: Decodable>: Decodable {
+			struct Attribute: Decodable { let value: Value }
+			let attributes: [Attribute]
+		}
+		struct Nested: Decodable {
+			struct Item: Decodable { let id: Double }
+			let items: [Item]
+		}
+		let numbers: [Double] = [
+			3.0, -3.0, -0.0, 1.5, 3.0000000000000004, 1e20, -1e20, 1e-20, Double.leastNonzeroMagnitude,
+			Double.greatestFiniteMagnitude,
+		]
+		for number in numbers {
+			for nested in [false, true] {
+				let sb = SwitchbackEnv()
+				let path = nested ? "store/items/0/id" : SB.clusterPath
+				let value: JSONValue = nested ? ["items": [["id": .double(number)]]] : .double(number)
+				let context = sb.context(
+					SB.data([SB.switchback(arms: 10, clusters: [(SB.unitType, path)])]),
+					attributes: [nested ? "store" : SB.clusterPath: value])
+				#expect(context.treatment(for: "exp_sb") == 0)
+				#expect(context.pendingEventCount == 0)
+				context.track("force_publish", properties: ["ordinary_goal_number": 3.0])
+				#expect(try await sb.publish(context) == [])
+				let body = try #require(sb.env.transport.publishes.last?.body)
+				let text = String(decoding: body, as: UTF8.self)
+				#expect(text.contains(String(number)))
+				let parsed = try JSONValue(parsing: text)
+				let attributes = try #require(parsed["attributes"]?.arrayValue)
+				let published = try #require(attributes.first?["value"])
+				let leaf = nested ? published["items"]?[0]?["id"] : published
+				guard case .double? = leaf else {
+					Issue.record("Expected a floating-point wire token for \(number): \(text)")
+					continue
+				}
+				// JSONSerialization identifies float tokens, but its decimal bridge can round an
+				// adjacent Double (e.g. 3.0000000000000004) again. Use Codable's Double parser
+				// for exact IEEE round-trip verification, not that unrelated Foundation conversion.
+				let actual =
+					try nested
+					? JSONDecoder().decode(Wire<Nested>.self, from: body).attributes[0].value.items[0].id
+					: JSONDecoder().decode(Wire<Double>.self, from: body).attributes[0].value
+				#expect(actual.bitPattern == number.bitPattern)
+				#expect(SwitchbackServing.clusterKey(leaf) == nil)
+				// Goals still use the unmodified 2.1 JSONValue encoder, even in a switchback context.
+				let goalToken = String(decoding: try JSONEncoder.absmartly().encode(JSONValue.double(3)), as: UTF8.self)
+				#expect(text.contains("\"ordinary_goal_number\":" + goalToken))
+			}
+		}
+		// Other scalar types, null/non-finite values and JSON escaping must remain valid in this path.
+		let sb = SwitchbackEnv()
+		let special = "quote\" slash/ backslash\\ newline\n e\u{301}"
+		let context = sb.context(SB.data([SB.switchback()]), attributes: [:])
+		let values: [JSONValue] = [
+			.int(.min), .int(.max), .bool(true), .null, .double(.nan), .double(.infinity), .string(special), .array([]),
+			.object([:]),
+		]
+		context.setAttribute(special, to: JSONValue.array(values))
+		context.track("goal")
+		try await context.publish()
+		let body = try #require(sb.env.transport.publishes.last?.body)
+		let parsed = try JSONValue(parsing: String(decoding: body, as: UTF8.self))
+		let attribute = try #require(parsed["attributes"]?[0])
+		#expect(attribute["name"]?.stringValue?.utf8.elementsEqual(special.utf8) == true)
+		#expect(
+			attribute["value"]
+				== .array([
+					.int(.min), .int(.max), true, .null, .null, .null, .string(special), .array([]), .object([:]),
+				]))
+	}
+
+	@Test func ordinaryOnlyPublishingKeepsTheOriginalEncoder() async throws {
+		let sb = SwitchbackEnv()
+		let context = sb.context(
+			SB.data([SB.switchback(extra: ["randomizationType": "unit"])]),
+			attributes: ["direct": 3.0, "nested": ["items": [3.0, -0.0, 1.5, 1e20]]])
+		context.track("goal", properties: ["number": 3.0])
+		try await context.publish()
+		let event = try #require(sb.env.log.publishes.last)
+		let actual = try #require(sb.env.transport.publishes.last?.body)
+		// Object order is unspecified. Compare the payload plus the exact nested scalar token bytes.
+		let expected = try JSONEncoder.absmartly().encode(event)
+		#expect(try canonicalWire(actual) == canonicalWire(expected))
+		let text = String(decoding: actual, as: UTF8.self)
+		let numberToken = String(decoding: try JSONEncoder.absmartly().encode(JSONValue.double(3)), as: UTF8.self)
+		let nestedToken = String(
+			decoding: try JSONEncoder.absmartly().encode(JSONValue.object(["items": [3.0, -0.0, 1.5, 1e20]])),
+			as: UTF8.self)
+		#expect(text.contains("\"value\":" + numberToken))
+		#expect(text.contains("\"value\":" + nestedToken))
+		#expect(text.contains("\"number\":" + numberToken))
+	}
+
+	// JSONSerialization preserves float-vs-int NSNumber types, unlike JSONValue's Codable decoder.
+	// Sorted reserialization is used only for the ordinary payload compatibility comparison.
+	private func canonicalWire(_ data: Data) throws -> Data {
+		let object = try JSONSerialization.jsonObject(with: data)
+		return try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+	}
+
+	@Test func switchbackFloatEncodingSurvivesRefreshAndPublishRetry() async throws {
+		let sb = SwitchbackEnv()
+		let context = sb.context(SB.data([SB.switchback()]), attributes: [SB.clusterPath: 3.0])
+		context.track("goal")
+		sb.env.failNextRequest()
+		do {
+			try await context.publish()
+			Issue.record("Expected publish failure")
+		} catch {}
+		try await sb.refresh(context, SB.data([SB.switchback(extra: ["randomizationType": "unit"])]))
+		try await context.publish()
+		#expect(sb.env.transport.publishes.count == 2)
+		for request in sb.env.transport.publishes {
+			let body = try #require(request.body)
+			#expect(String(decoding: body, as: UTF8.self).contains("\"value\":3.0"))
+		}
+	}
+
+	@Test func switchbackStringsAreByteExact() async throws {
+		let composed = "\u{E9}"
+		let decomposed = "e\u{301}"
+		#expect(composed == decomposed)  // The Swift default is deliberately not the serving identity.
+		for (a, b) in [(composed, decomposed), (decomposed, composed)] {
+			let cases: [([String: Any], [String: JSONValue])] = [
+				(SB.switchback(arms: 10, extra: ["switchbackClusterValues": [a]]), [SB.clusterPath: .string(b)]),
+				(
+					SB.switchback(arms: 10, clusters: [(SB.unitType, SB.clusterPath), ("user_id", "city")]),
+					[SB.clusterPath: .string(a), "city": .string(b)]
+				),
+				(
+					SB.switchback(arms: 10, clusters: [(SB.unitType, "root/\(a)")]),
+					["root": .object([b: .string(SB.clusterKey)])]
+				),
+				(SB.switchback(arms: 10, clusters: [(SB.unitType, a)]), [" \(b)\t": .string(SB.clusterKey)]),
+			]
+			for (experiment, attributes) in cases {
+				let sb = SwitchbackEnv()
+				let context = sb.context(
+					SB.data([experiment]), units: [UnitType(SB.unitType): SB.uid, .userID: "u"], attributes: attributes)
+				#expect(context.treatment(for: "exp_sb") == 0)
+				#expect(context.pendingEventCount == 0)
+				#expect(try await sb.publish(context) == nil)
+			}
+			// Exact byte matches still serve each raw cluster identity, without normalizing the draw key.
+			let sb = SwitchbackEnv()
+			let context = sb.context(
+				SB.data([
+					SB.switchback(
+						arms: 10, clusters: [(SB.unitType, "root/\(a)")], extra: ["switchbackClusterValues": [a]])
+				]), attributes: ["root": .object([a: .string(a)])])
+			#expect(context.treatment(for: "exp_sb") == SB.draw(a, 0, arms: 10))
+			#expect(try await sb.publish(context) == [SB.exposure(SB.draw(a, 0, arms: 10), SB.anchor)])
+		}
+	}
+
+	@Test func byteDifferentRootAttributesDoNotShadowEachOther() {
+		let sb = SwitchbackEnv()
+		let composed = "\u{E9}"
+		let decomposed = "e\u{301}"
+		let context = sb.context(
+			SB.data([SB.switchback(arms: 10, clusters: [(SB.unitType, composed)])]), attributes: [:])
+		context.setAttribute(" \(composed)\t", to: SB.clusterKey)
+		context.setAttribute(decomposed, to: "different")
+		#expect(context.treatment(for: "exp_sb") == SB.expected10Arms[0])
+	}
+
+	// Each identity-bearing string must invalidate the epoch even for canonically equivalent edits.
+	@Test(arguments: 0..<5)
+	func unicodeIdentityRefreshStartsANewEpoch(_ field: Int) async throws {
+		let sb = SwitchbackEnv()
+		let composed = "\u{E9}"
+		let decomposed = "e\u{301}"
+		func experiment(_ value: String) -> [String: Any] {
+			switch field {
+			case 0: return SB.switchback(arms: 10, clusters: [(SB.unitType, value)])
+			case 1: return SB.switchback(arms: 10, extra: ["switchbackClusterValues": [SB.clusterKey, value]])
+			case 2: return SB.switchback(arms: 10, extra: ["switchbackDesignType": value])
+			case 3: return SB.switchback(arms: 10, clusters: [(value, SB.clusterPath)])
+			default: return SB.switchback(arms: 10, clusters: nil, extra: ["unitType": value])
+			}
+		}
+		let context = sb.context(
+			SB.data([experiment(composed)]), units: [UnitType(SB.unitType): SB.uid, UnitType(composed): "u"],
+			attributes: [SB.clusterPath: .string(SB.clusterKey)])
+		context.setAttribute(composed, to: SB.clusterKey)
+		context.setOverride(9, for: "exp_sb")  // Exposes even the legacy/absent identity cases.
+		#expect(context.treatment(for: "exp_sb") == 9)
+		try await sb.refresh(context, SB.data([experiment(decomposed)]))
+		#expect(context.treatment(for: "exp_sb") == 9)
+		#expect(context.pendingEventCount == 2)
+	}
+
+	@Test func tiedClusterAttributeTimestampsUseTheLastSetValue() async throws {
+		let sb = SwitchbackEnv()
+		let other = "tie-last"
+		#expect(SB.draw(other, 0, arms: 10) != SB.expected10Arms[0])
+		let context = sb.context(SB.data([SB.switchback(arms: 10)]))
+		context.setAttribute(SB.clusterPath, to: other)  // Same ManualClock reading as the initial value.
+		#expect(context.treatment(for: "exp_sb") == SB.draw(other, 0, arms: 10))
+		#expect(try await sb.publish(context) == [SB.exposure(SB.draw(other, 0, arms: 10), SB.anchor)])
+	}
+
+	@Test func halfTrafficUsesTheTrafficSeedForEveryServingUID() async throws {
+		var expectedIn = 0
+		var differsFromExperimentSeed = 0
+		for i in 0..<64 {
+			let uid = "traffic-uid-\(i)"
+			let assigner = VariantAssigner(unitHash: Hashing.hashUnit(uid))
+			let eligible = assigner.assign([0.5, 0.5], seedHi: 123, seedLo: 456) == 1
+			if eligible { expectedIn += 1 }
+			if eligible != (assigner.assign([0.5, 0.5], seedHi: SB.seedHi, seedLo: SB.seedLo) == 1) {
+				differsFromExperimentSeed += 1
+			}
+			let sb = SwitchbackEnv()
+			let context = sb.context(
+				SB.data([
+					SB.switchback(
+						arms: 10, extra: ["trafficSplit": [0.5, 0.5], "trafficSeedHi": 123, "trafficSeedLo": 456])
+				]), units: [UnitType(SB.unitType): uid])
+			let variant = eligible ? SB.expected10Arms[0] : 0
+			#expect(context.treatment(for: "exp_sb") == variant)
+			#expect(try await sb.publish(context) == [SB.exposure(variant, SB.anchor, eligible: eligible)])
+		}
+		#expect(expectedIn > 0 && expectedIn < 64)
+		#expect(differsFromExperimentSeed > 0)
+	}
+
+	@Test func barePreAnchorSwitchbackToUnitGetsAFreshExposure() async throws {
+		let sb = SwitchbackEnv(now: SB.anchor - 1)
+		let context = sb.context(SB.data([SB.switchback(extra: ["fullOnVariant": 1])]))
+		#expect(context.treatment(for: "exp_sb") == 1)
+		try await sb.refresh(
+			context, SB.data([SB.switchback(extra: ["randomizationType": "unit", "fullOnVariant": 1])]))
+		#expect(context.treatment(for: "exp_sb") == 1)
+		#expect(
+			try await sb.publish(context) == [
+				SB.exposure(1, SB.anchor - 1, fullOn: true), SB.exposure(1, SB.anchor - 1, fullOn: true),
+			])
+	}
+
+	@Test func clusterIsPinnedAcrossForcedSamePeriodRebuild() async throws {
+		let sb = SwitchbackEnv()
+		let other = "tie-last"
+		#expect(SB.draw(other, 0, arms: 10) != SB.expected10Arms[0])
+		let context = sb.context(SB.data([SB.switchback(arms: 10)]))
+		#expect(context.treatment(for: "exp_sb") == SB.expected10Arms[0])
+		context.setAttribute(SB.clusterPath, to: other)
+		context.setCustomAssignment(9, for: "exp_sb")
+		#expect(context.treatment(for: "exp_sb") == 9)
+		context.setCustomAssignment(nil, for: "exp_sb")
+		#expect(context.treatment(for: "exp_sb") == SB.expected10Arms[0])
+		#expect(
+			try await sb.publish(context) == [
+				SB.exposure(SB.expected10Arms[0], SB.anchor), SB.exposure(9, SB.anchor, custom: true),
+				SB.exposure(SB.expected10Arms[0], SB.anchor),
+			])
+	}
+
+	@Test func unrelatedLateUnitDoesNotEvictAnIneligibleCluster() async throws {
+		let sb = SwitchbackEnv()
+		let context = sb.context(SB.data([SB.switchback(arms: 10)]), attributes: [:])
+		#expect(context.treatment(for: "exp_sb") == 0)
+		context.setAttribute(SB.clusterPath, to: SB.clusterKey)
+		try context.setUnit(.userID, to: "unrelated")
+		#expect(context.treatment(for: "exp_sb") == 0)
+		#expect(context.pendingEventCount == 0)
+		sb.clock.now += SB.hour
+		#expect(context.treatment(for: "exp_sb") == SB.expected10Arms[1])
+		#expect(try await sb.publish(context) == [SB.exposure(SB.expected10Arms[1], SB.anchor + SB.hour)])
+	}
+
 	// MARK: The draw and the grid
 
 	// The cluster identity is the raw attribute value, neither hashed nor the unit uid.
@@ -264,7 +537,6 @@ import Testing
 			(SB.data([SB.switchback(clusters: two)]), [SB.clusterPath: "store-42", "city": "porto"]),
 			(SB.data([SB.switchback(extra: ["switchbackClusterValues": ["store-1"]])]), [SB.clusterPath: "store-42"]),
 			(SB.data([SB.switchback()]), [:]),
-			(SB.data([SB.switchback()]), [SB.clusterPath: 3.0]),
 			(SB.data([SB.switchback()]), [SB.clusterPath: ""]),
 			(SB.data([SB.switchback()]), [SB.clusterPath: true]),
 			(SB.data([SB.switchback()]), ["other": "store-42"]),

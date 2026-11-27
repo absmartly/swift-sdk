@@ -24,6 +24,10 @@ struct SwitchbackAttributePath: Sendable, Equatable {
 		return parsed
 	}
 
+	static func == (a: Self, b: Self) -> Bool {
+		SwitchbackStrings.equal(a.keys, b.keys) && a.indices == b.indices
+	}
+
 	/// The attribute name the path starts at; a supported path always starts with a key segment.
 	var rootKey: String { keys[0] }
 
@@ -35,7 +39,9 @@ struct SwitchbackAttributePath: Sendable, Equatable {
 				guard case .array(let array) = current, array.indices.contains(index) else { return nil }
 				current = array[index]
 			} else {
-				guard case .object(let object) = current, let next = object[keys[i]] else { return nil }
+				guard case .object(let object) = current,
+					let next = object.first(where: { SwitchbackStrings.equal($0.key, keys[i]) })?.value
+				else { return nil }
 				current = next
 			}
 		}
@@ -111,6 +117,10 @@ struct SwitchbackSource: Sendable, Equatable {
 	let unitType: String
 	let path: SwitchbackAttributePath
 
+	static func == (a: Self, b: Self) -> Bool {
+		SwitchbackStrings.equal(a.unitType, b.unitType) && a.path == b.path
+	}
+
 	/// The sources of a `switchbackClusters` map in declared order; nil for a missing or empty map, or
 	/// one with a path that is not a supported attribute path (the Collector's legacy path).
 	static func sources(_ clusters: [SwitchbackCluster]?) -> [SwitchbackSource]? {
@@ -149,6 +159,11 @@ struct SwitchbackServing: Sendable, Equatable {
 	/// The raw normalised cluster key when eligible; never hashed.
 	let clusterKey: String?
 
+	static func == (a: Self, b: Self) -> Bool {
+		a.status == b.status && SwitchbackStrings.equal(a.unitType, b.unitType)
+			&& SwitchbackStrings.equal(a.clusterKey, b.clusterKey)
+	}
+
 	static let absent = SwitchbackServing(status: .absent, unitType: nil, clusterKey: nil)
 
 	/// A context has at most one unit per type, so the source loop alone orders the units.
@@ -168,7 +183,7 @@ struct SwitchbackServing: Sendable, Equatable {
 			if key == nil {
 				key = value
 				serving = source.unitType
-			} else if key != value {
+			} else if !SwitchbackStrings.equal(key, value) {
 				disagreement = true
 			}
 		}
@@ -191,7 +206,7 @@ struct SwitchbackServing: Sendable, Equatable {
 	/// A nil or empty allow-list admits every value, as in the Collector.
 	static func allowed(_ allowedValues: [String]?, _ key: String) -> Bool {
 		guard let allowedValues, !allowedValues.isEmpty else { return true }
-		return allowedValues.contains(key)
+		return allowedValues.contains { SwitchbackStrings.equal($0, key) }
 	}
 
 	/// The cluster key an attribute value yields (the Collector's `SwitchbackClusterKeys.normalize`):
@@ -280,10 +295,98 @@ enum SwitchbackSchedule {
 		guard previous.data.isSwitchback else { return false }
 		let a = previous.data
 		let b = installed.data
-		return a.id == b.id && a.iteration == b.iteration && a.switchbackClusters == b.switchbackClusters
-			&& a.switchbackClusterValues == b.switchbackClusterValues && a.switchbackStartAt == b.switchbackStartAt
-			&& a.switchbackPeriodMs == b.switchbackPeriodMs && a.switchbackDesignType == b.switchbackDesignType
-			&& ((previous.switchbackSources != nil && installed.switchbackSources != nil) || a.unitType == b.unitType)
+		return a.id == b.id && a.iteration == b.iteration && sameClusters(a.switchbackClusters, b.switchbackClusters)
+			&& SwitchbackStrings.equal(a.switchbackClusterValues, b.switchbackClusterValues)
+			&& a.switchbackStartAt == b.switchbackStartAt
+			&& a.switchbackPeriodMs == b.switchbackPeriodMs
+			&& SwitchbackStrings.equal(a.switchbackDesignType, b.switchbackDesignType)
+			&& ((previous.switchbackSources != nil && installed.switchbackSources != nil)
+				|| SwitchbackStrings.equal(a.unitType, b.unitType))
+	}
+
+	private static func sameClusters(_ a: [SwitchbackCluster]?, _ b: [SwitchbackCluster]?) -> Bool {
+		switch (a, b) {
+		case (.none, .none): return true
+		case (.some(let a), .some(let b)):
+			return a.count == b.count
+				&& zip(a, b).allSatisfy {
+					SwitchbackStrings.equal($0.unitType, $1.unitType)
+						&& SwitchbackStrings.equal($0.attributePath, $1.attributePath)
+				}
+		default: return false
+		}
+	}
+}
+
+/// Raw Collector/Java/JS identity, not Swift's canonical-equivalence equality. Scoped to switchbacks
+/// so ordinary experiment, JSONValue and audience comparisons remain unchanged.
+enum SwitchbackStrings {
+	static func equal(_ a: String?, _ b: String?) -> Bool {
+		switch (a, b) {
+		case (.none, .none): return true
+		case (.some(let a), .some(let b)): return a.utf8.elementsEqual(b.utf8)
+		default: return false
+		}
+	}
+
+	static func equal(_ a: [String]?, _ b: [String]?) -> Bool {
+		switch (a, b) {
+		case (.none, .none): return true
+		case (.some(let a), .some(let b)):
+			return a.count == b.count && zip(a, b).allSatisfy { equal($0, $1) }
+		default: return false
+		}
+	}
+}
+
+/// Attribute-only wire encoding for contexts that have switchbacks. Foundation's JSONEncoder can
+/// turn Double(3) into the integer token `3`, but the Collector must see a float and reject it as a
+/// cluster. Swift's Double description is a round-tripping JSON number and retains `.0` (including
+/// negative zero) or an exponent. All escaping and non-float scalars still use the original encoder.
+/// Goals and ordinary-only contexts deliberately keep the original 2.1 encoding.
+enum SwitchbackAttributeJSON {
+	static func encode(_ event: PublishEvent) throws -> Data {
+		guard !event.attributes.isEmpty else { return try JSONEncoder.absmartly().encode(event) }
+		var withoutAttributes = event
+		withoutAttributes.attributes = []
+		var body = try JSONEncoder.absmartly().encode(withoutAttributes)
+		body.removeLast()  // The encoded PublishEvent is always an object.
+		body.append(contentsOf: ",\"attributes\":[".utf8)
+		for (index, attribute) in event.attributes.enumerated() {
+			if index > 0 { body.append(0x2C) }
+			body.append(contentsOf: "{\"name\":".utf8)
+			body.append(try JSONEncoder.absmartly().encode(attribute.name))
+			body.append(contentsOf: ",\"setAt\":\(attribute.setAt),\"value\":".utf8)
+			try append(attribute.value, to: &body)
+			body.append(0x7D)
+		}
+		body.append(contentsOf: "]}".utf8)
+		return body
+	}
+
+	private static func append(_ value: JSONValue, to body: inout Data) throws {
+		switch value {
+		case .double(let number) where number.isFinite:
+			body.append(contentsOf: String(number).utf8)
+		case .array(let values):
+			body.append(0x5B)
+			for (index, value) in values.enumerated() {
+				if index > 0 { body.append(0x2C) }
+				try append(value, to: &body)
+			}
+			body.append(0x5D)
+		case .object(let object):
+			body.append(0x7B)
+			for (index, key) in object.keys.sorted().enumerated() {
+				if index > 0 { body.append(0x2C) }
+				body.append(try JSONEncoder.absmartly().encode(key))
+				body.append(0x3A)
+				try append(object[key]!, to: &body)
+			}
+			body.append(0x7D)
+		default:
+			body.append(try JSONEncoder.absmartly().encode(value))
+		}
 	}
 }
 

@@ -414,8 +414,9 @@ public final class Context: Sendable {
 			state.nextPublishID += 1
 			// Registered in the same critical section that drains the queue, so close()'s idle check
 			// sees either the queued events or the publish in flight.
+			let preserveAttributeFloatSyntax = state.preserveAttributeFloatSyntax
 			let task = Task { [self] in
-				await self.send(event, id: id, count: count)
+				await self.send(event, id: id, count: count, preserveAttributeFloatSyntax: preserveAttributeFloatSyntax)
 			}
 			state.inFlightPublishes[id] = task
 			return task
@@ -423,10 +424,12 @@ public final class Context: Sendable {
 		return await task?.value ?? .success(())
 	}
 
-	private func send(_ event: PublishEvent, id: Int, count: Int) async -> Result<Void, ABsmartlyError> {
+	private func send(_ event: PublishEvent, id: Int, count: Int, preserveAttributeFloatSyntax: Bool) async -> Result<
+		Void, ABsmartlyError
+	> {
 		let result: Result<Void, ABsmartlyError>
 		do {
-			try await connection.publish(event)
+			try await connection.publish(event, preserveAttributeFloatSyntax: preserveAttributeFloatSyntax)
 			emit(.publish(event), onMain: true)
 			result = .success(())
 		} catch {

@@ -51,6 +51,9 @@ struct PinnedHoldout {
 /// 1.5.0's `Context` logic, unchanged, on value types.
 struct ContextState {
 	var index = DataIndex.empty
+	// Sticky across refresh: queued exposures may still refer to a removed switchback.
+	// Ordinary-only contexts keep the original attribute wire encoding.
+	var preserveAttributeFloatSyntax = false
 
 	var ready = false
 	var failed = false
@@ -140,6 +143,8 @@ struct ContextState {
 	/// while its identity is unchanged; any other installed switchback, including one that was a unit
 	/// experiment or absent in the data it replaces, starts a new generation.
 	mutating func install(_ newIndex: DataIndex) {
+		preserveAttributeFloatSyntax =
+			preserveAttributeFloatSyntax || newIndex.data.experiments.contains { $0.isSwitchback }
 		var generations: [String: Int] = [:]
 		for (name, entry) in newIndex.experiments where entry.data.isSwitchback {
 			if let previous = index.experiments[name], let generation = switchbackGenerations[name],
@@ -808,7 +813,7 @@ struct ContextState {
 		if let cached, cached.status != .absent {
 			return cached
 		}
-		let hasUnit: (String) -> Bool = { units[$0] != nil }
+		let hasUnit: (String) -> Bool = { type in units.keys.contains { SwitchbackStrings.equal($0, type) } }
 		guard let sources = entry.switchbackSources else {
 			return SwitchbackServing.legacy(unitType: entry.data.unitType, hasUnit: hasUnit)
 		}
@@ -822,7 +827,8 @@ struct ContextState {
 	// Only attributes set on the context are read, never the system attributes.
 	private func latestAttribute(_ name: String, now: Int64) -> PublishEvent.Attribute? {
 		var selected: PublishEvent.Attribute?
-		for attribute in attributes where attribute.setAt <= now && javaTrim(attribute.name) == name {
+		for attribute in attributes
+		where attribute.setAt <= now && SwitchbackStrings.equal(javaTrim(attribute.name), name) {
 			if selected.map({ attribute.setAt >= $0.setAt }) ?? true {
 				selected = attribute
 			}
