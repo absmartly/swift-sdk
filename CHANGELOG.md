@@ -9,8 +9,8 @@
   raises pod deployment targets) and how to move to Swift Package Manager. The release workflow no
   longer has a CocoaPods trunk step; it still checks that the tag, podspec and SDK version agree and
   runs the tests. This supersedes the 1.5.0 notes below about a trunk push behind
-  `COCOAPODS_PUBLISH` (*Added*) and the CocoaPods note under *Compatibility*: there is no such
-  switch any more.
+  `COCOAPODS_PUBLISH` (*Added*) and the CocoaPods note under *Compatibility*: those two notes are
+  historical, kept as released, and there is no such switch any more.
   PR CI no longer runs the quick podspec lint, as the podspec is not published; the release check
   and `DefaultClientTest` still read its version.
 

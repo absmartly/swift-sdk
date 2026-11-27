@@ -6,7 +6,7 @@ A/B Smartly - Swift SDK for iOS, macOS and Linux applications.
 
 The A/B Smartly Swift SDK is supported on:
 - iOS 10.0 or later
-- macOS 10.14 or later
+- macOS 10.14 or later (Swift Package Manager; CocoaPods users on 1.3.4: macOS 10.10 or later)
 - Linux (Swift Package Manager, Swift 5.10 or later)
 
 The async/await API (`import ABSmartlyAsync`) needs iOS 13, macOS 10.15, tvOS 13 or watchOS 6.
@@ -19,7 +19,7 @@ maintained (bug and security fixes, from the `release/1.x` branch) for 12 months
 | Platform    | Support    | Notes                                          |
 |-------------|------------|------------------------------------------------|
 | iOS         | iOS 10+    | Full support including UIDevice integration    |
-| macOS       | 10.14+     | Full support                                   |
+| macOS       | 10.14+ (Swift Package Manager), 10.10+ (CocoaPods, 1.3.4 only) | Full support |
 | Linux       | Swift 5.10+ | Swift Package Manager; tested in CI with Swift 5.10 and 6.1. `JSON` is a vendored copy of SwiftyJSON's `JSON` (same API); on Apple platforms it is `SwiftyJSON.JSON` |
 | Swift       | 5.3+ tools, Swift 5 language mode | Swift Package Manager; builds with Swift 6 toolchains and can be used from Swift 6 apps |
 
