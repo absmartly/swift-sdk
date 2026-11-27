@@ -483,6 +483,28 @@ import Testing
 		#endif
 	}
 
+	@Test func warmedOrdinaryReadsDoNotRepeatClassification() {
+		#if DEBUG
+			let work = Locked(0)
+			Experiment.$classificationWorkCount.withValue(work) {
+				let env = ContextEnv()
+				let context = env.context()
+				_ = context.treatment(for: "exp_test_ab")
+				_ = context.variableValue("banner.size")
+				let classified = work.withLock { $0 }
+				#expect(classified > 0)
+				for exposing in [true, false] {
+					for _ in 0..<40 {
+						_ = context.treatment(for: "exp_test_ab", exposing: exposing)
+						#expect(work.withLock { $0 } == classified)
+						_ = context.variableValue("banner.size", exposing: exposing)
+						#expect(work.withLock { $0 } == classified)
+					}
+				}
+			}
+		#endif
+	}
+
 	// A peek never queues and never marks the period exposed.
 	@Test func peekingQueuesNothing() async throws {
 		let sb = SwitchbackEnv()

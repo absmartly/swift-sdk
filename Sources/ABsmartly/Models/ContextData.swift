@@ -150,7 +150,16 @@ public struct Experiment: Sendable, Equatable, Codable {
 		case switchbackDesignType, switchbackEstimand
 	}
 
-	var isSwitchback: Bool { randomizationType == "switchback" }
+	#if DEBUG
+		@TaskLocal static var classificationWorkCount: Locked<Int>?
+	#endif
+
+	var isSwitchback: Bool {
+		#if DEBUG
+			Self.classificationWorkCount?.withLock { $0 += 1 }
+		#endif
+		return randomizationType == "switchback"
+	}
 
 	public init(from decoder: Decoder) throws {
 		let container = try decoder.container(keyedBy: CodingKeys.self)
