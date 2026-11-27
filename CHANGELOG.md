@@ -32,7 +32,7 @@ recorded output); the `X-Agent` header is `absmartly-swift-sdk/2.0.0`. See [MIGR
 is ignored, as 1.4.0 ignored it: every unit is assigned and exposed as if no holdout existed, and no
 holdout exposure is published. Apps that rely on holdouts should stay on 1.5.x, which supports them
 (released, and maintained on `release/1.x`). Holdouts come in a later 2.x
-release. (They are supported from 2.1.0.)
+release.
 
 ### BREAKING (everyone moves)
 - Holdouts are not supported (1.5.0 supports them): holdout data is ignored, so a unit a holdout would hold out is assigned and exposed normally, and no holdout exposure is published. Stay on 1.5.x if you use holdouts; they come in a later 2.x release.
