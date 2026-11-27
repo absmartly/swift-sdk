@@ -460,6 +460,29 @@ import Testing
 		#expect(sb.clock.reads == before + 1)
 	}
 
+	// A cached switchback slot is reused: repeated reads of an audience switchback in one period
+	// revalidate once after an attribute change, never on every read, and write the cache once.
+	@Test func cachedSwitchbackReadsDoNoRepeatedWork() {
+		#if DEBUG
+			let sb = SwitchbackEnv()
+			let context = sb.context(SB.data([SB.switchback(arms: 10, extra: ["audience": Self.goldAudience])]))
+			#expect(context.treatment(for: "exp_sb") == SB.expected10Arms[0])
+			let writes = context.assignmentCacheWriteCount
+			for _ in 0..<20 {
+				#expect(context.treatment(for: "exp_sb") == SB.expected10Arms[0])
+				#expect(context.variableValue("sb.arm", exposing: false) == .int(Int64(SB.expected10Arms[0])))
+			}
+			#expect(context.assignmentCacheWriteCount == writes)
+			#expect(context.revalidationCount == 0)
+			context.setAttribute("unrelated", to: true)
+			for _ in 0..<20 {
+				#expect(context.treatment(for: "exp_sb") == SB.expected10Arms[0])
+			}
+			#expect(context.revalidationCount == 1)
+			#expect(context.assignmentCacheWriteCount == writes)
+		#endif
+	}
+
 	// A peek never queues and never marks the period exposed.
 	@Test func peekingQueuesNothing() async throws {
 		let sb = SwitchbackEnv()
