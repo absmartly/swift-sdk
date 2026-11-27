@@ -45,8 +45,7 @@ final class SwitchbackServingTest: XCTestCase {
 		XCTAssertEqual(.eligible, resolve(["a": JSON("x"), "b": JSON("y")], units: ["device_id"]).status)
 	}
 
-	// Owner rule: a non-empty string as-is, a whole-number integer as base-10 text; every float (3.0
-	// included), bool, object, array, empty string and null gives none.
+	// Keys follow the published token, not the NSNumber's original storage type.
 	func testClusterKeyRule() throws {
 		XCTAssertEqual("porto", SwitchbackServing.clusterKey(JSON("porto")))
 		XCTAssertEqual("42", SwitchbackServing.clusterKey(JSON(42)))
@@ -55,25 +54,27 @@ final class SwitchbackServingTest: XCTestCase {
 		XCTAssertEqual("9223372036854775807", SwitchbackServing.clusterKey(JSON(Int64.max)))
 		XCTAssertEqual("18446744073709551615", SwitchbackServing.clusterKey(JSON(UInt64.max)))
 		XCTAssertEqual("3", SwitchbackServing.clusterKey(JSON(Int8(3))))
+		XCTAssertEqual("3", SwitchbackServing.clusterKey(JSON(3.0)))
+		XCTAssertEqual("2", SwitchbackServing.clusterKey(JSON(Float(2))))
+		XCTAssertEqual("0", SwitchbackServing.clusterKey(JSON(-0.0)))
 		for value in [
-			JSON(3.0), JSON(Float(2)), JSON(1.5), JSON(-0.0), JSON(true), JSON(false), JSON(""), JSON.null, JSON(["a": "b"]),
-			JSON(["x"]),
+			JSON(1.5), JSON(true), JSON(false), JSON(""), JSON.null, JSON(["a": "b"]), JSON(["x"]),
 		] {
 			XCTAssertNil(SwitchbackServing.clusterKey(value), "\(value)")
 		}
 		XCTAssertNil(SwitchbackServing.clusterKey(nil))
 
-		// A Decimal keys only when whole (java-sdk: an integral BigDecimal is an integer).
+		// A whole Decimal can still be published with exponent syntax and yield no key.
 		XCTAssertEqual("42", SwitchbackServing.clusterKey(JSON(NSDecimalNumber(string: "42"))))
 		XCTAssertEqual("42", SwitchbackServing.clusterKey(JSON(NSDecimalNumber(string: "42.000"))))
 		XCTAssertEqual("-7", SwitchbackServing.clusterKey(JSON(Decimal(-7))))
-		XCTAssertEqual("100000000000000000000", SwitchbackServing.clusterKey(JSON(NSDecimalNumber(string: "1e20"))))
+		XCTAssertNil(SwitchbackServing.clusterKey(JSON(NSDecimalNumber(string: "1e20"))))
 		XCTAssertNil(SwitchbackServing.clusterKey(JSON(NSDecimalNumber(string: "4.5"))))
 		XCTAssertNil(SwitchbackServing.clusterKey(JSON(NSDecimalNumber.notANumber)))
 
 		// Parsed from JSON text, as attributes from a payload or the wrapper arrive.
 		let parsed = try JSON(data: Data("[3, 3.0, 3e0, -0, 30e-1, 4000000002, true, 1, 0]".utf8)).arrayValue
 		XCTAssertEqual(
-			["3", nil, nil, "0", nil, "4000000002", nil, "1", "0"], parsed.map { SwitchbackServing.clusterKey($0) })
+			["3", "3", "3", "0", "3", "4000000002", nil, "1", "0"], parsed.map { SwitchbackServing.clusterKey($0) })
 	}
 }

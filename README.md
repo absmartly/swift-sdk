@@ -488,10 +488,13 @@ let variant = context.getTreatment("exp_store_layout")
 - The first linked unit, in `switchbackClusters` order, whose path gives a value serves the
   experiment, and its exposure is published under that unit. A path is `/`-separated; a quoted segment
   (`'a/b'`) is a literal key and an integer segment indexes an array. A path with a `.` is invalid.
-- A cluster value is a non-empty string, or an integer, read as its decimal text. A floating-point
-  number (including `3.0`), a boolean, an object, an array, an empty string or `null` is no value.
-  Set integer cluster values as Swift integers (`JSON(3)`), not `Double`s: `JSON(3.0)` is no value
-  here, but is published as `3`, which the Collector would read as the cluster `"3"`.
+- A cluster value is a non-empty string, or an integer **in the published JSON**, read as its
+  decimal text. The existing 1.5.0 attribute encoding is unchanged: `JSON(3.0)` and `JSON(Float(3))`
+  publish as `3` and therefore key as `"3"`, including at nested object/array paths. A fractional
+  or exponent-form number, a boolean, an object, an array, an empty string or `null` is no value.
+  Large whole `Double`/`NSDecimalNumber` values can publish in exponent notation (for example
+  `1e+20`), giving no key; numeric bridging can also change values near integer limits. Use a
+  string for large or precision-sensitive cluster identifiers.
 - Units that disagree, a value outside `switchbackClusterValues`, or no value at all give the control
   variant (`0`) and publish nothing. So does a time before `switchbackStartAt`, or a schedule that
   cannot be served.
@@ -504,6 +507,12 @@ Context data fetched by the SDK keeps the order of `switchbackClusters`. When yo
 yourself (for example data passed from a server), use `ContextData.decode(from:)`:
 `JSONDecoder().decode(ContextData.self, from:)` cannot see the order, so a switchback with more than
 one linked unit type decoded that way serves only the control variant.
+
+Cross-SDK numeric parity: Java preserves `3.0` as a floating-point JSON token and rejects it as a
+cluster key; Swift's released encoder publishes `3` instead, as JavaScript does. Swift follows the
+Collector's interpretation of its own published payload, rather than changing attribute encoding for
+all experiments. The cross-SDK suite's scenario 426 (`integralFloatAttributes`, which requires
+rejecting `3.0`) therefore needs a reviewed unsupported exception for Swift, not a claim of support.
 
 ### Tracking Goals
 

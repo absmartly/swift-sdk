@@ -224,11 +224,11 @@ final class SwitchbackServerParityTest: XCTestCase {
 			"store declared first")
 	}
 
-	// Booleans, floating-point numbers, objects, arrays, null and "" yield no value: skipped, never a
-	// disagreement.
+	// Booleans, fractions, exponent-form numbers, objects, arrays, null and "" yield no value:
+	// skipped, never a disagreement.
 	func testNonKeyValuesAreIgnored() {
 		let ignored: [JSON] = [
-			JSON(true), JSON(false), JSON(1.5), JSON(2.0), JSON(Float(2)), JSON(["a": "b"]), JSON(["x"]),
+			JSON(true), JSON(false), JSON(1.5), JSON(1e20), JSON(["a": "b"]), JSON(["x"]),
 			JSON([] as [Any]), JSON.null, JSON(""),
 		]
 		for value in ignored {
@@ -243,11 +243,11 @@ final class SwitchbackServerParityTest: XCTestCase {
 		}
 	}
 
-	// Integral numbers are keyed by their base-10 text, so they agree with that text. Java's
-	// Short/Byte/BigInteger become Swift's Int16/Int8/a big Decimal.
+	// Published integer tokens are keyed by their base-10 text, so they agree with that text.
 	func testNumericValuesAreKeyedAsText() {
 		let fortyTwo: [JSON] = [
-			JSON(42), JSON(Int64(42)), JSON(Int16(42)), JSON(Int8(42)), JSON(NSDecimalNumber(string: "42")), JSON("42"),
+			JSON(42), JSON(42.0), JSON(Float(42)), JSON(Int64(42)), JSON(Int16(42)), JSON(Int8(42)),
+			JSON(NSDecimalNumber(string: "42")), JSON("42"),
 		]
 		for storeValue in fortyTwo {
 			for deviceValue in fortyTwo {
@@ -258,17 +258,18 @@ final class SwitchbackServerParityTest: XCTestCase {
 					"\(storeValue)/\(deviceValue)")
 			}
 		}
-		assertEligible(
+		assertSilentControl(
 			serve(
 				Self.experiment([(Self.store, "n")]), [Self.store: "s1"],
-				[("n", JSON(NSDecimalNumber(string: "123456789012345678901234567890")))]), Self.store,
-			"123456789012345678901234567890", "big integer")
+				[("n", JSON(NSDecimalNumber(string: "123456789012345678901234567890")))]),
+			"large decimal publishes with exponent syntax, not as an integer")
 		assertEligible(
 			serve(Self.experiment([(Self.store, "n")]), [Self.store: "s1"], [("n", JSON(Int64(-7)))]), Self.store, "-7",
 			"negative")
 		assertSilentControl(
 			serve(
-				Self.experiment(Self.twoSources), Self.twoUnits, [("store_city", JSON(42)), ("geo", JSON(["city": "042"]))]),
+				Self.experiment(Self.twoSources), Self.twoUnits,
+				[("store_city", JSON(42)), ("geo", JSON(["city": "042"]))]),
 			"42 vs 042 disagree")
 	}
 

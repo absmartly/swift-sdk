@@ -90,7 +90,8 @@ final class ContextSwitchbackClusterTest: SwitchbackTestCase {
 	// raw-key schedule of "123456789" as a numeric attribute value (murmur3 reference).
 	func testNumericUnitUidMatchesTheIndependentReference() {
 		let cases: [(JSON, String)] = [
-			(JSON(123_456_789), "JfnnlDI7RTiF9RgfG2JNCw"), (JSON(Int64(9_007_199_254_740_993)), "OngwCmjeKhIQyeNybDy4eg"),
+			(JSON(123_456_789), "JfnnlDI7RTiF9RgfG2JNCw"),
+			(JSON(Int64(9_007_199_254_740_993)), "OngwCmjeKhIQyeNybDy4eg"),
 		]
 		let schedule = [0, 2, 1, 0, 1, 2, 0, 1, 2, 2, 1, 0]
 		for (uid, hash) in cases {
@@ -146,9 +147,7 @@ final class ContextSwitchbackClusterTest: SwitchbackTestCase {
 		integer.setAttribute(name: "region", value: JSON(Int64(42)))
 		XCTAssertEqual(Self.expectedSchedule("42"), peekSchedule(integer))
 
-		// Java reads values through their JSON encoding: an integral BigDecimal becomes an integer and a
-		// Character a string. Swift attributes are already JSON: an integral NSDecimalNumber is an
-		// integer NSNumber, and a Character is set as a String.
+		// Nested numeric leaves use the same encoding as direct attribute values.
 		clock.now = SB.anchor
 		let decimal = create(Self.dataOf("geo/city"))
 		decimal.setAttribute(name: "geo", value: JSON(["city": NSDecimalNumber(string: "42")]))
@@ -162,13 +161,111 @@ final class ContextSwitchbackClusterTest: SwitchbackTestCase {
 		clock.now = SB.anchor + 10
 		let floating = create(Self.dataOf("city"))
 		floating.setAttribute(name: "city", value: JSON(Float(2)))
-		XCTAssertEqual(0, floating.getTreatment("exp_sb"))
-		XCTAssertEqual(0, floating.getPendingCount())
+		XCTAssertEqual(Self.expectedSchedule("2"), peekSchedule(floating))
+	}
+
+	// Measure the actual PublishEvent body, not JSON.rawString or NSNumber.stringValue. These
+	// attributes are also published without a switchback below to pin the released encoding.
+	func testNumericServingMatchesPublishedTokensAtDirectAndNestedPaths() throws {
+		let cases: [(String, JSON, String)] = [
+			("true", JSON(true), "true"), ("false", JSON(false), "false"),
+			("zero", JSON(0), "0"), ("one", JSON(1), "1"), ("int", JSON(3), "3"),
+			("double", JSON(3.0), "3"), ("float", JSON(Float(2)), "2"),
+			("negative zero", JSON(-0.0), "0"), ("fraction", JSON(3.5), "3.5"),
+			("small exponent", JSON(1e-20), "1e-20"), ("large exponent", JSON(1e20), "1e+20"),
+			("Int64.min", JSON(Int64.min), "-9223372036854775808"),
+			("Int64.max", JSON(Int64.max), "9223372036854775807"),
+			("UInt64.max", JSON(UInt64.max), "18446744073709551615"),
+			("beyond JS exact integer", JSON(Int64(9_007_199_254_740_993)), "9007199254740993"),
+			("whole decimal", JSON(NSDecimalNumber(string: "42.000")), "42"),
+			("decimal fraction", JSON(NSDecimalNumber(string: "4.5")), "4.5"),
+			(
+				"large decimal", JSON(NSDecimalNumber(string: "123456789012345678901234567890")),
+				"1.2345678901234568e+29"
+			),
+			("parsed whole float", try JSON(data: Data("[3.0]".utf8))[0], "3"),
+			("parsed exponent", try JSON(data: Data("[3e0]".utf8))[0], "3"),
+		]
+		for (label, value, expectedToken) in cases {
+			for nested in [false, true] {
+				let path = nested ? "items/0/cluster" : "number"
+				let name = nested ? "items" : "number"
+				let attribute = nested ? JSON([["cluster": value.object]]) : value
+				let context = create(Self.dataOf(path))
+				clock.now = SB.anchor
+				context.setAttribute(name: name, value: attribute)
+				context.track("wire-probe")  // Attributes alone do not trigger a publish in 1.5.0.
+				let event = try XCTUnwrap(exposeAndPublish(context), label)
+				let body = String(data: try JSONEncoder().encode(event), encoding: .utf8)!
+				let token = try numericToken(body, nested: nested)
+				XCTAssertEqual(expectedToken, token, "\(label), nested=\(nested): \(body)")
+
+				// Independent Collector rule on the wire token: fractions/exponents are not integers.
+				let key = token.range(of: "^-?[0-9]+$", options: .regularExpression) == nil ? nil : token
+				XCTAssertEqual(key, SwitchbackServing.clusterKey(value), body)
+				XCTAssertEqual(
+					key.map { Self.expectedSchedule($0) } ?? [Int](repeating: 0, count: 12), peekSchedule(context), body
+				)
+				XCTAssertEqual(
+					key.map { [clusterExposure(Self.expected($0, 0), SB.anchor)] } ?? [], event.exposures, body)
+
+				// The same attribute still has exactly the same payload without any switchbacks.
+				let ordinary = create(SB.data([]))
+				clock.now = SB.anchor
+				ordinary.setAttribute(name: name, value: attribute)
+				ordinary.track("wire-probe")
+				let ordinaryEvent = try XCTUnwrap(publish(ordinary))
+				let ordinaryBody = String(data: try JSONEncoder().encode(ordinaryEvent), encoding: .utf8)!
+				XCTAssertEqual(token, try numericToken(ordinaryBody, nested: nested), ordinaryBody)
+			}
+		}
+	}
+
+	// At the Double/Int64 boundary Foundation can bridge 2^63 to Int64.max. Never infer a
+	// cluster key with doubleValue/stringValue or a numeric decoder; use the actual emitted token.
+	func testDoubleIntegerBoundaryUsesThePublishedRepresentation() throws {
+		for value in [JSON(Double(Int64.max)), JSON(Double(UInt64.max)), JSON(Double(Int64.min).nextDown)] {
+			let context = create(Self.dataOf("number"))
+			clock.now = SB.anchor
+			context.setAttribute(name: "number", value: value)
+			context.track("wire-probe")
+			let event = try XCTUnwrap(exposeAndPublish(context))
+			let body = String(data: try JSONEncoder().encode(event), encoding: .utf8)!
+			let token = try numericToken(body, nested: false)
+			let key = token.range(of: "^-?[0-9]+$", options: .regularExpression) == nil ? nil : token
+			XCTAssertEqual(key, SwitchbackServing.clusterKey(value), body)
+			XCTAssertEqual(
+				key.map { Self.expectedSchedule($0) } ?? [Int](repeating: 0, count: 12), peekSchedule(context), body)
+			XCTAssertEqual(key.map { [clusterExposure(Self.expected($0, 0), SB.anchor)] } ?? [], event.exposures, body)
+		}
+	}
+
+	func testNonfiniteNumbersRemainUnencodableAndYieldNoCluster() throws {
+		for value in [
+			JSON(Double.nan), JSON(Double.infinity), JSON(-Double.infinity), JSON(NSDecimalNumber.notANumber),
+		] {
+			XCTAssertNil(SwitchbackServing.clusterKey(value))
+			for attribute in [value, JSON([["cluster": value.object]])] {
+				let event = PublishEvent(false, [], 0, [], [], [Attribute("number", value: attribute, setAt: 0)])
+				XCTAssertThrowsError(try JSONEncoder().encode(event))
+			}
+		}
+	}
+
+	// Pull the lexical number/bool out of a real publish body without reparsing it as a Double
+	// (which would round UInt64.max) or normalizing an exponent into an integer.
+	private func numericToken(_ body: String, nested: Bool) throws -> String {
+		let field = nested ? "cluster" : "value"
+		let regex = try NSRegularExpression(pattern: "\"\(field)\"\\s*:\\s*(true|false|-?[0-9.eE+\\-]+)")
+		let matches = regex.matches(in: body, range: NSRange(body.startIndex..., in: body))
+		XCTAssertEqual(1, matches.count, body)
+		let match = try XCTUnwrap(matches.first, body)
+		return String(body[try XCTUnwrap(Range(match.range(at: 1), in: body))])
 	}
 
 	// Attribute values that yield no cluster key serve variant 0, not eligible, record no exposure.
 	func testValuesWithoutAClusterKeyAreIneligible() {
-		let values: [JSON] = [JSON.null, JSON(""), JSON(true), JSON(1.5), JSON(2.0), JSON(["a": "b"]), JSON(["x"])]
+		let values: [JSON] = [JSON.null, JSON(""), JSON(true), JSON(1.5), JSON(["a": "b"]), JSON(["x"])]
 		for value in values {
 			let context = create(Self.dataOf("city"))
 			context.setAttribute(name: "city", value: value)

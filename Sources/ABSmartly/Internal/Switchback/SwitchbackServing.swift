@@ -72,11 +72,12 @@ struct SwitchbackServing {
 		return allowedValues.contains(key)
 	}
 
-	// The cluster key an attribute value yields (the Collector's SwitchbackClusterKeys.normalize): a
-	// non-empty string as-is and an integer as its base-10 text. Null, empty strings, booleans,
-	// floating-point numbers (3.0 included), objects and arrays yield none. A JSON number is a float
-	// when it was written with a fraction or exponent, or set from a Swift `Double` or `Float`; a
-	// `Decimal` keys only when it is whole, as java-sdk keys an integral BigDecimal.
+	// The Collector normalizes the published JSON, not the attribute's in-memory NSNumber type.
+	// Keep the released attribute encoder unchanged: it can write a whole Double as an integer (3.0
+	// -> 3), and a large whole Decimal as an exponent. Only an integer token gives a numeric key;
+	// fractions and exponents do not, even when mathematically whole. Encode the leaf exactly as
+	// PublishEvent does, including for numbers reached through objects/arrays. Do not round-trip
+	// through JSONSerialization/JSONDecoder: they can erase exponent syntax or lose large integers.
 	static func clusterKey(_ value: JSON?) -> String? {
 		guard let value = value else { return nil }
 		switch value.type {
@@ -84,23 +85,17 @@ struct SwitchbackServing {
 			let string = value.stringValue
 			return string.isEmpty ? nil : string
 		case .number:
-			guard let number = value.object as? NSNumber else { return nil }
-			if let decimal = number as? NSDecimalNumber {
-				// A decimal is published as written, so a whole one reaches the Collector as an integer.
-				return isWhole(decimal) ? decimal.stringValue : nil
-			}
-			return isFloatingPoint(number) ? nil : number.stringValue
+			// The array permits top-level scalars on all supported JSONEncoder versions.
+			guard let data = try? JSONEncoder().encode([value]),
+				let encoded = String(data: data, encoding: .utf8)
+			else { return nil }
+			let token = encoded.dropFirst().dropLast()
+			let digits = token.first == "-" ? token.dropFirst() : token[...]
+			guard !digits.isEmpty, digits.utf8.allSatisfy({ $0 >= 48 && $0 <= 57 }) else { return nil }
+			return token == "-0" ? "0" : String(token)
 		default:
 			return nil
 		}
-	}
-
-	private static func isWhole(_ decimal: NSDecimalNumber) -> Bool {
-		guard decimal != NSDecimalNumber.notANumber else { return false }
-		var value = decimal.decimalValue
-		var rounded = Decimal()
-		NSDecimalRound(&rounded, &value, 0, .plain)
-		return rounded == value
 	}
 
 	// `CFNumberIsFloatType` is not available on Linux; the Objective-C type encoding is, and tells a

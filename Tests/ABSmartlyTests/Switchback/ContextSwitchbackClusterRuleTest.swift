@@ -323,12 +323,17 @@ final class ContextSwitchbackClusterRuleTest: SwitchbackTestCase {
 	}
 
 	func testNonStringNonIntegerValuesAreIneligible() {
-		for value in [JSON(1.5), JSON(3.0), JSON(true), JSON(["a": 1]), JSON(["a"]), JSON("")] {
+		for value in [JSON(1.5), JSON(1e20), JSON(true), JSON(["a": 1]), JSON(["a"]), JSON("")] {
 			assertIneligible(["session_store": value], Self.session, (Self.session, "x1"))
 		}
 	}
 
 	func testWholeNumbersAreKeyedByTheirDecimalText() {
+		// A whole Double is published as an integer and must agree with its text, too.
+		XCTAssertEqual(
+			true,
+			sbc(["session_store": JSON(3.0), "profile": store("3")], (Self.session, "x1"), (Self.user, "u1"))?
+				.eligible)
 		XCTAssertNotEqual(0, scheduled("17"))
 		let assignment = sbc(["session_store": JSON(17)], (Self.session, "x1"))
 
