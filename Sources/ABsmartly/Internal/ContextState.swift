@@ -245,10 +245,15 @@ struct ContextState {
 		#if DEBUG
 			holdoutSetComparisons += 1
 		#endif
-		let fresh = entry.holdouts ?? []
-		let pinned = assignment.holdouts ?? []
-		guard fresh.count == pinned.count else { return false }
-		return zip(fresh, pinned).allSatisfy { $0.id == $1.definition.id && $0.iteration == $1.definition.iteration }
+		guard let fresh = entry.holdouts, let pinned = assignment.holdouts, fresh.count == pinned.count else {
+			return entry.holdouts == nil && assignment.holdouts == nil
+		}
+		// Indexed, comparing two fields in place: a `zip` here copied every `Experiment` on each cached read.
+		for i in fresh.indices
+		where fresh[i].id != pinned[i].definition.id || fresh[i].iteration != pinned[i].definition.iteration {
+			return false
+		}
+		return true
 	}
 
 	private mutating func holdoutsUnchanged(_ entry: DataIndex.Entry, _ assignment: Assignment) -> Bool {
