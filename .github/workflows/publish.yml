@@ -3,8 +3,8 @@ name: Publish Swift-SDK
 # Swift Package Manager resolves releases straight from the git tag. This workflow checks the tag
 # against the podspec and SDK version, publishes the pod (2.x: pod `ABsmartly`; 1.x on release/1.x
 # keeps pod `ABSmartlySwiftSDK`) and creates the GitHub release. A 1.x tag never becomes the latest
-# release. Requires the COCOAPODS_TRUNK_TOKEN secret (a trunk session token of a registered owner of
-# the pod). If trunk publishing fails (including after the planned 2026-12-02 freeze), this job
+# release. Version 2.1.0 is SwiftPM-only and skips trunk entirely. Other versions require the
+# COCOAPODS_TRUNK_TOKEN secret. If trunk publishing fails (including after the planned 2026-12-02 freeze), this job
 # stops before creating the GitHub release; the SwiftPM tag already exists.
 on:
   push:
@@ -49,7 +49,9 @@ jobs:
       - name: Build and test
         run: swift test
 
+      # 2.1.0 is SwiftPM-only by owner decision; every other tag keeps its existing publish path.
       - name: Publish to CocoaPods trunk
+        if: github.ref_name != 'v2.1.0'
         env:
           COCOAPODS_TRUNK_TOKEN: ${{ secrets.COCOAPODS_TRUNK_TOKEN }}
           PODSPEC: ${{ steps.version.outputs.podspec }}
