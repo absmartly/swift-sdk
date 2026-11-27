@@ -126,9 +126,11 @@ public struct Experiment: Codable {
 		switchbackClusterValues = clusterValues
 		if clusterValuesReadable {
 			switchbackClusters = Experiment.decodeSwitchbackClusters(
-				container, .switchbackClusters, decoder: decoder, name: name)
+				container, .switchbackClusters, decoder: decoder, name: name, diagnose: randomizationType == "switchback")
 		} else {
-			Logger.error("Ignoring switchbackClusters for experiment '\(name)': switchbackClusterValues is not an array of scalar values.")
+			if randomizationType == "switchback" {
+				Logger.error("Ignoring switchbackClusters for experiment '\(name)': switchbackClusterValues is not an array of scalar values.")
+			}
 			switchbackClusters = nil
 		}
 	}
@@ -137,7 +139,7 @@ public struct Experiment: Codable {
 	// `SwitchbackCluster`s, which keeps the order through any encoder. Nil when the field is absent or
 	// null, or not one of those shapes.
 	private static func decodeSwitchbackClusters<Key: CodingKey>(
-		_ container: KeyedDecodingContainer<Key>, _ key: Key, decoder: Decoder, name: String
+		_ container: KeyedDecodingContainer<Key>, _ key: Key, decoder: Decoder, name: String, diagnose: Bool
 	) -> [SwitchbackCluster]? {
 		if let field = (decoder.userInfo[SwitchbackClusterOrder.userInfoKey] as? SwitchbackClusterOrder)?
 			.clusters(at: decoder.codingPath)
@@ -154,7 +156,7 @@ public struct Experiment: Codable {
 		}
 		if let clusters = try? container.decode([SwitchbackCluster].self, forKey: key) {
 			var unique: [SwitchbackCluster] = []
-			for cluster in clusters where !unique.contains(where: { $0.unitType == cluster.unitType }) {
+			for cluster in clusters where !unique.contains(where: { SwitchbackServing.sameKey($0.unitType, cluster.unitType) }) {
 				unique.append(cluster)
 			}
 			return unique
@@ -168,8 +170,10 @@ public struct Experiment: Codable {
 		if paths.count < 2 {
 			return paths.map { SwitchbackCluster(unitType: $0.key, attributePath: $0.value) }
 		}
-		Logger.error(
-			"Ignoring switchbackClusters for experiment '\(name)': the order of its entries is not known. Decode the context data with ContextData.decode(from:).")
+		if diagnose {
+			Logger.error(
+				"Ignoring switchbackClusters for experiment '\(name)': the order of its entries is not known. Decode the context data with ContextData.decode(from:).")
+		}
 		return nil
 	}
 }
@@ -184,8 +188,34 @@ private struct SwitchbackAllowedValue: Decodable {
 		else if let bool = try? value.decode(Bool.self) { text = bool ? "true" : "false" }
 		else if let integer = try? value.decode(Int64.self) { text = String(integer) }
 		else if let integer = try? value.decode(UInt64.self) { text = String(integer) }
-		else { text = String(try value.decode(Double.self)) }
+		else { text = Self.numberText(try value.decode(Double.self)) }
 	}
+
+	// JavaScript's scalar-list coercion: shortest decimal text, fixed for [1e-6, 1e21),
+	// exponential otherwise, with no leading zero in the exponent. Attribute encoding is untouched.
+	private static func numberText(_ value: Double) -> String {
+		if value == 0 { return "0" }
+		let parts = String(value).lowercased().split(separator: "e")
+		guard parts.count == 2, let exponent = Int(parts[1]) else {
+			let text = String(value)
+			return text.hasSuffix(".0") ? String(text.dropLast(2)) : text
+		}
+		let negative = parts[0].first == "-"
+		let mantissa = negative ? parts[0].dropFirst() : parts[0][...]
+		var digits = mantissa.filter { $0 != "." }
+		while digits.count > 1 && digits.last == "0" { digits.removeLast() }
+		let sign = negative ? "-" : ""
+		if abs(value) >= 1e-6 && abs(value) < 1e21 {
+			let point = exponent + 1
+			if point <= 0 { return sign + "0." + String(repeating: "0", count: -point) + digits }
+			if point >= digits.count { return sign + digits + String(repeating: "0", count: point - digits.count) }
+			let split = digits.index(digits.startIndex, offsetBy: point)
+			return sign + digits[..<split] + "." + digits[split...]
+		}
+		let fraction = digits.count > 1 ? "." + digits.dropFirst() : ""
+		return sign + String(digits.first!) + fraction + "e" + (exponent >= 0 ? "+" : "") + String(exponent)
+	}
+
 }
 
 private struct DynamicKey: CodingKey {

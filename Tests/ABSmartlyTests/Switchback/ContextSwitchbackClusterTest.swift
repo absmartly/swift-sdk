@@ -322,6 +322,15 @@ final class ContextSwitchbackClusterTest: SwitchbackTestCase {
 		}
 	}
 
+	func testUnicodeEquivalentUnitTypeDoesNotInventLinkedMembership() {
+		let experiment = SB.switchback(arms: 2, periodMs: SB.hour, clusters: [("cafe\u{301}", "city")])
+		let context = create(SB.data([experiment]), units: ["caf\u{E9}": "store-1"])
+		clock.now = SB.anchor
+		context.setAttribute(name: "city", value: JSON("market_1"))
+		XCTAssertEqual(0, context.getTreatment("exp_sb"))
+		XCTAssertEqual(0, context.getPendingCount())
+	}
+
 	// Java's unencodableAttributeValuesAreIneligible (a cyclic Map, a plain Object) has no Swift
 	// counterpart: an attribute is a `JSON` value, which cannot be cyclic. The closest Swift value, a
 	// JSON of an unsupported type, is `.unknown` and yields no key.

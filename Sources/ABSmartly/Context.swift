@@ -1277,7 +1277,7 @@ public final class Context {
 			return variant >= 0 && variant < variantCount ? (variant, false) : nil
 		case .split(let split)?:
 			guard split.count == variantCount else { return nil }
-			guard !unitPinnedMissing, let unitType = unitType, let uid = units[unitType] else {
+			guard !unitPinnedMissing, let unitType = unitType, let uid = experiment.isSwitchback ? switchbackUnit(unitType) : units[unitType] else {
 				return (data.fullOnVariant, true)
 			}
 			let assigner = getVariantAssigner(unitType, getUnitHash(unitType, uid))
@@ -1585,7 +1585,7 @@ public final class Context {
 			assignment.fullOn = true
 			return
 		}
-		guard let periodIndex = periodIndex, let uid = units[unitType] else {
+		guard let periodIndex = periodIndex, let uid = switchbackUnit(unitType) else {
 			// Before the anchor or an unservable schedule: no draw, so control and no exposure.
 			assignment.eligible = false
 			slot.silent = true
@@ -1607,6 +1607,12 @@ public final class Context {
 			clusterKey, periodIndex: periodIndex, seed: Context.switchbackSeed(data), armCount: data.split.count)
 	}
 
+	// Keep ordinary unit APIs on their released String-keyed lookup; switchbacks must not invent
+	// membership for a code-unit-distinct type that the Collector cannot find in the published units.
+	private func switchbackUnit(_ unitType: String) -> String? {
+		return units.first { SwitchbackServing.sameKey($0.key, unitType) }?.value
+	}
+
 	// The slot's serving resolution: reused when this slot already read it (unless no linked unit was
 	// set then), otherwise read now. The caller holds `contextLock`.
 	private func switchbackServing(_ experiment: ExperimentVariables, cached: SwitchbackServing?, now: Int64)
@@ -1615,7 +1621,7 @@ public final class Context {
 		if let cached = cached, cached.status != .absent {
 			return cached
 		}
-		let hasUnit: (String) -> Bool = { self.units[$0] != nil }
+		let hasUnit: (String) -> Bool = { self.switchbackUnit($0) != nil }
 		guard let sources = experiment.switchbackSources else {
 			return SwitchbackServing.legacy(unitType: experiment.data.unitType, hasUnit: hasUnit)
 		}

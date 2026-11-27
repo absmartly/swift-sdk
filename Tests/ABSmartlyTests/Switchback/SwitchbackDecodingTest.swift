@@ -260,7 +260,7 @@ final class SwitchbackDecodingTest: SwitchbackTestCase {
 		])
 		var data: ContextData?
 		let errors = captureErrors { data = try? ContextData.decode(from: Data(SB.serialize(root).utf8)) }
-		XCTAssertEqual([], errors)
+		XCTAssertTrue(errors.isEmpty)
 		XCTAssertEqual(["store_id=store_key"], clusters(data?.experiments.first))
 
 		let context = createContext(try XCTUnwrap(data))
@@ -510,6 +510,32 @@ extension SwitchbackDecodingTest {
 		let plain = try JSONDecoder().decode(ContextData.self, from: payload)
 		let ordered = try ContextData.decode(from: payload)
 		XCTAssertEqual(plain, ordered)
+	}
+
+	func testUnicodeSourcesSurviveCodableArrayRoundtrip() throws {
+		let payload = Data(#"{"experiments":[{"name":"e","randomizationType":"switchback","switchbackClusters":{"caf\u00e9":"x","cafe\u0301":"y"}}]}"#.utf8)
+		let original = try ContextData.decode(from: payload)
+		let roundtrip = try ContextData.decode(from: JSONEncoder().encode(original))
+		XCTAssertEqual(2, roundtrip.experiments[0].switchbackClusters?.count)
+		XCTAssertEqual(original, roundtrip)
+	}
+
+	func testUnusedSwitchbackMetadataOnUnitExperimentsIsSilent() throws {
+		for randomization in ["", #","randomizationType":"unit""#] {
+			let payload = Data((#"{"experiments":[{"name":"e","switchbackClusterValues":{"bad":1},"switchbackClusters":{"b":"x","a":"y"}"# + randomization + "}]}").utf8)
+			let errors = captureErrors {
+				do {
+					_ = try ContextData.decode(from: payload)
+					_ = try JSONDecoder().decode(ContextData.self, from: payload)
+				} catch { XCTFail("decode failed: \(error)") }
+			}
+			XCTAssertTrue(errors.isEmpty)
+		}
+	}
+
+	func testNumericAllowListExponentTextMatchesJavaScript() {
+		let experiment = decodeExperiment(#"{"name":"e","switchbackClusterValues":[1e-7,1e20,1e21,-1e-7]}"#)
+		XCTAssertEqual(["1e-7", "100000000000000000000", "1e+21", "-1e-7"], experiment?.switchbackClusterValues)
 	}
 
 }
