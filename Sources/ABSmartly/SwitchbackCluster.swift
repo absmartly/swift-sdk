@@ -13,30 +13,32 @@ public struct SwitchbackCluster: Codable, Equatable {
 	}
 }
 
-// Carries the raw context data bytes to `Experiment.init(from:)` through `JSONDecoder.userInfo`, so a
-// `switchbackClusters` object can be read in its JSON key order: a keyed decoding container's
-// `allKeys` has no defined order. The bytes are scanned once per payload, the first time an
-// experiment has a `switchbackClusters` field.
+// Carries raw context bytes to `Experiment.init(from:)` through `JSONDecoder.userInfo`: cluster
+// objects need their JSON key order, and only the new switchback fields need last-wins duplicate keys.
+// Existing experiment fields stay on the caller's decoder path. The bytes are scanned once per payload.
 final class SwitchbackClusterOrder {
 	static let userInfoKey = CodingUserInfoKey(rawValue: "com.absmartly.switchbackClusterOrder")!
 
 	private let json: Data
 	private let lock = NSLock()
-	private var scanned: [String: OrderedJSONScanner.Clusters]?
+	private var scanned: [String: OrderedJSONScanner.Fields]?
 
 	init(json: Data) {
 		self.json = json
 	}
 
-	// The `switchbackClusters` field of the experiment at `codingPath` as the bytes give it; nil when the
-	// bytes were not scanned there (not a top-level experiment or holdout, or not readable).
-	func clusters(at codingPath: [CodingKey]) -> OrderedJSONScanner.Clusters? {
+	// Nil when the bytes were not scanned there (not a top-level experiment or holdout, or unreadable).
+	func fields(at codingPath: [CodingKey]) -> OrderedJSONScanner.Fields? {
 		lock.lock()
 		defer { lock.unlock() }
 		if scanned == nil {
-			scanned = OrderedJSONScanner.switchbackClusters(Array(json))
+			scanned = OrderedJSONScanner.switchbackFields(Array(json))
 		}
 		return scanned?[Self.pathKey(codingPath)]
+	}
+
+	func clusters(at codingPath: [CodingKey]) -> OrderedJSONScanner.Clusters? {
+		return fields(at: codingPath)?.clusters
 	}
 
 	static func pathKey(_ codingPath: [CodingKey]) -> String {
@@ -44,13 +46,22 @@ final class SwitchbackClusterOrder {
 	}
 }
 
-// A minimal JSON reader that records, for every object in the top-level `experiments` and `holdouts`
-// arrays, its `switchbackClusters` field: the object's entries in JSON key order, or that the field is
-// not an object. Duplicate keys resolve as in java-sdk (a LinkedHashMap) and javascript-sdk (an object):
-// a repeated `switchbackClusters` field is the last one, and a repeated unit type keeps its first
-// position and takes its last value. Anything it cannot read gives no record, so the order stays
-// unknown. An unpaired surrogate escape reads as U+FFFD.
+// A minimal JSON reader for top-level `experiments` and `holdouts`: records ordered cluster entries
+// and raw values of only the new switchback fields. Duplicate keys resolve as in java-sdk (a
+// LinkedHashMap) and javascript-sdk (an object): a repeated field takes its last value, and a repeated
+// unit type keeps its first position and takes its last value. Anything it cannot read gives no record,
+// so the decoder fallback is retained. An unpaired surrogate escape reads as U+FFFD.
 struct OrderedJSONScanner {
+	struct Fields {
+		var clusters: Clusters?
+		var values: [String: Data] = [:]
+	}
+
+	private static let valueFields: Set<String> = [
+		"randomizationType", "switchbackStartAt", "switchbackPeriodMs",
+		"switchbackCarryoverDurationMs", "switchbackBurnInDurationMs", "switchbackBurnOutDurationMs",
+		"switchbackDesignType", "switchbackEstimand", "switchbackClusterValues",
+	]
 	enum Clusters: Equatable {
 		// Each unit type with its attribute path; nil for a path that is not a JSON string.
 		case object([(unitType: String, path: String?)])
@@ -69,9 +80,9 @@ struct OrderedJSONScanner {
 
 	private let bytes: [UInt8]
 	private var i = 0
-	private var result: [String: Clusters] = [:]
+	private var result: [String: Fields] = [:]
 
-	static func switchbackClusters(_ bytes: [UInt8]) -> [String: Clusters] {
+	static func switchbackFields(_ bytes: [UInt8]) -> [String: Fields] {
 		var scanner = OrderedJSONScanner(bytes: bytes)
 		guard scanner.scanRoot() else { return [:] }
 		return scanner.result
@@ -106,9 +117,17 @@ struct OrderedJSONScanner {
 			guard scanner.peek() == UInt8(ascii: "{") else { return scanner.skipValue() }
 			return scanner.scanObject { scanner, key in
 				scanner.skipWhitespace()
+				let path = "\(field)/#\(index)"
+				if Self.valueFields.contains(key) {
+					let start = scanner.i
+					guard scanner.skipValue() else { return false }
+					scanner.result[path, default: Fields()].values[key] = Data(scanner.bytes[start..<scanner.i])
+					return true
+				}
 				guard key == "switchbackClusters" else { return scanner.skipValue() }
 				guard scanner.peek() == UInt8(ascii: "{") else {
-					scanner.result["\(field)/#\(index)"] = scanner.peek() == UInt8(ascii: "[") ? .arrayRepresentation : .notAnObject
+					scanner.result[path, default: Fields()].clusters =
+						scanner.peek() == UInt8(ascii: "[") ? .arrayRepresentation : .notAnObject
 					return scanner.skipValue()
 				}
 				var entries: [(unitType: String, path: String?)] = []
@@ -128,7 +147,7 @@ struct OrderedJSONScanner {
 					}
 					return true
 				}
-				scanner.result["\(field)/#\(index)"] = .object(entries)
+				scanner.result[path, default: Fields()].clusters = .object(entries)
 				return ok
 			}
 		}

@@ -80,20 +80,40 @@ public struct Experiment: Codable {
 			.flatMap { $0.compactMap { $0.value } }
 		holdoutType = try? container.decodeIfPresent(String.self, forKey: .holdoutType)
 
-		randomizationType = try? container.decodeIfPresent(String.self, forKey: .randomizationType)
-		switchbackStartAt = try? container.decodeIfPresent(Int64.self, forKey: .switchbackStartAt)
-		switchbackPeriodMs = try? container.decodeIfPresent(Int64.self, forKey: .switchbackPeriodMs)
-		switchbackCarryoverDurationMs = try? container.decodeIfPresent(Int64.self, forKey: .switchbackCarryoverDurationMs)
-		switchbackBurnInDurationMs = try? container.decodeIfPresent(Int64.self, forKey: .switchbackBurnInDurationMs)
-		switchbackBurnOutDurationMs = try? container.decodeIfPresent(Int64.self, forKey: .switchbackBurnOutDurationMs)
-		switchbackDesignType = try? container.decodeIfPresent(String.self, forKey: .switchbackDesignType)
-		switchbackEstimand = try? container.decodeIfPresent(String.self, forKey: .switchbackEstimand)
+		// Only switchback fields use raw last occurrences. In particular, do not re-decode legacy
+		// fields: JSONDecoder's behavior and the caller's decoding strategies remain theirs.
+		let fields = (decoder.userInfo[SwitchbackClusterOrder.userInfoKey] as? SwitchbackClusterOrder)?
+			.fields(at: decoder.codingPath)
+		func switchbackValue<T: Decodable>(_ type: T.Type, _ key: CodingKeys) throws -> T? {
+			if let raw = fields?.values[key.stringValue] {
+				return try JSONDecoder().decode(T?.self, from: raw)
+			}
+			return try container.decodeIfPresent(type, forKey: key)
+		}
+
+		randomizationType = try? switchbackValue(String.self, .randomizationType)
+		switchbackStartAt = try? switchbackValue(Int64.self, .switchbackStartAt)
+		switchbackPeriodMs = try? switchbackValue(Int64.self, .switchbackPeriodMs)
+		switchbackCarryoverDurationMs = try? switchbackValue(Int64.self, .switchbackCarryoverDurationMs)
+		switchbackBurnInDurationMs = try? switchbackValue(Int64.self, .switchbackBurnInDurationMs)
+		switchbackBurnOutDurationMs = try? switchbackValue(Int64.self, .switchbackBurnOutDurationMs)
+		switchbackDesignType = try? switchbackValue(String.self, .switchbackDesignType)
+		switchbackEstimand = try? switchbackValue(String.self, .switchbackEstimand)
 
 		// Scalar allow-list entries compare as text, as in Java and JavaScript. Null entries never
 		// match. A non-array or nested value cannot be applied, so the cluster map is dropped with it.
 		var clusterValues: [String]? = nil
 		var clusterValuesReadable = true
-		if container.contains(.switchbackClusterValues), (try? container.decodeNil(forKey: .switchbackClusterValues)) == false {
+		if fields?.values["switchbackClusterValues"] != nil {
+			do {
+				clusterValues = try switchbackValue([SwitchbackAllowedValue].self, .switchbackClusterValues)?
+					.map { $0.text ?? "" }
+			} catch {
+				clusterValuesReadable = false
+			}
+		} else if container.contains(.switchbackClusterValues),
+			(try? container.decodeNil(forKey: .switchbackClusterValues)) == false
+		{
 			clusterValues = (try? container.decode([SwitchbackAllowedValue].self, forKey: .switchbackClusterValues))?
 				.map { $0.text ?? "" }
 			clusterValuesReadable = clusterValues != nil

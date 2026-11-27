@@ -129,6 +129,100 @@ final class SwitchbackDecodingTest: SwitchbackTestCase {
 			#"{"name":"e","switchbackClusters":{"a":{"bad":1},"a":"x"}}"#)))
 	}
 
+	func testRepeatedSwitchbackValuesUseOnlyTheLastOccurrence() throws {
+		let fields: [(String, String, String)] = [
+			("randomizationType", #""switchback""#, #""unit""#),
+			("switchbackStartAt", "1767225600000", "1767229200000"),
+			("switchbackPeriodMs", "3600000", "7200000"),
+			("switchbackCarryoverDurationMs", "0", "9007199254740993"),
+			("switchbackBurnInDurationMs", "0", "600000"),
+			("switchbackBurnOutDurationMs", "0", "300000"),
+			("switchbackDesignType", #""balanced_block""#, #""other""#),
+			("switchbackEstimand", #""global_average_treatment_effect""#, #""other""#),
+			("switchbackClusterValues", #"["old"]"#, #"[42,true,"north",null]"#),
+		]
+		for (field, first, last) in fields {
+			// Null and a wrong shape must replace, not fall back to, an earlier readable value.
+			for (a, b) in [(first, last), (first, "null"), (first, #"{"bad":1}"#), (#"{"bad":1}"#, last)] {
+				let prefix = #"{"name":"e","switchbackClusters":{"store_id":"key"},"#
+				let repeated = decodeExperiment(prefix + "\"\(field)\":\(a),\"\(field)\":\(b)}")
+				let single = decodeExperiment(prefix + "\"\(field)\":\(b)}")
+				XCTAssertEqual(try XCTUnwrap(single), try XCTUnwrap(repeated), "\(field): \(a), \(b)")
+			}
+		}
+		XCTAssertEqual(
+			9_007_199_254_740_993,
+			decodeExperiment(
+				#"{"name":"e","switchbackCarryoverDurationMs":0,"switchbackCarryoverDurationMs":9007199254740993}"#)?
+				.switchbackCarryoverDurationMs)
+		XCTAssertEqual(
+			7_200_000,
+			decodeExperiment(
+				#"{"name":"e","switchbackPeriodMs":3600000,"switchbackPeriodMs":7200000}"#)?.switchbackPeriodMs)
+	}
+
+	func testRepeatedValuesDetermineTheServedPeriodAndAllowList() throws {
+		var original = SB.switchback(arms: 3, periodMs: SB.hour)
+		original["randomizationType"] = "unit"
+		original["switchbackClusterValues"] = ["not-allowed"]
+		// Keep duplicate keys in the wire bytes, not a dictionary or JSONSerialization round-trip.
+		let experiment =
+			String(SB.serialize(original).dropLast()) + """
+				,"randomizationType":"switchback","switchbackStartAt":\(SB.anchor + SB.hour),
+				"switchbackPeriodMs":\(2 * SB.hour),"switchbackClusterValues":["\(SB.clusterKey)"]}
+				"""
+		let json = Data("{\"experiments\":[\(experiment)]}".utf8)
+		let data = try ContextData.decode(from: json)
+		XCTAssertEqual(SB.anchor + SB.hour, data.experiments[0].switchbackStartAt)
+		XCTAssertEqual(2 * SB.hour, data.experiments[0].switchbackPeriodMs)
+		let context = createContext(data)
+		for period in 0..<12 {
+			clock.now = SB.anchor + SB.hour + Int64(period) * 2 * SB.hour
+			XCTAssertEqual(SB.expected3Arms[period], context.getTreatment("exp_sb"), "period \(period)")
+		}
+		XCTAssertEqual(12, context.getPendingCount())
+	}
+
+	func testDuplicateSwitchbackFieldsDoNotChangeLegacyOrPlainDecoderBehavior() throws {
+		let json = Data(
+			#"{"experiments":[{"name":"first","name":"last","id":1,"id":2,"seedHi":3,"seedHi":4,"split":[0.25,0.75],"split":[1,0],"switchbackPeriodMs":3600000,"switchbackPeriodMs":7200000}]}"#
+				.utf8)
+		let decoder = JSONDecoder()
+		let before = try decoder.decode(ContextData.self, from: json).experiments[0]
+		let ordered = try ContextData.decode(from: json, decoder: decoder).experiments[0]
+		let plain = try decoder.decode(ContextData.self, from: json).experiments[0]
+		XCTAssertEqual(before, plain)
+		XCTAssertEqual(plain.name, ordered.name)
+		XCTAssertEqual(plain.id, ordered.id)
+		XCTAssertEqual(plain.seedHi, ordered.seedHi)
+		XCTAssertEqual(plain.split, ordered.split)
+		XCTAssertEqual(7_200_000, ordered.switchbackPeriodMs)
+		XCTAssertNil(decoder.userInfo[SwitchbackClusterOrder.userInfoKey])
+	}
+
+	func testCustomKeyDecodingFallsBackForFieldsNotInRawMetadata() throws {
+		let decoder = JSONDecoder()
+		decoder.keyDecodingStrategy = .convertFromSnakeCase
+		let json = Data(
+			#"{"experiments":[{"name":"e","randomization_type":"switchback","switchback_start_at":1767225600000,"switchback_period_ms":3600000,"switchback_cluster_values":[42,true]}]}"#
+				.utf8)
+		let plain = try decoder.decode(ContextData.self, from: json)
+		let decoded = try ContextData.decode(from: json, decoder: decoder)
+		XCTAssertEqual(plain, decoded)
+		XCTAssertEqual("switchback", decoded.experiments[0].randomizationType)
+		XCTAssertEqual(3_600_000, decoded.experiments[0].switchbackPeriodMs)
+		XCTAssertEqual(["42", "true"], decoded.experiments[0].switchbackClusterValues)
+	}
+
+	func testHoldoutsAndExperimentsUseTheirOwnLastSwitchbackValues() throws {
+		let json = Data(
+			#"{"experiments":[{"name":"e","switchbackPeriodMs":1,"switchbackPeriodMs":2}],"holdouts":[{"name":"h","switchbackPeriodMs":3,"switchbackPeriodMs":4}]}"#
+				.utf8)
+		let decoded = try ContextData.decode(from: json)
+		XCTAssertEqual(2, decoded.experiments[0].switchbackPeriodMs)
+		XCTAssertEqual(4, decoded.holdouts?.first?.switchbackPeriodMs)
+	}
+
 	// A `switchbackClusters` key at another depth never lends its order to an experiment.
 	func testNestedSwitchbackClustersElsewhereAreNotUsed() {
 		let json = """
