@@ -1,6 +1,10 @@
 # Changelog
 
-## 2.1.0 (unreleased)
+## 2.1.0 (2026-11-27)
+
+**Distribution: Swift Package Manager only.** No CocoaPods release is published for 2.1.0.
+The last available CocoaPods version is `ABSmartlySwiftSDK` 1.3.4 (legacy 1.x), not `ABsmartly`
+2.0.0 or 2.1.0. Install 2.1.0 through SwiftPM to use holdouts and the 2.x API.
 
 Holdouts, matching 1.5.0 and the JavaScript SDK. The `X-Agent` header is `absmartly-swift-sdk/2.1.0`.
 2.0.0 ignored the payload's holdout data; 2.1.0 applies it, so apps on 1.5.x that rely on holdouts

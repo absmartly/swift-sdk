@@ -45,13 +45,18 @@ and choose the `ABsmartly` (and optionally `ABsmartlyUI`) product.
 
 ### CocoaPods
 
+**2.1.0 is Swift Package Manager only.** It is not published to CocoaPods; use the SwiftPM
+installation above for holdouts and the 2.x API.
+
+The last available CocoaPods release is **`ABSmartlySwiftSDK` 1.3.4** (legacy 1.x API and module
+`ABSmartly`), not `ABsmartly` 2.0.0 or 2.1.0. It does not include holdouts or the Swift 6 API:
+
 ```ruby
-pod 'ABsmartly', '~> 2.1'        # core
-pod 'ABsmartly/UI', '~> 2.1'     # with the SwiftUI property wrappers
+pod 'ABSmartlySwiftSDK', '1.3.4'  # legacy SDK, not Swift 2.x
 ```
 
-The CocoaPods trunk stops accepting new versions on 2026-12-02. Releases after that are published
-for Swift Package Manager only.
+The CocoaPods trunk stops accepting new versions on 2026-12-02. The explicit 2.1.0 SwiftPM-only
+exception applies regardless of that date.
 
 ## Getting started
 
