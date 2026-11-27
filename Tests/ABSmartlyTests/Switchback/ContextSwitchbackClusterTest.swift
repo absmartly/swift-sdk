@@ -311,6 +311,17 @@ final class ContextSwitchbackClusterTest: SwitchbackTestCase {
 		XCTAssertEqual(0, disagreeing.getPendingCount())
 	}
 
+	func testUnicodeRootAndNestedAttributeNamesMatchExactly() {
+		for nested in [false, true] {
+			let context = create(Self.dataOf(nested ? "geo/cafe\u{301}" : "cafe\u{301}"))
+			clock.now = SB.anchor
+			context.setAttribute(name: nested ? "geo" : "caf\u{E9}",
+				value: nested ? JSON(["caf\u{E9}": "market_1"]) : JSON("market_1"))
+			XCTAssertEqual(0, context.getTreatment("exp_sb"))
+			XCTAssertEqual(0, context.getPendingCount())
+		}
+	}
+
 	// Java's unencodableAttributeValuesAreIneligible (a cyclic Map, a plain Object) has no Swift
 	// counterpart: an attribute is a `JSON` value, which cannot be cyclic. The closest Swift value, a
 	// JSON of an unsupported type, is `.unknown` and yields no key.

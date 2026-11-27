@@ -42,18 +42,37 @@ final class ContextSwitchbackEpochTest: SwitchbackTestCase {
 			_ = context.getTreatment("exp_sb")
 			XCTAssertEqual(1, context.getPendingCount())
 			refresh(context, SB.data([b]))
-			if editPath {
-				// Even if Foundation's dictionary treats equivalent attribute names alike, the new path
-				// identity starts a new slot and exposure.
-				_ = context.getTreatment("exp_sb")
-				XCTAssertEqual(2, context.getPendingCount())
-			} else {
-				XCTAssertEqual(0, context.getTreatment("exp_sb"))
-				XCTAssertEqual(1, context.getPendingCount())
-			}
+			XCTAssertEqual(0, context.getTreatment("exp_sb"))
+			XCTAssertEqual(1, context.getPendingCount())
 			refresh(context, SB.data([a]))
 			_ = context.getTreatment("exp_sb")
-			XCTAssertEqual(editPath ? 3 : 2, context.getPendingCount())
+			XCTAssertEqual(2, context.getPendingCount())
+		}
+	}
+
+	func testUnicodeDesignAndLegacyUnitInterludesBreakTheEpoch() {
+		for legacy in [false, true] {
+			var a = SB.switchback(arms: 2, periodMs: SB.hour)
+			var b = a
+			if legacy {
+				a["switchbackClusters"] = NSNull()
+				a["unitType"] = "caf\u{E9}"
+				b = a
+				b["unitType"] = "cafe\u{301}"
+			} else {
+				a["switchbackDesignType"] = "caf\u{E9}"
+				b = a
+				b["switchbackDesignType"] = "cafe\u{301}"
+			}
+			let context = createContext(SB.data([a]))
+			clock.now = SB.anchor + 10
+			if legacy { context.setOverride(experimentName: "exp_sb", variant: 1) }
+			_ = context.getTreatment("exp_sb")
+			XCTAssertEqual(1, context.getPendingCount())
+			refresh(context, SB.data([b]))
+			refresh(context, SB.data([a]))
+			_ = context.getTreatment("exp_sb")
+			XCTAssertEqual(2, context.getPendingCount())
 		}
 	}
 

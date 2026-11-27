@@ -1629,7 +1629,7 @@ public final class Context {
 	// attributes set on the context are read, never the system attributes. The caller holds `contextLock`.
 	private func latestAttribute(_ name: String, now: Int64) -> Attribute? {
 		var selected: Attribute?
-		for attribute in attributes where attribute.setAt <= now && Context.javaTrim(attribute.name) == name {
+		for attribute in attributes where attribute.setAt <= now && SwitchbackServing.sameKey(Context.javaTrim(attribute.name), name) {
 			if selected == nil || attribute.setAt >= selected!.setAt {
 				selected = attribute
 			}

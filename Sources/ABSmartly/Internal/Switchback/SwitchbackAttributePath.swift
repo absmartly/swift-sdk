@@ -54,7 +54,7 @@ struct SwitchbackAttributePath {
 			return index >= 0 && index < array.count ? array[index] : nil
 		}
 		guard current.type == .dictionary else { return nil }
-		return current.dictionary?[key]
+		return current.dictionary?.first { SwitchbackServing.sameKey($0.key, key) }?.value
 	}
 
 	// Nil when the path is malformed. Scans Unicode scalars, so a quote followed by a combining mark is
