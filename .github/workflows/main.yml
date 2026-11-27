@@ -45,6 +45,9 @@ jobs:
       - name: Build (warnings as errors)
         run: swift build --build-tests -Xswiftc -warnings-as-errors
 
+      - name: Test release workflow guards (no publication)
+        run: python3 Tools/test-publish-workflow.py
+
       - name: Run tests
         run: python3 Tools/run-with-timeout.py 600 swift test --parallel --skip-build
 
@@ -93,6 +96,9 @@ jobs:
         run: |
           apt-get update
           apt-get install -y --no-install-recommends python3
+
+      - name: Test release workflow guards (no publication)
+        run: python3 Tools/test-publish-workflow.py
 
       - name: Run tests
         run: python3 Tools/run-with-timeout.py 600 swift test --parallel --skip-build
