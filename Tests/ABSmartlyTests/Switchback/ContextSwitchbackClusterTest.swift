@@ -283,6 +283,34 @@ final class ContextSwitchbackClusterTest: SwitchbackTestCase {
 		XCTAssertEqual(0, missing.getPendingCount())
 	}
 
+	// Cluster keys compare by UTF-16 code units, as Java's String.equals and JavaScript's === do: a
+	// composed "é" and a decomposed "e" + U+0301 are different keys, though Swift's == calls them equal.
+	func testCanonicallyEquivalentClusterKeysAreDistinct() {
+		let composed = "Caf\u{E9}"
+		let decomposed = "Cafe\u{301}"
+		XCTAssertEqual(composed, decomposed)
+
+		let allowList = Self.attributeSwitchback("city") { $0["switchbackClusterValues"] = [composed] }
+		let filtered = create(Self.dataOf(allowList))
+		filtered.setAttribute(name: "city", value: JSON(decomposed))
+		clock.now = SB.anchor
+		XCTAssertEqual(0, filtered.getTreatment("exp_sb"))
+		XCTAssertEqual(0, filtered.getPendingCount())
+
+		let allowed = create(Self.dataOf(allowList))
+		allowed.setAttribute(name: "city", value: JSON(composed))
+		XCTAssertEqual(Self.expected(composed, 0), allowed.getTreatment("exp_sb"))
+		XCTAssertEqual(1, allowed.getPendingCount())
+
+		let twoSources = SB.switchback(
+			arms: Self.arms, periodMs: SB.hour, clusters: [(SB.unitType, "city"), ("device_id", "town")])
+		let disagreeing = create(SB.data([twoSources]), units: [SB.unitType: SB.uid, "device_id": "device-1"])
+		disagreeing.setAttribute(name: "city", value: JSON(composed))
+		disagreeing.setAttribute(name: "town", value: JSON(decomposed))
+		XCTAssertEqual(0, disagreeing.getTreatment("exp_sb"))
+		XCTAssertEqual(0, disagreeing.getPendingCount())
+	}
+
 	// Java's unencodableAttributeValuesAreIneligible (a cyclic Map, a plain Object) has no Swift
 	// counterpart: an attribute is a `JSON` value, which cannot be cyclic. The closest Swift value, a
 	// JSON of an unsupported type, is `.unknown` and yields no key.

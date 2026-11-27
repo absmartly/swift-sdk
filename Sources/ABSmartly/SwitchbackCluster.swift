@@ -23,8 +23,24 @@ final class SwitchbackClusterOrder {
 	private let lock = NSLock()
 	private var scanned: [String: OrderedJSONScanner.Fields]?
 
+	#if DEBUG
+	// Payload scans since the last reset, for the one-scan-per-decode test.
+	static var scanCount = 0
+	#endif
+
 	init(json: Data) {
 		self.json = json
+	}
+
+	// Whether the bytes can hold a switchback field at all. A payload without one keeps the plain
+	// decode path and is never scanned. An escaped key spelling is kept on the scanned path.
+	static func mayHaveSwitchbackFields(_ json: Data) -> Bool {
+		for needle in ["switchback", "randomizationType", "\\u"] {
+			if json.range(of: Data(needle.utf8)) != nil {
+				return true
+			}
+		}
+		return false
 	}
 
 	// Nil when the bytes were not scanned there (not a top-level experiment or holdout, or unreadable).
@@ -32,6 +48,9 @@ final class SwitchbackClusterOrder {
 		lock.lock()
 		defer { lock.unlock() }
 		if scanned == nil {
+			#if DEBUG
+			SwitchbackClusterOrder.scanCount += 1
+			#endif
 			scanned = OrderedJSONScanner.switchbackFields(Array(json))
 		}
 		return scanned?[Self.pathKey(codingPath)]
@@ -140,7 +159,7 @@ struct OrderedJSONScanner {
 					} else {
 						guard scanner.skipValue() else { return false }
 					}
-					if let existing = entries.firstIndex(where: { $0.unitType == unitType }) {
+					if let existing = entries.firstIndex(where: { SwitchbackServing.sameKey($0.unitType, unitType) }) {
 						entries[existing].path = path
 					} else {
 						entries.append((unitType, path))

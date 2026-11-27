@@ -39,11 +39,11 @@ struct SwitchbackServing {
 				first = source.unitType
 			}
 			guard let value = clusterKey(read(source.path)) else { continue }
-			if key == nil {
+			if let key = key {
+				disagreement = disagreement || !sameKey(key, value)
+			} else {
 				key = value
 				serving = source.unitType
-			} else if key != value {
-				disagreement = true
 			}
 		}
 
@@ -69,7 +69,14 @@ struct SwitchbackServing {
 	// A nil or empty allow-list admits every value, as in the Collector.
 	static func allowed(_ allowedValues: [String]?, _ key: String) -> Bool {
 		guard let allowedValues = allowedValues, !allowedValues.isEmpty else { return true }
-		return allowedValues.contains(key)
+		return allowedValues.contains { sameKey($0, key) }
+	}
+
+	// Cluster keys compare by their UTF-16 code units, as Java's String.equals and JavaScript's ===
+	// do. Swift's String == treats canonically equivalent strings (a composed and a decomposed "é")
+	// as equal, which the Collector does not.
+	static func sameKey(_ a: String, _ b: String) -> Bool {
+		return a.utf16.elementsEqual(b.utf16)
 	}
 
 	// The Collector normalizes the published JSON, not the attribute's in-memory NSNumber type.
@@ -96,12 +103,5 @@ struct SwitchbackServing {
 		default:
 			return nil
 		}
-	}
-
-	// `CFNumberIsFloatType` is not available on Linux; the Objective-C type encoding is, and tells a
-	// floating-point NSNumber (`f`, `d`) from an integer one on every platform.
-	static func isFloatingPoint(_ number: NSNumber) -> Bool {
-		let type = String(cString: number.objCType)
-		return type == "d" || type == "f"
 	}
 }

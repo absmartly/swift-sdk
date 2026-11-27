@@ -30,6 +30,9 @@ public final class ContextData: Codable {
 	/// cannot see that order, so a switchback with more than one cluster source decoded that way
 	/// serves only an ineligible control.
 	public static func decode(from json: Data, decoder: JSONDecoder = JSONDecoder()) throws -> ContextData {
+		guard SwitchbackClusterOrder.mayHaveSwitchbackFields(json) else {
+			return try decoder.decode(ContextData.self, from: json)
+		}
 		let key = SwitchbackClusterOrder.userInfoKey
 		let previous = decoder.userInfo[key]
 		decoder.userInfo[key] = SwitchbackClusterOrder(json: json)

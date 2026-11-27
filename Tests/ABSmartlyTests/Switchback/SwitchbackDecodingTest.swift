@@ -459,7 +459,50 @@ extension SwitchbackDecodingTest {
 		if let decoded = try? ContextData.decode(from: bom) {
 			XCTAssertEqual(["y_type", "x_type"], order(decoded))
 		}
-		XCTAssertEqual(
-			["y_type", "x_type"], order(try ContextData.decode(from: orderPayload(["y_type", "x_type"], variantName: "\\ud800x"))))
+		// Foundation in Swift 5.10 rejects an unpaired surrogate escape; where it is accepted, the order holds.
+		if let decoded = try? ContextData.decode(from: orderPayload(["y_type", "x_type"], variantName: "\\ud800x")) {
+			XCTAssertEqual(["y_type", "x_type"], order(decoded))
+		}
 	}
+
+	#if DEBUG
+	// The payload is scanned once per decode, however many experiments read it, and not at all when it
+	// has no switchback field.
+	func testPayloadIsScannedOncePerDecode() throws {
+		let experiments = (0..<200).map { "{\"id\":\($0),\"name\":\"exp_\($0)\",\"randomizationType\":\"switchback\","
+			+ "\"switchbackClusters\":{\"b\":\"x\",\"a\":\"y\"}}" }
+		let payload = Data("{\"experiments\":[\(experiments.joined(separator: ","))]}".utf8)
+		SwitchbackClusterOrder.scanCount = 0
+		let decoded = try ContextData.decode(from: payload)
+		XCTAssertEqual(200, decoded.experiments.count)
+		XCTAssertEqual(["b", "a"], decoded.experiments[199].switchbackClusters?.map { $0.unitType })
+		XCTAssertEqual(1, SwitchbackClusterOrder.scanCount)
+
+		SwitchbackClusterOrder.scanCount = 0
+		let plain = try ContextData.decode(from: Data("{\"experiments\":[{\"id\":1,\"name\":\"exp\"}]}".utf8))
+		XCTAssertEqual(1, plain.experiments.count)
+		XCTAssertEqual(0, SwitchbackClusterOrder.scanCount)
+	}
+	#endif
+
+	#if DEBUG
+	// A unit type key escaped in the payload is still read from the bytes.
+	func testEscapedSwitchbackKeyStillScans() throws {
+		let payload = Data(#"{"experiments":[{"id":1,"name":"e","\u0072andomizationType":"switchback","switchbackClusters":{"b":"x","a":"y"}}]}"#.utf8)
+		SwitchbackClusterOrder.scanCount = 0
+		let decoded = try ContextData.decode(from: payload)
+		XCTAssertEqual("switchback", decoded.experiments[0].randomizationType)
+		XCTAssertEqual(["b", "a"], decoded.experiments[0].switchbackClusters?.map { $0.unitType })
+		XCTAssertEqual(1, SwitchbackClusterOrder.scanCount)
+	}
+	#endif
+
+	// Unit types that differ only in Unicode normalization are distinct keys, as in Java and JavaScript.
+	func testCanonicallyEquivalentUnitTypesStayDistinct() {
+		let clusters = decodeExperiment(#"{"name":"e","switchbackClusters":{"caf\u00e9":"x","cafe\u0301":"y"}}"#)?
+			.switchbackClusters
+		XCTAssertEqual(2, clusters?.count)
+		XCTAssertEqual(["x", "y"], clusters?.map { $0.attributePath ?? "" })
+	}
+
 }

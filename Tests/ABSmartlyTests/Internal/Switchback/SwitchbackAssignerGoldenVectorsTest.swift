@@ -20,7 +20,9 @@ final class SwitchbackAssignerGoldenVectorsTest: XCTestCase {
 			return string
 		}
 		let number = value as! NSNumber
-		XCTAssertFalse(SwitchbackServing.isFloatingPoint(number), "clusterUnit must be a string or integer: \(number)")
+		// `CFNumberIsFloatType` is not available on Linux; the Objective-C type encoding is.
+		let type = String(cString: number.objCType)
+		XCTAssertFalse(type == "d" || type == "f", "clusterUnit must be a string or integer: \(number)")
 		return number.stringValue
 	}
 
