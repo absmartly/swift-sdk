@@ -1,3 +1,6 @@
+# Not published: 1.3.4 is the last ABSmartlySwiftSDK version on the CocoaPods trunk, and 1.x after
+# 1.3.4 is distributed through Swift Package Manager only (see README). This file is kept because the
+# release workflow and DefaultClientTest check that its version matches the tag and SDKVersion.
 Pod::Spec.new do |spec|
   spec.name = 'ABSmartlySwiftSDK'
   spec.version = '1.5.0'

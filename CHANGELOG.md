@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+- 1.x is no longer published to CocoaPods: 1.3.4 is the last version on the CocoaPods trunk, and
+  later 1.x versions (including 1.4.0 and 1.5.0) are Swift Package Manager only. The README shows
+  CocoaPods users how to keep building 1.3.4 on current Xcode (a Podfile `post_install` hook that
+  raises pod deployment targets) and how to move to Swift Package Manager. The release workflow no
+  longer has a CocoaPods trunk step; it still checks that the tag, podspec and SDK version agree and
+  runs the tests. This supersedes the 1.5.0 notes below about a trunk push behind
+  `COCOAPODS_PUBLISH` (*Added*) and the CocoaPods note under *Compatibility*: those two notes are
+  historical, kept as released, and there is no such switch any more.
+  PR CI no longer runs the quick podspec lint, as the podspec is not published; the release check
+  and `DefaultClientTest` still read its version.
+
 ## 1.5.0
 
 1.5.0 is source compatible with 1.4.0: code written against 1.4.0 compiles unchanged, with the same

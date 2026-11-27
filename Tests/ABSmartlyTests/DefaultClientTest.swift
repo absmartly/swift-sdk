@@ -665,7 +665,6 @@ final class DefaultClientTest: XCTestCase {
 		wait(for: [expectation], timeout: 1.0)
 	}
 
-	// The release workflow publishes the podspec version; X-Agent must report the same one.
 	func testSDKVersionMatchesPodspec() throws {
 		let root = ((#filePath as NSString).deletingLastPathComponent as NSString)
 			.deletingLastPathComponent as NSString
