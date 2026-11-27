@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.1.0 (unreleased)
+## 2.1.0 (2026-11-27)
 
 Holdouts, matching 1.5.0 and the JavaScript SDK. The `X-Agent` header is `absmartly-swift-sdk/2.1.0`.
 2.0.0 ignored the payload's holdout data; 2.1.0 applies it, so apps on 1.5.x that rely on holdouts
