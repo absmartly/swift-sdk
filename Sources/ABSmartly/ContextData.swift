@@ -27,7 +27,7 @@ public final class ContextData: Codable {
 
 	/// Decodes context data from its JSON, keeping the order of each experiment's `switchbackClusters`,
 	/// which decides which unit serves a switchback. `JSONDecoder().decode(ContextData.self, from:)`
-	/// cannot see that order, so a switchback with more than one cluster source decoded that way
+	/// cannot verify exact source keys or order, so a switchback with multiple sources or a non-ASCII source key decoded that way
 	/// serves only an ineligible control.
 	public static func decode(from json: Data, decoder: JSONDecoder = JSONDecoder()) throws -> ContextData {
 		guard SwitchbackClusterOrder.mayHaveSwitchbackFields(json) else {

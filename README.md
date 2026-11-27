@@ -505,8 +505,8 @@ let variant = context.getTreatment("exp_store_layout")
 
 Context data fetched by the SDK keeps the order of `switchbackClusters`. When you decode context data
 yourself (for example data passed from a server), use `ContextData.decode(from:)`:
-`JSONDecoder().decode(ContextData.self, from:)` cannot see the order, so a switchback with more than
-one linked unit type decoded that way serves only the control variant.
+`JSONDecoder().decode(ContextData.self, from:)` cannot verify exact keys or order, so a switchback
+with multiple linked unit types or a non-ASCII source key decoded that way serves only the control variant.
 
 Cross-SDK numeric parity: Java preserves `3.0` as a floating-point JSON token and rejects it as a
 cluster key; Swift's released encoder publishes `3` instead, as JavaScript does. Swift follows the
