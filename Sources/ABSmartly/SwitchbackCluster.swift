@@ -15,26 +15,26 @@ public struct SwitchbackCluster: Codable, Equatable {
 
 // Carries the raw context data bytes to `Experiment.init(from:)` through `JSONDecoder.userInfo`, so a
 // `switchbackClusters` object can be read in its JSON key order: a keyed decoding container's
-// `allKeys` has no defined order. The bytes are only scanned when an experiment has a cluster map
-// with more than one entry, once per payload.
+// `allKeys` has no defined order. The bytes are scanned once per payload, the first time an
+// experiment has a `switchbackClusters` field.
 final class SwitchbackClusterOrder {
 	static let userInfoKey = CodingUserInfoKey(rawValue: "com.absmartly.switchbackClusterOrder")!
 
 	private let json: Data
 	private let lock = NSLock()
-	private var scanned: [String: [String]]?
+	private var scanned: [String: OrderedJSONScanner.Clusters]?
 
 	init(json: Data) {
 		self.json = json
 	}
 
-	// The keys of the `switchbackClusters` object of the experiment at `codingPath`, in JSON order and
-	// without duplicates; nil when the bytes have no such object.
-	func keys(at codingPath: [CodingKey]) -> [String]? {
+	// The `switchbackClusters` field of the experiment at `codingPath` as the bytes give it; nil when the
+	// bytes were not scanned there (not a top-level experiment or holdout, or not readable).
+	func clusters(at codingPath: [CodingKey]) -> OrderedJSONScanner.Clusters? {
 		lock.lock()
 		defer { lock.unlock() }
 		if scanned == nil {
-			scanned = OrderedJSONScanner.switchbackClusterKeys(Array(json))
+			scanned = OrderedJSONScanner.switchbackClusters(Array(json))
 		}
 		return scanned?[Self.pathKey(codingPath)]
 	}
@@ -45,16 +45,33 @@ final class SwitchbackClusterOrder {
 }
 
 // A minimal JSON reader that records, for every object in the top-level `experiments` and `holdouts`
-// arrays, the key order of its `switchbackClusters` object. Anything it cannot read gives no entry,
-// so the experiment's order stays unknown. A cluster key holding an unpaired surrogate escape reads as
-// U+FFFD here; where the decoder keeps it otherwise, the keys do not match and that switchback serves
-// only control.
+// arrays, its `switchbackClusters` field: the object's entries in JSON key order, or that the field is
+// not an object. Duplicate keys resolve as in java-sdk (a LinkedHashMap) and javascript-sdk (an object):
+// a repeated `switchbackClusters` field is the last one, and a repeated unit type keeps its first
+// position and takes its last value. Anything it cannot read gives no record, so the order stays
+// unknown. An unpaired surrogate escape reads as U+FFFD.
 struct OrderedJSONScanner {
+	enum Clusters: Equatable {
+		// Each unit type with its attribute path; nil for a path that is not a JSON string.
+		case object([(unitType: String, path: String?)])
+		case notAnObject
+		case arrayRepresentation
+
+		static func == (lhs: Clusters, rhs: Clusters) -> Bool {
+			switch (lhs, rhs) {
+			case (.notAnObject, .notAnObject), (.arrayRepresentation, .arrayRepresentation): return true
+			case (.object(let a), .object(let b)):
+				return a.map { $0.unitType } == b.map { $0.unitType } && a.map { $0.path } == b.map { $0.path }
+			default: return false
+			}
+		}
+	}
+
 	private let bytes: [UInt8]
 	private var i = 0
-	private var result: [String: [String]] = [:]
+	private var result: [String: Clusters] = [:]
 
-	static func switchbackClusterKeys(_ bytes: [UInt8]) -> [String: [String]] {
+	static func switchbackClusters(_ bytes: [UInt8]) -> [String: Clusters] {
 		var scanner = OrderedJSONScanner(bytes: bytes)
 		guard scanner.scanRoot() else { return [:] }
 		return scanner.result
@@ -89,19 +106,30 @@ struct OrderedJSONScanner {
 			guard scanner.peek() == UInt8(ascii: "{") else { return scanner.skipValue() }
 			return scanner.scanObject { scanner, key in
 				scanner.skipWhitespace()
-				if key == "switchbackClusters" && scanner.peek() == UInt8(ascii: "{") {
-					var keys: [String] = []
-					let ok = scanner.scanObject { scanner, clusterKey in
-						if !keys.contains(clusterKey) {
-							keys.append(clusterKey)
-						}
-						return scanner.skipValue()
-					}
-					// A later duplicate `switchbackClusters` replaces an earlier one, as in the decoder.
-					scanner.result["\(field)/#\(index)"] = keys
-					return ok
+				guard key == "switchbackClusters" else { return scanner.skipValue() }
+				guard scanner.peek() == UInt8(ascii: "{") else {
+					scanner.result["\(field)/#\(index)"] = scanner.peek() == UInt8(ascii: "[") ? .arrayRepresentation : .notAnObject
+					return scanner.skipValue()
 				}
-				return scanner.skipValue()
+				var entries: [(unitType: String, path: String?)] = []
+				let ok = scanner.scanObject { scanner, unitType in
+					scanner.skipWhitespace()
+					var path: String?
+					if scanner.peek() == UInt8(ascii: "\"") {
+						path = scanner.readString()
+						guard path != nil else { return false }
+					} else {
+						guard scanner.skipValue() else { return false }
+					}
+					if let existing = entries.firstIndex(where: { $0.unitType == unitType }) {
+						entries[existing].path = path
+					} else {
+						entries.append((unitType, path))
+					}
+					return true
+				}
+				scanner.result["\(field)/#\(index)"] = .object(entries)
+				return ok
 			}
 		}
 	}

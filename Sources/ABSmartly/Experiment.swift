@@ -89,12 +89,13 @@ public struct Experiment: Codable {
 		switchbackDesignType = try? container.decodeIfPresent(String.self, forKey: .switchbackDesignType)
 		switchbackEstimand = try? container.decodeIfPresent(String.self, forKey: .switchbackEstimand)
 
-		// An allow-list that is not an array of strings cannot be applied, so the cluster map is dropped
-		// with it: the switchback then serves only an ineligible control, never every value.
+		// Scalar allow-list entries compare as text, as in Java and JavaScript. Null entries never
+		// match. A non-array or nested value cannot be applied, so the cluster map is dropped with it.
 		var clusterValues: [String]? = nil
 		var clusterValuesReadable = true
 		if container.contains(.switchbackClusterValues), (try? container.decodeNil(forKey: .switchbackClusterValues)) == false {
-			clusterValues = try? container.decode([String].self, forKey: .switchbackClusterValues)
+			clusterValues = (try? container.decode([SwitchbackAllowedValue].self, forKey: .switchbackClusterValues))?
+				.map { $0.text ?? "" }
 			clusterValuesReadable = clusterValues != nil
 		}
 		switchbackClusterValues = clusterValues
@@ -102,7 +103,7 @@ public struct Experiment: Codable {
 			switchbackClusters = Experiment.decodeSwitchbackClusters(
 				container, .switchbackClusters, decoder: decoder, name: name)
 		} else {
-			Logger.error("Ignoring switchbackClusters for experiment '\(name)': switchbackClusterValues is not an array of strings.")
+			Logger.error("Ignoring switchbackClusters for experiment '\(name)': switchbackClusterValues is not an array of scalar values.")
 			switchbackClusters = nil
 		}
 	}
@@ -113,6 +114,16 @@ public struct Experiment: Codable {
 	private static func decodeSwitchbackClusters<Key: CodingKey>(
 		_ container: KeyedDecodingContainer<Key>, _ key: Key, decoder: Decoder, name: String
 	) -> [SwitchbackCluster]? {
+		if let field = (decoder.userInfo[SwitchbackClusterOrder.userInfoKey] as? SwitchbackClusterOrder)?
+			.clusters(at: decoder.codingPath)
+		{
+			switch field {
+			case .object(let entries):
+				return entries.map { SwitchbackCluster(unitType: $0.unitType, attributePath: $0.path) }
+			case .notAnObject: return nil
+			case .arrayRepresentation: break
+			}
+		}
 		guard container.contains(key), (try? container.decodeNil(forKey: key)) == false else {
 			return nil
 		}
@@ -132,14 +143,23 @@ public struct Experiment: Codable {
 		if paths.count < 2 {
 			return paths.map { SwitchbackCluster(unitType: $0.key, attributePath: $0.value) }
 		}
-		let order = (decoder.userInfo[SwitchbackClusterOrder.userInfoKey] as? SwitchbackClusterOrder)?
-			.keys(at: decoder.codingPath)
-		guard let keys = order, Set(keys) == Set(paths.keys), keys.count == paths.count else {
-			Logger.error(
-				"Ignoring switchbackClusters for experiment '\(name)': the order of its entries is not known. Decode the context data with ContextData.decode(from:).")
-			return nil
-		}
-		return keys.map { SwitchbackCluster(unitType: $0, attributePath: paths[$0] ?? nil) }
+		Logger.error(
+			"Ignoring switchbackClusters for experiment '\(name)': the order of its entries is not known. Decode the context data with ContextData.decode(from:).")
+		return nil
+	}
+}
+
+private struct SwitchbackAllowedValue: Decodable {
+	let text: String?
+
+	init(from decoder: Decoder) throws {
+		let value = try decoder.singleValueContainer()
+		if value.decodeNil() { text = nil }
+		else if let string = try? value.decode(String.self) { text = string }
+		else if let bool = try? value.decode(Bool.self) { text = bool ? "true" : "false" }
+		else if let integer = try? value.decode(Int64.self) { text = String(integer) }
+		else if let integer = try? value.decode(UInt64.self) { text = String(integer) }
+		else { text = String(try value.decode(Double.self)) }
 	}
 }
 

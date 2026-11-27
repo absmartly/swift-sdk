@@ -112,10 +112,21 @@ final class SwitchbackDecodingTest: SwitchbackTestCase {
 			  }
 			}
 			""")
-		// A duplicate key keeps its first position; JSONSerialization keeps one of its values.
+		// A duplicate key keeps its first position and takes its last value, as in Java and JS.
 		let entries = experiment?.switchbackClusters
 		XCTAssertEqual(["zé_id", "a\"q", "s/l", "😀"], entries?.map { $0.unitType })
-		XCTAssertEqual(["p2", "p3", "p5"], entries?.dropFirst().map { $0.attributePath ?? "" })
+		XCTAssertEqual(["p4", "p2", "p3", "p5"], entries?.map { $0.attributePath ?? "" })
+	}
+
+	func testRepeatedClusterFieldsAndPathsUseTheLastValue() {
+		XCTAssertEqual(["b=y", "a=z"], clusters(decodeExperiment(
+			#"{"name":"e","switchbackClusters":{"old":"x"},"switchbackClusters":{"b":"bad","a":"z","b":"y"}}"#)))
+		XCTAssertNil(decodeExperiment(
+			#"{"name":"e","switchbackClusters":{"a":"x"},"switchbackClusters":null}"#)?.switchbackClusters)
+		XCTAssertEqual(["a=nil"], clusters(decodeExperiment(
+			#"{"name":"e","switchbackClusters":{"a":"x","a":{"bad":1}}}"#)))
+		XCTAssertEqual(["a=x"], clusters(decodeExperiment(
+			#"{"name":"e","switchbackClusters":{"a":{"bad":1},"a":"x"}}"#)))
 	}
 
 	// A `switchbackClusters` key at another depth never lends its order to an experiment.
@@ -186,7 +197,7 @@ final class SwitchbackDecodingTest: SwitchbackTestCase {
 			("clusters string", { $0["switchbackClusters"] = "store_id" }),
 			("non-string path", { $0["switchbackClusters"] = SB.OrderedObject([(SB.unitType, 7)]) }),
 			("object path", { $0["switchbackClusters"] = SB.OrderedObject([(SB.unitType, ["p": 1])]) }),
-			("clusterValues not strings", { $0["switchbackClusterValues"] = [1, 2] }),
+			("clusterValues nested", { $0["switchbackClusterValues"] = [["bad": 1]] }),
 			("clusterValues string", { $0["switchbackClusterValues"] = SB.clusterKey }),
 		]
 		for (label, change) in malformed {
@@ -207,6 +218,15 @@ final class SwitchbackDecodingTest: SwitchbackTestCase {
 			XCTAssertEqual(SB.expected3Arms[0], context.getTreatment("exp_sb"), label)
 			XCTAssertEqual(1, context.getPendingCount(), label)
 		}
+	}
+
+	func testScalarAllowListEntriesCompareAsText() {
+		let experiment = decodeExperiment(
+			#"{"name":"e","switchbackClusters":{"store_id":"key"},"switchbackClusterValues":[42,true,"north",null]}"#)
+		XCTAssertEqual(["42", "true", "north", ""], experiment?.switchbackClusterValues)
+		XCTAssertEqual(["store_id=key"], clusters(experiment))
+		XCTAssertEqual([""], decodeExperiment(
+			#"{"name":"e","switchbackClusterValues":[null]}"#)?.switchbackClusterValues)
 	}
 
 	// MARK: - Equality (java-sdk ExperimentSwitchbackFieldsTest)
