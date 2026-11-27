@@ -285,9 +285,10 @@ let variant = context.treatment(for: "exp_store_layout")
 - A cluster value is a non-empty string, or an integer, read as its decimal text. A floating-point
   number (including `3.0`), a boolean, an object, an array, an empty string or `null` is no value: set
   integer cluster values as Swift integers, not `Double`s.
-- Units that disagree, a value outside `switchbackClusterValues`, or no value at all give the control
-  variant (`0`) and publish nothing. So does a time before `switchbackStartAt`, or a schedule that
-  cannot be served.
+- Without an override, units that disagree, a value outside `switchbackClusterValues`, or no value
+  at all give control (`0`) and publish nothing. With an eligible cluster, assignment rules, a strict
+  audience and full-on are evaluated even before `switchbackStartAt` or on an unservable schedule;
+  only the normal draw then falls back to silent control.
 - An override, assignment rules, a strict audience, full-on, traffic and custom assignments apply as
   for other experiments, in that order. Holdouts never apply to a switchback.
 - Each exposing read publishes at most one exposure per period, stamped with the time that chose the

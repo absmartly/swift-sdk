@@ -13,7 +13,14 @@ struct SwitchbackAttributePath: Sendable, Equatable {
 
 	/// Nil for an unsupported path: malformed (see above), empty, or with an array index that is
 	/// negative, first, last, or directly after another index. Analysis cannot read those.
+	#if DEBUG
+		@TaskLocal static var parseWorkCount: Locked<Int>?
+	#endif
+
 	static func parseSupported(_ path: String?) -> SwitchbackAttributePath? {
+		#if DEBUG
+			Self.parseWorkCount?.withLock { $0 += 1 }
+		#endif
 		guard let path, let parsed = parse(path), !parsed.keys.isEmpty else { return nil }
 		let n = parsed.keys.count
 		for (i, index) in parsed.indices.enumerated() {

@@ -7,6 +7,10 @@ import Foundation
 final class SwitchbackClusterOrder: Sendable {
 	static let userInfoKey = CodingUserInfoKey(rawValue: "com.absmartly.switchbackClusterOrder")!
 
+	#if DEBUG
+		@TaskLocal static var scanWorkCount: Locked<Int>?
+	#endif
+
 	private let json: Data
 	private let scanned = Locked<[String: [String]]?>(nil)
 
@@ -19,6 +23,9 @@ final class SwitchbackClusterOrder: Sendable {
 	func keys(at codingPath: [CodingKey]) -> [String]? {
 		scanned.withLock { scanned in
 			if scanned == nil {
+				#if DEBUG
+					Self.scanWorkCount?.withLock { $0 += 1 }
+				#endif
 				scanned = OrderedJSONScanner.switchbackClusterKeys(Array(json))
 			}
 			return scanned?[Self.pathKey(codingPath)]

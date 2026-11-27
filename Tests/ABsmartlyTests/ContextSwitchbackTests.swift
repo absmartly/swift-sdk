@@ -505,6 +505,48 @@ import Testing
 		#endif
 	}
 
+	@Test func parsedClusterSourcesAreReusedAcrossReadsAndPeriods() {
+		#if DEBUG
+			let work = Locked(0)
+			SwitchbackAttributePath.$parseWorkCount.withValue(work) {
+				let sb = SwitchbackEnv()
+				let context = sb.context(SB.data([SB.switchback()]))
+				let parsed = work.withLock { $0 }
+				#expect(parsed == 1)
+				for period in 0..<4 {
+					sb.clock.now = SB.anchor + Int64(period) * SB.hour
+					for exposing in [true, false] {
+						for _ in 0..<20 {
+							_ = context.treatment(for: "exp_sb", exposing: exposing)
+							_ = context.variableValue("sb.arm", exposing: exposing)
+						}
+					}
+					#expect(work.withLock { $0 } == parsed)
+				}
+			}
+		#endif
+	}
+
+	@Test func orderedPayloadIsScannedOnceForMultipleMultiSourceExperiments() throws {
+		#if DEBUG
+			let work = Locked(0)
+			try SwitchbackClusterOrder.$scanWorkCount.withValue(work) {
+				let clusters: [(String, Any)] = [("z_unit", "z"), ("a_unit", "a")]
+				let json = SB.json([
+					SB.switchback(1, "first", clusters: clusters),
+					SB.switchback(2, "second", clusters: Array(clusters.reversed())),
+					SB.switchback(3, "third", clusters: clusters),
+				])
+				let data = try ContextData(json: json)
+				#expect(
+					data.experiments.map { $0.switchbackClusters?.map(\.unitType) } == [
+						["z_unit", "a_unit"], ["a_unit", "z_unit"], ["z_unit", "a_unit"],
+					])
+				#expect(work.withLock { $0 } == 1)
+			}
+		#endif
+	}
+
 	// A peek never queues and never marks the period exposed.
 	@Test func peekingQueuesNothing() async throws {
 		let sb = SwitchbackEnv()
