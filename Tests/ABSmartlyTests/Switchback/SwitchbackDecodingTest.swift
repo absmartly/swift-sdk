@@ -538,4 +538,23 @@ extension SwitchbackDecodingTest {
 		XCTAssertEqual(["1e-7", "100000000000000000000", "1e+21", "-1e-7"], experiment?.switchbackClusterValues)
 	}
 
+	func testFinalDuplicateClusterArrayUsesItsOwnBytes() throws {
+		let experiment = decodeExperiment(#"{"name":"e","switchbackClusters":{"a":"old"},"switchbackClusters":[{"unitType":"b","attributePath":"new"}]}"#)
+		XCTAssertEqual(["b=new"], clusters(experiment))
+	}
+
+	func testPlainDecoderDoesNotServeUnicodeCollapsedSources() throws {
+		var experiment = SB.switchback(arms: 3, periodMs: SB.hour,
+			clusters: [("caf\u{E9}", "x"), ("cafe\u{301}", "y")])
+		experiment["fullOnVariant"] = 1
+		let plain = try JSONDecoder().decode(ContextData.self, from: SB.json([experiment]))
+		XCTAssertNil(plain.experiments[0].switchbackClusters)
+		let context = createContext(plain, units: ["caf\u{E9}": "store-1"], clusterAttribute: false)
+		clock.now = SB.anchor
+		context.setAttribute(name: "x", value: JSON("north"))
+		context.setAttribute(name: "y", value: JSON("south"))
+		XCTAssertEqual(0, context.getTreatment("exp_sb"))
+		XCTAssertEqual(0, context.getPendingCount())
+	}
+
 }

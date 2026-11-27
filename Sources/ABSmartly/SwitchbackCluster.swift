@@ -91,11 +91,12 @@ struct OrderedJSONScanner {
 		// Each unit type with its attribute path; nil for a path that is not a JSON string.
 		case object([(unitType: String, path: String?)])
 		case notAnObject
-		case arrayRepresentation
+		case arrayRepresentation(Data)
 
 		static func == (lhs: Clusters, rhs: Clusters) -> Bool {
 			switch (lhs, rhs) {
-			case (.notAnObject, .notAnObject), (.arrayRepresentation, .arrayRepresentation): return true
+			case (.notAnObject, .notAnObject): return true
+			case (.arrayRepresentation(let a), .arrayRepresentation(let b)): return a == b
 			case (.object(let a), .object(let b)):
 				return a.map { $0.unitType } == b.map { $0.unitType } && a.map { $0.path } == b.map { $0.path }
 			default: return false
@@ -160,9 +161,12 @@ struct OrderedJSONScanner {
 				}
 				guard key == "switchbackClusters" else { return scanner.skipValue() }
 				guard scanner.peek() == UInt8(ascii: "{") else {
-					scanner.result[path, default: Fields()].clusters =
-						scanner.peek() == UInt8(ascii: "[") ? .arrayRepresentation : .notAnObject
-					return scanner.skipValue()
+					let start = scanner.i
+					let isArray = scanner.peek() == UInt8(ascii: "[")
+					guard scanner.skipValue() else { return false }
+					scanner.result[path, default: Fields()].clusters = isArray
+						? .arrayRepresentation(Data(scanner.bytes[start..<scanner.i])) : .notAnObject
+					return true
 				}
 				var entries: [(unitType: String, path: String?)] = []
 				let ok = scanner.scanObject { scanner, unitType in

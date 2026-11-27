@@ -148,18 +148,15 @@ public struct Experiment: Codable {
 			case .object(let entries):
 				return entries.map { SwitchbackCluster(unitType: $0.unitType, attributePath: $0.path) }
 			case .notAnObject: return nil
-			case .arrayRepresentation: break
+			case .arrayRepresentation(let raw):
+				return (try? JSONDecoder().decode([SwitchbackCluster].self, from: raw)).map(Self.uniqueClusters)
 			}
 		}
 		guard container.contains(key), (try? container.decodeNil(forKey: key)) == false else {
 			return nil
 		}
 		if let clusters = try? container.decode([SwitchbackCluster].self, forKey: key) {
-			var unique: [SwitchbackCluster] = []
-			for cluster in clusters where !unique.contains(where: { SwitchbackServing.sameKey($0.unitType, cluster.unitType) }) {
-				unique.append(cluster)
-			}
-			return unique
+			return uniqueClusters(clusters)
 		}
 		guard let object = try? container.nestedContainer(keyedBy: DynamicKey.self, forKey: key) else {
 			return nil
@@ -167,7 +164,9 @@ public struct Experiment: Codable {
 		let paths = Dictionary(
 			object.allKeys.map { ($0.stringValue, try? object.decode(String.self, forKey: $0)) },
 			uniquingKeysWith: { first, _ in first })
-		if paths.count < 2 {
+		// Foundation may collapse canonically equivalent non-ASCII object keys before allKeys is
+		// exposed. Without raw bytes, accept only ASCII keys whose exact cardinality is reliable.
+		if paths.count < 2 && paths.keys.allSatisfy({ $0.utf8.allSatisfy { $0 < 128 } }) {
 			return paths.map { SwitchbackCluster(unitType: $0.key, attributePath: $0.value) }
 		}
 		if diagnose {
@@ -176,6 +175,15 @@ public struct Experiment: Codable {
 		}
 		return nil
 	}
+
+	private static func uniqueClusters(_ clusters: [SwitchbackCluster]) -> [SwitchbackCluster] {
+		var unique: [SwitchbackCluster] = []
+		for cluster in clusters where !unique.contains(where: { SwitchbackServing.sameKey($0.unitType, cluster.unitType) }) {
+			unique.append(cluster)
+		}
+		return unique
+	}
+
 }
 
 private struct SwitchbackAllowedValue: Decodable {
