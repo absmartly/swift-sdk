@@ -13,7 +13,7 @@ The async/await API (`import ABSmartlyAsync`) needs iOS 13, macOS 10.15, tvOS 13
 
 ### Support
 
-1.5.0 is the last 1.x feature release. 2.0, with a new async-first API, was released on 25 November
+1.6.0 (switchback experiments) is the last 1.x feature release. 2.0, with a new async-first API, was released on 25 November
 2026; 1.x is maintained (bug and security fixes, from the `release/1.x` branch) until 25 November 2027.
 
 | Platform    | Support    | Notes                                          |
@@ -33,7 +33,7 @@ To install the A/B Smartly SDK using Swift Package Manager, following these step
 
 - Enter the A/B Smartly Swift SDK GitHub repository: ```https://github.com/absmartly/swift-sdk```
 
-- Select the SDK version: 2.x is the latest major version; for 1.x, use "Up to Next Major Version" from `1.5.0`
+- Select the SDK version: 2.x is the latest major version; for 1.x, use "Up to Next Major Version" from `1.6.0`
 
 - Select the ABSmartly library
 
@@ -106,15 +106,15 @@ hook that set the targets unconditionally; this exact hook and the 1.3.4 pod its
 1. Remove `pod 'ABSmartlySwiftSDK'` from your `Podfile` and run `pod install` (or `pod deintegrate`
    if it was your only pod).
 2. Add the package as described under [Swift Package Manager](#swift-package-manager), but choose
-   a 1.x version: in Xcode, the dependency rule "Up to Next Major Version" from `1.5.0` (in
-   `Package.swift`, `.package(url: "https://github.com/absmartly/swift-sdk", "1.5.0"..<"2.0.0")`).
+   a 1.x version: in Xcode, the dependency rule "Up to Next Major Version" from `1.6.0` (in
+   `Package.swift`, `.package(url: "https://github.com/absmartly/swift-sdk", "1.6.0"..<"2.0.0")`).
    The latest release is 2.x, which has a different module name (`ABsmartly`), API and minimum
    platforms. Then select the `ABSmartly` library. The module name is the same as the pod's, so
    `import ABSmartly` is unchanged.
 3. The package brings in PromiseKit, SwiftyJSON and swift-atomics through Swift Package Manager.
    If your app also uses PromiseKit, SwiftyJSON or SwiftAtomics (module `Atomics`) from CocoaPods,
    move those to Swift Package Manager too, so each module is linked once.
-4. Read the [CHANGELOG](CHANGELOG.md) for the changes since 1.3.4: it covers 1.5.0, and 1.4.0
+4. Read the [CHANGELOG](CHANGELOG.md) for the changes since 1.3.4: it covers 1.6.0 and 1.5.0, and 1.4.0
    (which has no CHANGELOG entry) added custom fields: `getCustomFieldKeys()`,
    `getCustomFieldValue` and `getCustomFieldValueType`. Swift Package Manager needs
    macOS 10.14 (CocoaPods 1.3.4 supported 10.10); apps that must support macOS 10.10 to 10.13 stay

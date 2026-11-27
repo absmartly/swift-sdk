@@ -4,7 +4,8 @@
 
 1.6.0 is source compatible with 1.5.0: every change is additive, and experiments that are not
 switchbacks are assigned, exposed and published exactly as in 1.5.0. Like every 1.x release after
-1.3.4, it is published through Swift Package Manager only (see *Changed*).
+1.3.4, it is published through Swift Package Manager only (see *Changed*). The 1.5.0 notes below call
+1.5.0 the last 1.x feature release; switchbacks were added to 1.x afterwards, as 1.6.0.
 
 ### Added
 - Switchback experiments (R33, cluster-defined), matching java-sdk main (java-sdk#15, merge commit 07807b5; `SWITCHBACK.md`). An experiment with `randomizationType: "switchback"` is served by cluster and time: the first context unit, in `switchbackClusters` order, whose attribute path gives a value serves it, and the variant is the balanced-block draw for that raw cluster key and the period `floorDiv(now - switchbackStartAt, switchbackPeriodMs)`. Units that disagree, a value outside `switchbackClusterValues`, a missing value, a time before `switchbackStartAt` or an unservable schedule give the control variant with no exposure. Overrides, assignment rules, a strict audience mismatch, full-on, traffic and custom assignments apply as for unit experiments; holdouts never apply to a switchback. One exposure is published per experiment and period, stamped with the time that chose the period. The new `Experiment` fields are `randomizationType`, `switchbackClusters` (`[SwitchbackCluster]`, in declared order), `switchbackClusterValues`, `switchbackStartAt`, `switchbackPeriodMs`, `switchbackCarryoverDurationMs`, `switchbackBurnInDurationMs`, `switchbackBurnOutDurationMs`, `switchbackDesignType` and `switchbackEstimand`, all optional. A cluster value is a non-empty string or an integer (as its decimal text); a floating-point number, including `3.0`, a boolean, an object, an array, an empty string or null gives none. A payload without switchbacks is served exactly as before.

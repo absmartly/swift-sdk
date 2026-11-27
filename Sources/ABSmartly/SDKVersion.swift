@@ -4,6 +4,6 @@ import Foundation
 // `spec.version`: the release workflow fails a tag where they differ.
 enum SDKVersion {
 	static let name = "absmartly-swift-sdk"
-	static let version = "1.5.0"
+	static let version = "1.6.0"
 	static let agent = "\(name)/\(version)"
 }

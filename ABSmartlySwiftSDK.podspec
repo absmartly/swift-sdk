@@ -3,7 +3,7 @@
 # release workflow and DefaultClientTest check that its version matches the tag and SDKVersion.
 Pod::Spec.new do |spec|
   spec.name = 'ABSmartlySwiftSDK'
-  spec.version = '1.5.0'
+  spec.version = '1.6.0'
   spec.summary = 'A/B Smartly Swift SDK'
   spec.description = 'A/B Smartly SDK for iOS/tvOS/watchOS'
 
