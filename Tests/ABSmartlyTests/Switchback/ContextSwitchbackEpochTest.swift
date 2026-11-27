@@ -24,7 +24,9 @@ final class ContextSwitchbackEpochTest: SwitchbackTestCase {
 	}
 
 	// One getVariableValue call takes one clock reading (SWITCHBACK.md "Serving"; java-sdk
-	// reads `now` once per call), so every switchback visited on a shared key resolves in the same period.
+	// reads `now` once per call), so every switchback visited on a shared key resolves in the same period:
+	// the strict-mismatched first candidate consumes the only pre-boundary reading, and the winner still
+	// serves (and is stamped with) period 0.
 	func testSharedVariableKeyWalkUsesOneClockReading() {
 		var first = SB.switchback(1, "exp_sb", arms: 2, periodMs: SB.hour)
 		first["audience"] = "{\"filter\":[{\"eq\":[{\"var\":\"tier\"},{\"value\":\"gold\"}]}]}"
@@ -34,8 +36,9 @@ final class ContextSwitchbackEpochTest: SwitchbackTestCase {
 		clock.now = SB.anchor + SB.hour + 5
 		clock.nextRead = SB.anchor + SB.hour - 1
 		XCTAssertEqual(SB.expected2Arms[0], context.getVariableValue("sb.arm", defaultValue: JSON(-1))?.int)
-		XCTAssertEqual(
-			[SB.anchor + SB.hour - 1, SB.anchor + SB.hour - 1], publishExposures(context).map { $0.exposedAt })
+		let exposures = publishExposures(context)
+		XCTAssertEqual(["exp_sb2"], exposures.map { $0.name })
+		XCTAssertEqual([SB.anchor + SB.hour - 1], exposures.map { $0.exposedAt })
 	}
 
 	// A unit definition in between breaks the switchback chain every time, not only the

@@ -16,7 +16,7 @@ Pod::Spec.new do |spec|
   spec.watchos.deployment_target = '3.0'
   
   spec.module_name = 'ABSmartly'
-  spec.source_files = 'Sources/**/*.swift'
+  spec.source_files = 'Sources/ABSmartly/**/*.swift'
   spec.requires_arc = true
   spec.framework = 'Foundation'
   spec.dependency 'PromiseKit', '~> 6.8'

@@ -60,19 +60,15 @@ final class ContextSwitchbackLifecycleTest: SwitchbackTestCase {
 		XCTAssertEqual(11, variable(context, peek: true))
 		XCTAssertEqual(0, context.getPendingCount())
 		XCTAssertEqual(11, variable(context))
-		// Java records only the winner. This SDK's variable keys expose every experiment visited (the
-		// JavaScript contract, CHANGELOG 1.5.0), so the switchback is recorded exactly as a
-		// strict-mismatched unit experiment would be: variant 0, not assigned, audienceMismatch.
+		// Only the winner is recorded, as in Java (CHANGELOG 1.5.0 "Variable keys shared by several
+		// experiments").
 		XCTAssertEqual(
-			[
-				Exposure(
-					1, "exp_sb", SB.unitType, 0, SB.anchor + SB.hour + 3, false, true, false, false, false, true),
-				Exposure(2, "exp_unit", SB.unitType, 1, SB.anchor + SB.hour + 3, true, true, false, true, false, false),
-			],
+			[Exposure(2, "exp_unit", SB.unitType, 1, SB.anchor + SB.hour + 3, true, true, false, true, false, false)],
 			publishExposures(context))
 	}
 
-	// The same key served by a strict-mismatched unit experiment records the same exposure.
+	// Alone on the key, a strict-mismatched unit experiment yields the default and records nothing,
+	// like the switchback below.
 	func testStrictMismatchedUnitExperimentOnAVariableKeyIsRecordedLikeTheSwitchback() {
 		var sb = unitize(SB.switchback(arms: 2, periodMs: SB.hour))
 		sb["audience"] = Self.strictGoldAudience
@@ -80,9 +76,7 @@ final class ContextSwitchbackLifecycleTest: SwitchbackTestCase {
 		clock.now = SB.anchor + SB.hour + 3
 		let context = createContext(SB.data([sb]))
 		XCTAssertEqual(-1, variable(context))
-		XCTAssertEqual(
-			[Exposure(1, "exp_sb", SB.unitType, 0, SB.anchor + SB.hour + 3, false, true, false, false, false, true)],
-			publishExposures(context))
+		XCTAssertEqual([], publishExposures(context))
 	}
 
 	// Alone on the key, a strict-mismatched switchback yields the default value and records nothing.
@@ -95,10 +89,8 @@ final class ContextSwitchbackLifecycleTest: SwitchbackTestCase {
 		XCTAssertEqual(-1, variable(context, peek: true))
 		XCTAssertEqual(0, context.getPendingCount())
 		XCTAssertEqual(-1, variable(context))
-		// Recorded as for a strict-mismatched unit experiment (see the test above); Java records nothing.
-		XCTAssertEqual(
-			[Exposure(1, "exp_sb", SB.unitType, 0, SB.anchor + SB.hour + 3, false, true, false, false, false, true)],
-			publishExposures(context))
+		// No winner, so nothing is recorded, as for a strict-mismatched unit experiment and in Java.
+		XCTAssertEqual([], publishExposures(context))
 	}
 
 	// MARK: - Exposure flag parity

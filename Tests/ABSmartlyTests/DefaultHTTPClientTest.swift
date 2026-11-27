@@ -74,6 +74,26 @@ final class DefaultHTTPClientTest: XCTestCase {
 		XCTAssertNotNil(response.content)
 	}
 
+	// As in v1.4.0, a request keeps its client alive until it settles: dropping the clients while a
+	// request is retrying still settles DefaultClient's Promise (here with a connection error)
+	// instead of leaving it pending forever.
+	func testRequestSettlesAfterCallerDropsTheClient() throws {
+		let config = DefaultHTTPClientConfig()
+		config.retries = 2
+		config.retryInterval = 0.2
+		config.connectionRequestTimeout = 1.0
+		let clientConfig = ClientConfig(
+			apiKey: "k", application: "a", endpoint: "http://127.0.0.1:9", environment: "e")
+		var client: DefaultClient? = try DefaultClient(
+			config: clientConfig, httpClient: DefaultHTTPClient(config: config))
+
+		let settled = XCTestExpectation(description: "request settles")
+		_ = client!.getContextData().ensure { settled.fulfill() }
+		client = nil
+
+		wait(for: [settled], timeout: 10.0)
+	}
+
 	func testBadURL() throws {
 		let config = DefaultHTTPClientConfig()
 		config.retries = 0
@@ -100,9 +120,15 @@ final class DefaultHTTPClientTest: XCTestCase {
 		_ = httpClient.close()
 	}
 
-	func testCloseInvalidatesSession() throws {
+	// As in v1.4.0, close() resolves without invalidating the session: a later request still works.
+	func testCloseKeepsTheSessionUsable() throws {
 		let config = DefaultHTTPClientConfig()
+		config.retries = 0
 		let httpClient = DefaultHTTPClient(config: config)
+		let server = try LocalHTTPServer()
+		defer { server.stop() }
+		server.getResponseBody = "ok"
+		try server.start()
 
 		let closePromise = httpClient.close()
 
@@ -114,15 +140,16 @@ final class DefaultHTTPClientTest: XCTestCase {
 
 		wait(for: [expectation], timeout: 5.0)
 
-		let requestExpectation = XCTestExpectation(description: "Request after close fails")
+		let requestExpectation = XCTestExpectation(description: "Request after close succeeds")
 
-		_ = httpClient.get(url: "https://example.test/200", query: nil, headers: nil)
-			.done { _ in
-				XCTFail("Request should fail after close")
+		_ = httpClient.get(url: "http://127.0.0.1:\(server.port)/context", query: nil, headers: nil)
+			.done { response in
+				XCTAssertEqual(200, response.status)
+				XCTAssertEqual("ok", String(data: response.content, encoding: .utf8))
 				requestExpectation.fulfill()
 			}
 			.catch { error in
-				XCTAssertNotNil(error)
+				XCTFail("request after close failed: \(error)")
 				requestExpectation.fulfill()
 			}
 
@@ -150,4 +177,25 @@ final class DefaultHTTPClientTest: XCTestCase {
 
 		wait(for: [expectation], timeout: 5.0)
 	}
+
+	#if !canImport(FoundationNetworking)
+	// Apple platforms: releasing the client invalidates its session, so its delegate queue and
+	// connections are torn down rather than left to linger. (Linux skips this; see deinit.)
+	func testReleasingTheClientInvalidatesItsSession() throws {
+		weak var session: URLSession?
+		do {
+			let client = DefaultHTTPClient(config: DefaultHTTPClientConfig())
+			session = Mirror(reflecting: client).descendant("session") as? URLSession
+			XCTAssertNotNil(session)
+		}
+		// An invalidated session refuses new tasks with an exception, so check it indirectly:
+		// a URLSession is retained by its own delegate machinery until invalidated, and released after.
+		let released = XCTestExpectation(description: "session released")
+		DispatchQueue.global().async {
+			for _ in 0..<200 where session != nil { usleep(10_000) }
+			if session == nil { released.fulfill() }
+		}
+		wait(for: [released], timeout: 3)
+	}
+	#endif
 }

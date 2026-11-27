@@ -1,28 +1,27 @@
 // swift-tools-version:5.9
 // Same as Package.swift, except that the SwiftyJSON condition also lists Mac Catalyst and
-// visionOS, which need tools-version 5.5 and 5.9. Keep the two manifests in sync.
+// visionOS, which need tools-version 5.5 and 5.9. Keep the two manifests in sync. The platform
+// minimums are the same as Package.swift's; they are written as strings because newer toolchains
+// deprecate the `.v10`-style constants and would warn on every build.
 import PackageDescription
 
 let package = Package(
     name: "ABSmartly",
     platforms: [
-        .iOS(.v10),
-        .tvOS(.v10),
-        .macOS(.v10_14),
-        .watchOS(.v3)
+        .iOS("10.0"),
+        .tvOS("10.0"),
+        .macOS("10.14"),
+        .watchOS("3.0")
     ],
     products: [
         .library(
             name: "ABSmartly",
-            targets: ["ABSmartly"])
+            targets: ["ABSmartly", "ABSmartlyAsync"])
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-atomics.git", .upToNextMajor(from: "1.0.2")),
         .package(url: "https://github.com/mxcl/PromiseKit.git", .upToNextMajor(from: "6.8.4")),
-        .package(url: "https://github.com/SwiftyJSON/SwiftyJSON.git", .upToNextMajor(from: "5.0.0")),
-        // Only used for MD5 on Linux (Apple platforms use CommonCrypto). The wide range lets
-        // older toolchains resolve an older swift-crypto, whose tools-version they can read.
-        .package(url: "https://github.com/apple/swift-crypto.git", "1.0.0"..<"4.0.0")
+        .package(url: "https://github.com/SwiftyJSON/SwiftyJSON.git", .upToNextMajor(from: "5.0.0"))
     ],
     targets: [
         .target(
@@ -34,14 +33,18 @@ let package = Package(
                 // a vendored copy (see JSON.swift).
                 .product(
                     name: "SwiftyJSON", package: "SwiftyJSON",
-                    condition: .when(platforms: [.macOS, .macCatalyst, .iOS, .tvOS, .watchOS, .visionOS])),
-                .product(name: "Crypto", package: "swift-crypto", condition: .when(platforms: [.linux]))
+                    condition: .when(platforms: [.macOS, .macCatalyst, .iOS, .tvOS, .watchOS, .visionOS]))
             ],
             path: "Sources/ABSmartly"),
+        .target(
+            name: "ABSmartlyAsync",
+            dependencies: ["ABSmartly", "PromiseKit"],
+            path: "Sources/ABSmartlyAsync"),
         .testTarget(
             name: "ABSmartlyTests",
             dependencies: [
                 "ABSmartly",
+                "ABSmartlyAsync",
                 // For SwiftyJSONCompatibilityTest.
                 .product(name: "SwiftyJSON", package: "SwiftyJSON", condition: .when(platforms: [.macOS, .macCatalyst, .iOS, .tvOS, .watchOS, .visionOS]))
             ],

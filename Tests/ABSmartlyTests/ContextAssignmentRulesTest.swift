@@ -8,7 +8,7 @@ final class ContextAssignmentRulesTest: XCTestCase {
 	var handler = ContextEventHandlerMock()
 	var logger = ContextEventLoggerMock()
 	var scheduler = SchedulerMock()
-	var clock = ClockMock()
+	let clock = FixedClock(1_620_000_000_000)
 
 	let seedHi = 3_603_515
 	let seedLo = 233_373_850
@@ -21,7 +21,6 @@ final class ContextAssignmentRulesTest: XCTestCase {
 		scheduler = SchedulerMock()
 		scheduler.scheduleAfterExecuteReturnValue = ScheduledHandleMock()
 		scheduler.scheduleWithFixedDelayAfterRepeatingExecuteReturnValue = ScheduledHandleMock()
-		clock.millisReturnValue = 1_620_000_000_000
 	}
 
 	// A three-variant experiment on `session_id`; each variant sets `color` to its index.
@@ -190,6 +189,14 @@ final class ContextAssignmentRulesTest: XCTestCase {
 					"{\"type\":\"assign\",\"variant\":1,\"environments\":[\"production\"]}",
 					"{\"type\":\"assign\",\"variant\":2,\"environments\":[]}")))
 		XCTAssertEqual(2, createContext(none, environment: nil).getTreatment("exp"))
+
+		// An empty environment name counts as none, so a rule scoped to "" does not match it.
+		let empty = try contextData(
+			experimentJSON(
+				rules: rules(
+					"{\"type\":\"assign\",\"variant\":1,\"environments\":[\"\"]}",
+					"{\"type\":\"assign\",\"variant\":2,\"environments\":[]}")))
+		XCTAssertEqual(2, createContext(empty, environment: "").getTreatment("exp"))
 	}
 
 	func testConditionsSeeSystemAttributesAndSemver() throws {
@@ -321,6 +328,34 @@ final class ContextAssignmentRulesTest: XCTestCase {
 		XCTAssertEqual(0, context.getTreatment("exp"))
 		XCTAssertEqual(1, exposures(context).count)
 	}
+
+	#if DEBUG
+	// A read claims the exposure of a missing-unit split; before it is queued, the unit is set and
+	// close() starts, so the exposure is dropped. The split must then re-resolve with the unit
+	// instead of staying pinned to its no-unit result.
+	func testDroppedExposureOfMissingUnitSplitReResolvesWithTheUnit() throws {
+		let split = rules("{\"type\":\"split\",\"percentages\":\"0/0/100\"}")
+		let context = createContext(try contextData(experimentJSON(rules: split)), unit: nil)
+		context.track("goal", properties: nil)
+		let (finalPublish, finalPublishSeal) = Promise<Void>.pending()
+		handler.publishEventReturnValue = finalPublish
+
+		let closeFailed = XCTestExpectation(description: "close failed")
+		Context.setTestHook(.exposureClaimed) {
+			Context.setTestHook(.exposureClaimed, nil)
+			context.setUnit(unitType: "session_id", uid: "unit-1")
+			_ = context.close().catch { _ in closeFailed.fulfill() }
+		}
+		defer { Context.setTestHook(.exposureClaimed, nil) }
+
+		XCTAssertEqual(0, context.getTreatment("exp"))  // the no-unit result, exposure dropped
+		finalPublishSeal.reject(ABSmartlyError("publish failed"))
+		wait(for: [closeFailed], timeout: 2)
+
+		XCTAssertEqual(2, context.getTreatment("exp"))
+		XCTAssertEqual(2, try XCTUnwrap(exposures(context).last).variant)
+	}
+	#endif
 
 	func testAssignRuleWithoutUnitKeepsCachedAssignment() throws {
 		let context = createContext(
@@ -489,7 +524,6 @@ final class ContextAssignmentRulesTest: XCTestCase {
 		readRepeatedly()
 		XCTAssertEqual(2, matcher.evaluations)
 
-		// A refresh with a differently written rule set that still does not match.
 		provider.getContextDataReturnValue = Promise<ContextData>.value(
 			try contextData(
 				experimentJSON(

@@ -10,7 +10,7 @@ final class ConcurrencyTests: XCTestCase {
 	var logger: ContextEventLoggerMock = ContextEventLoggerMock()
 	var parser: VariableParser = DefaultVariableParser()
 	var scheduler: SchedulerMock = SchedulerMock()
-	var clock: ClockMock = ClockMock()
+	let clock = FixedClock(1_620_000_000_000)
 
 	let units = [
 		"email": "bleh@absmartly.com",
@@ -26,7 +26,6 @@ final class ConcurrencyTests: XCTestCase {
 		scheduler = SchedulerMock()
 		scheduler.scheduleAfterExecuteReturnValue = ScheduledHandleMock()
 		scheduler.scheduleWithFixedDelayAfterRepeatingExecuteReturnValue = ScheduledHandleMock()
-		clock.millisReturnValue = 1_620_000_000_000
 	}
 
 	func getContextData(source: String = "context") throws -> ContextData {
@@ -181,7 +180,7 @@ final class ConcurrencyTests: XCTestCase {
 
 		XCTAssertEqual(0, context.peekTreatment("exp_test_ab"))
 		if case let .error(error) = logger.handleEventContextEventReceivedArguments?.event {
-			XCTAssertEqual((error as? ABSmartlyError)?.errorMessage, "ABsmartly Context is not yet ready.")
+			XCTAssertEqual((error as? ABSmartlyError)?.errorMessage, "ABSmartly Context is not yet ready.")
 		} else {
 			XCTFail("expected an error event")
 		}

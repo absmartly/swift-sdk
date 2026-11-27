@@ -557,7 +557,6 @@ final class DefaultClientTest: XCTestCase {
 			XCTAssertEqual(
 				expected, httpMock.putUrlQueryHeadersBodyReceivedArguments?.headers?["X-Application-Version"],
 				"PUT for \(configured.debugDescription)")
-			// The public configuration keeps the caller's value.
 			XCTAssertEqual(configured, clientConfig.applicationVersion)
 		}
 	}
@@ -690,5 +689,28 @@ final class DefaultClientTest: XCTestCase {
 			DefaultHTTPResponse(status: 200, statusMessage: "OK", contentType: "application/json", content: payload))
 		let data = try result.wait()
 		XCTAssertEqual(["z_type", "a_type", "m_type"], data.experiments[0].switchbackClusters?.map { $0.unitType })
+	}
+
+	// A request the HTTP client cancels must still reject the client's promise; PromiseKit's default
+	// catch policy would skip the cancellation and leave it pending forever.
+	func testCancelledRequestsRejectGetContextDataAndPublish() throws {
+		let http = HTTPClientMock()
+		http.getUrlQueryHeadersReturnValue = Promise(error: PMKError.cancelled)
+		http.putUrlQueryHeadersBodyReturnValue = Promise(error: PMKError.cancelled)
+		let client = try DefaultClient(
+			config: ClientConfig(apiKey: "k", application: "a", endpoint: "https://e.test", environment: "p"),
+			httpClient: http)
+
+		let fetchRejected = expectation(description: "getContextData rejects")
+		client.getContextData().catch(policy: .allErrors) { error in
+			XCTAssertTrue(error.isCancelled)
+			fetchRejected.fulfill()
+		}
+		let publishRejected = expectation(description: "publish rejects")
+		client.publish(event: PublishEvent()).catch(policy: .allErrors) { error in
+			XCTAssertTrue(error.isCancelled)
+			publishRejected.fulfill()
+		}
+		wait(for: [fetchRejected, publishRejected], timeout: 2)
 	}
 }

@@ -10,12 +10,18 @@ public class ClientConfig {
 	public init() {
 	}
 
+	public convenience init(apiKey: String, application: String, endpoint: String, environment: String) {
+		self.init(
+			apiKey: apiKey, application: application, endpoint: endpoint, environment: environment,
+			applicationVersion: "0")
+	}
+
 	public init(
 		apiKey: String,
 		application: String,
 		endpoint: String,
 		environment: String,
-		applicationVersion: String = "0"
+		applicationVersion: String
 	) {
 		self.apiKey = apiKey
 		self.application = application

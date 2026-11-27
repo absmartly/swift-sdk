@@ -46,7 +46,7 @@ final class ContextSwitchbackTest: SwitchbackTestCase {
 		XCTAssertEqual(SB.expected3Arms, served)
 		XCTAssertNotEqual(SB.uidHash3Arms, served)
 		XCTAssertNotEqual(SB.uid3Arms, served)
-		let hashedKey = Hashing.hash(SB.clusterKey)
+		let hashedKey: String = Hashing.hash(SB.clusterKey)
 		var hashedDiffers = false
 		for i in 0..<12 {
 			XCTAssertEqual(SB.draw(SB.clusterKey, Int64(i), arms: 3), served[i])
