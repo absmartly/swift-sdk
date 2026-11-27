@@ -64,12 +64,18 @@ post_install do |installer|
     tvos: ['TVOS_DEPLOYMENT_TARGET', '15.0'],
     watchos: ['WATCHOS_DEPLOYMENT_TARGET', '9.0']
   }
-  installer.generated_projects.each do |project|
+  Array(installer.generated_projects).each do |project|
     project.targets.each do |target|
       setting, minimum = minimums[target.platform_name]
       next unless setting
       # The effective value, including values inherited from the project or set in xcconfig files.
-      effective = target.resolved_build_setting(setting, true)
+      # Xcodeproj also applies an exported environment variable of the same name, so hide it here.
+      saved = ENV.delete(setting)
+      begin
+        effective = target.resolved_build_setting(setting, true)
+      ensure
+        ENV[setting] = saved if saved
+      end
       target.build_configurations.each do |config|
         current = effective[config.name].to_s
         next if current.match?(/\A\d+(\.\d+)*\z/) &&
@@ -84,7 +90,11 @@ end
 A `Podfile` can have only one `post_install` hook: if yours already has one (Flutter projects
 do), add the body of this block to it, keeping what it already does. Then run `pod install`. With
 `incremental_installation: true`, CocoaPods reuses cached pod projects that the hook does not see:
-run `pod install --clean-install` once after adding it.
+run `pod install --clean-install` once after adding it. The hook reads plain deployment-target
+settings only: it does not handle SDK-conditional settings (`IPHONEOS_DEPLOYMENT_TARGET[sdk=...]`),
+and it replaces a target set to an Xcode-only macro such as
+`$(RECOMMENDED_IPHONEOS_DEPLOYMENT_TARGET)` with the minimum. CocoaPods does not generate either for
+pod targets.
 
 Raising the pod targets to these minimums was measured on Xcode 27.2: `pod install` and a build of
 the SDK pod with its dependencies succeeded for iOS 15, macOS 12 and watchOS 9 (tvOS not measured).
