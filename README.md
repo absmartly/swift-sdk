@@ -52,8 +52,9 @@ pod 'ABSmartlySwiftSDK', '1.3.4'
 Current Xcode does not build pods below iOS 15 / macOS 12 / watchOS 9 (Xcode 27.2), and
 ABSmartlySwiftSDK 1.3.4 and its dependency pods declare lower targets. Raise the pods' deployment
 targets in your `Podfile`. This hook raises any pod target below those minimums for its platform
-(the tvOS minimum, 15.0, matches iOS but was not measured) and leaves higher targets unchanged. It
-also covers the separate pod projects that `generate_multiple_pod_projects: true` creates.
+(the tvOS minimum, 15.0, matches iOS but was not measured) and leaves higher targets unchanged,
+including targets that inherit their value from the project or an xcconfig file. It also covers the
+separate pod projects that `generate_multiple_pod_projects: true` creates.
 
 ```ruby
 post_install do |installer|
@@ -67,11 +68,12 @@ post_install do |installer|
     project.targets.each do |target|
       setting, minimum = minimums[target.platform_name]
       next unless setting
+      # The effective value, including values inherited from the project or set in xcconfig files.
+      effective = target.resolved_build_setting(setting, true)
       target.build_configurations.each do |config|
-        # A target without its own setting inherits the project's; keep that if it is high enough.
-        current = config.build_settings[setting] ||
-                  project.build_configuration_list[config.name]&.build_settings&.[](setting)
-        next if current && Gem::Version.new(current) >= Gem::Version.new(minimum)
+        current = effective[config.name].to_s
+        next if current.match?(/\A\d+(\.\d+)*\z/) &&
+                Gem::Version.new(current) >= Gem::Version.new(minimum)
         config.build_settings[setting] = minimum
       end
     end
@@ -102,7 +104,9 @@ hook that set the targets unconditionally; this exact hook and the 1.3.4 pod its
 3. The package brings in PromiseKit, SwiftyJSON and swift-atomics through Swift Package Manager.
    If your app also uses PromiseKit, SwiftyJSON or SwiftAtomics (module `Atomics`) from CocoaPods,
    move those to Swift Package Manager too, so each module is linked once.
-4. Read the [CHANGELOG](CHANGELOG.md) for the changes since 1.3.4. Swift Package Manager needs
+4. Read the [CHANGELOG](CHANGELOG.md) for the changes since 1.3.4: it covers 1.5.0, and 1.4.0
+   (which has no CHANGELOG entry) added custom fields: `getCustomFieldKeys()`,
+   `getCustomFieldValue` and `getCustomFieldValueType`. Swift Package Manager needs
    macOS 10.14 (CocoaPods 1.3.4 supported 10.10); apps that must support macOS 10.10 to 10.13 stay
    on 1.3.4.
 
