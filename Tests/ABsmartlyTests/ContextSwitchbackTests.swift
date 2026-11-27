@@ -890,6 +890,50 @@ import Testing
 		#expect(context.pendingEventCount == 1)
 	}
 
+	// Changing an anchor is identity even when both grids resolve to period 0: the slot key alone
+	// cannot detect the change. Keep both anchors hour aligned within the same day-long period.
+	@Test func anchorEditAtTheSamePeriodIndexStartsFresh() async throws {
+		let sb = SwitchbackEnv(now: SB.anchor + 2 * SB.hour)
+		let context = sb.context(SB.data([SB.switchback(arms: 10, periodMs: SB.day)]))
+		#expect(context.treatment(for: "exp_sb") == SB.expected10Arms[0])
+		try await sb.refresh(
+			context,
+			SB.data([SB.switchback(arms: 10, periodMs: SB.day, extra: ["switchbackStartAt": SB.anchor + SB.hour])]))
+		#expect(context.treatment(for: "exp_sb") == SB.expected10Arms[0])
+		#expect(
+			try await sb.publish(context) == [
+				SB.exposure(SB.expected10Arms[0], SB.anchor + 2 * SB.hour),
+				SB.exposure(SB.expected10Arms[0], SB.anchor + 2 * SB.hour),
+			])
+	}
+
+	// A split (including its arm count) is not epoch identity. Both retained periods keep their
+	// original variants and exposure state, even when those variants exceed the new arm count.
+	@Test func splitAndArmCountEditsKeepRetainedPeriods() async throws {
+		let sb = SwitchbackEnv()
+		let context = sb.context(SB.data([SB.switchback(arms: 10)]))
+		#expect(context.treatment(for: "exp_sb") == SB.expected10Arms[0])
+		sb.clock.now = SB.anchor + SB.hour
+		#expect(context.treatment(for: "exp_sb") == SB.expected10Arms[1])
+		for updated in [
+			SB.switchback(arms: 10, extra: ["split": [1.0] + Array(repeating: 0.0, count: 9)]),
+			SB.switchback(arms: 2),
+		] {
+			try await sb.refresh(context, SB.data([updated]))
+			for period in [0, 1] {
+				sb.clock.now = SB.anchor + Int64(period) * SB.hour
+				#expect(context.treatment(for: "exp_sb") == SB.expected10Arms[period])
+				#expect(context.treatment(for: "exp_sb", exposing: false) == SB.expected10Arms[period])
+			}
+			#expect(context.pendingEventCount == 2)
+		}
+		#expect(
+			try await sb.publish(context) == [
+				SB.exposure(SB.expected10Arms[0], SB.anchor),
+				SB.exposure(SB.expected10Arms[1], SB.anchor + SB.hour),
+			])
+	}
+
 	// An identity change (here the period length) starts a new epoch: re-resolved and exposed again.
 	@Test(arguments: 0..<5)
 	func identityChangeStartsANewEpoch(_ index: Int) async throws {
