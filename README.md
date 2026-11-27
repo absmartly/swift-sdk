@@ -13,8 +13,8 @@ The async/await API (`import ABSmartlyAsync`) needs iOS 13, macOS 10.15, tvOS 13
 
 ### Support
 
-1.5.0 is the last 1.x feature release. A 2.0 SDK with a new, async-first API is coming; 1.x will be
-maintained (bug and security fixes, from the `release/1.x` branch) for 12 months after 2.0 ships.
+1.5.0 is the last 1.x feature release. 2.0, with a new async-first API, was released on 25 November
+2026; 1.x is maintained (bug and security fixes, from the `release/1.x` branch) until 25 November 2027.
 
 | Platform    | Support    | Notes                                          |
 |-------------|------------|------------------------------------------------|
@@ -90,7 +90,7 @@ end
 A `Podfile` can have only one `post_install` hook: if yours already has one (Flutter projects
 do), add the body of this block to it, keeping what it already does. Then run `pod install`. With
 `incremental_installation: true`, CocoaPods reuses cached pod projects that the hook does not see:
-run `pod install --clean-install` once after adding it. The hook reads plain deployment-target
+run `pod install --clean-install` once after adding or changing it. The hook reads plain deployment-target
 settings only: it does not handle SDK-conditional settings (`IPHONEOS_DEPLOYMENT_TARGET[sdk=...]`),
 and it replaces a target set to an Xcode-only macro such as
 `$(RECOMMENDED_IPHONEOS_DEPLOYMENT_TARGET)` with the minimum. CocoaPods does not generate either for
