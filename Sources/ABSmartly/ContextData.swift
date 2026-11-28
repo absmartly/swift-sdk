@@ -25,6 +25,37 @@ public final class ContextData: Codable {
 		self.holdouts = holdouts
 	}
 
+	/// Decodes context data from its JSON, keeping the order of each experiment's `switchbackClusters`,
+	/// which decides which unit serves a switchback. `JSONDecoder().decode(ContextData.self, from:)`
+	/// cannot verify exact source keys or order, so a switchback with multiple sources or a non-ASCII source key decoded that way
+	/// serves only an ineligible control.
+	public static func decode(from json: Data, decoder: JSONDecoder = JSONDecoder()) throws -> ContextData {
+		guard SwitchbackClusterOrder.mayHaveSwitchbackFields(json) else {
+			return try decoder.decode(ContextData.self, from: json)
+		}
+		// Never mutate the caller's decoder: it may be shared across threads. A private decoder keeps
+		// the caller's decoding strategies and adds only this payload's raw switchback metadata.
+		let ordered = JSONDecoder()
+		ordered.dateDecodingStrategy = decoder.dateDecodingStrategy
+		ordered.dataDecodingStrategy = decoder.dataDecodingStrategy
+		ordered.nonConformingFloatDecodingStrategy = decoder.nonConformingFloatDecodingStrategy
+		ordered.keyDecodingStrategy = decoder.keyDecodingStrategy
+		// JSON5 settings exist from the iOS 15 / macOS 12 SDKs (Swift 5.5) on Apple platforms and from
+		// swift-foundation (Swift 6) on Linux; older toolchains have no such settings to copy. A
+		// JSONDecoder subclass's decode override is not called on this path.
+		#if canImport(Darwin) && compiler(>=5.5)
+		if #available(macOS 12.0, iOS 15.0, tvOS 15.0, watchOS 8.0, *) {
+			ordered.allowsJSON5 = decoder.allowsJSON5
+			ordered.assumesTopLevelDictionary = decoder.assumesTopLevelDictionary
+		}
+		#elseif !canImport(Darwin) && compiler(>=6.0)
+		ordered.allowsJSON5 = decoder.allowsJSON5
+		ordered.assumesTopLevelDictionary = decoder.assumesTopLevelDictionary
+		#endif
+		ordered.userInfo[SwitchbackClusterOrder.userInfoKey] = SwitchbackClusterOrder(json: json)
+		return try ordered.decode(ContextData.self, from: json)
+	}
+
 	public init(from decoder: Decoder) throws {
 		do {
 			let container = try decoder.container(keyedBy: CodingKeys.self)

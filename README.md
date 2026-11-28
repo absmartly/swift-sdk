@@ -13,7 +13,7 @@ The async/await API (`import ABSmartlyAsync`) needs iOS 13, macOS 10.15, tvOS 13
 
 ### Support
 
-1.5.0 is the last 1.x feature release. 2.0, with a new async-first API, was released on 25 November
+1.6.0 (switchback experiments) is the last 1.x feature release. 2.0, with a new async-first API, was released on 25 November
 2026; 1.x is maintained (bug and security fixes, from the `release/1.x` branch) until 25 November 2027.
 
 | Platform    | Support    | Notes                                          |
@@ -33,7 +33,7 @@ To install the A/B Smartly SDK using Swift Package Manager, following these step
 
 - Enter the A/B Smartly Swift SDK GitHub repository: ```https://github.com/absmartly/swift-sdk```
 
-- Select the SDK version: 2.x is the latest major version; for 1.x, use "Up to Next Major Version" from `1.5.0`
+- Select the SDK version: 2.x is the latest major version; for 1.x, use "Up to Next Major Version" from `1.6.0`
 
 - Select the ABSmartly library
 
@@ -106,15 +106,15 @@ hook that set the targets unconditionally; this exact hook and the 1.3.4 pod its
 1. Remove `pod 'ABSmartlySwiftSDK'` from your `Podfile` and run `pod install` (or `pod deintegrate`
    if it was your only pod).
 2. Add the package as described under [Swift Package Manager](#swift-package-manager), but choose
-   a 1.x version: in Xcode, the dependency rule "Up to Next Major Version" from `1.5.0` (in
-   `Package.swift`, `.package(url: "https://github.com/absmartly/swift-sdk", "1.5.0"..<"2.0.0")`).
+   a 1.x version: in Xcode, the dependency rule "Up to Next Major Version" from `1.6.0` (in
+   `Package.swift`, `.package(url: "https://github.com/absmartly/swift-sdk", "1.6.0"..<"2.0.0")`).
    The latest release is 2.x, which has a different module name (`ABsmartly`), API and minimum
    platforms. Then select the `ABSmartly` library. The module name is the same as the pod's, so
    `import ABSmartly` is unchanged.
 3. The package brings in PromiseKit, SwiftyJSON and swift-atomics through Swift Package Manager.
    If your app also uses PromiseKit, SwiftyJSON or SwiftAtomics (module `Atomics`) from CocoaPods,
    move those to Swift Package Manager too, so each module is linked once.
-4. Read the [CHANGELOG](CHANGELOG.md) for the changes since 1.3.4: it covers 1.5.0, and 1.4.0
+4. Read the [CHANGELOG](CHANGELOG.md) for the changes since 1.3.4: it covers 1.6.0 and 1.5.0, and 1.4.0
    (which has no CHANGELOG entry) added custom fields: `getCustomFieldKeys()`,
    `getCustomFieldValue` and `getCustomFieldValueType`. Swift Package Manager needs
    macOS 10.14 (CocoaPods 1.3.4 supported 10.10); apps that must support macOS 10.10 to 10.13 stay
@@ -310,6 +310,10 @@ contextConfig.setUnit(unitType: "session_id", uid: "5ebf06d8cb5d8137290c4abb6415
 let context = sdk.createContextWithData(config: contextConfig, contextData: contextData)
 ```
 
+Decode the server's context data with `ContextData.decode(from:)`, not `JSONDecoder().decode(ContextData.self, from:)`:
+only the former keeps the order of a switchback's `switchbackClusters`, and a switchback with more than one cluster
+source decoded the other way serves only the control variant.
+
 ### Refreshing the Context with Fresh Experiment Data
 
 For long-running contexts, the context is usually created once when the application is first started. However, any experiments being tracked in your production code, but started after the context was created, will not be triggered.
@@ -468,6 +472,49 @@ on its own.
 // Held out by a covering holdout: 0, and only the holdout's exposure is published.
 let variant = context.getTreatment("exp_test_ab")
 ```
+
+### Switchback Experiments
+
+Switchback experiments are set up in the A/B Smartly dashboard and need no code beyond the context
+attributes that hold the cluster. Each experiment names, in `switchbackClusters`, the unit types it is
+linked to and the attribute path holding each one's cluster value (for example `store_id` →
+`store/region`). Units in the same cluster get the same variant, and the variant changes on a fixed
+time grid (`switchbackStartAt`, `switchbackPeriodMs`).
+
+```swift
+context.setUnit(unitType: "store_id", uid: "store-42")
+context.setAttribute(name: "store", value: JSON(["region": "north"]))
+
+// The "north" cluster's variant for the current period; one exposure per period.
+let variant = context.getTreatment("exp_store_layout")
+```
+
+- The first linked unit, in `switchbackClusters` order, whose path gives a value serves the
+  experiment, and its exposure is published under that unit. A path is `/`-separated; a quoted segment
+  (`'a/b'`) is a literal key and an integer segment indexes an array. A path with a `.` is invalid.
+- A cluster value is a non-empty string, or an integer read as its decimal text. A float never keys
+  a cluster, even a whole one: `3.0`, `123456789.0` and `-0.0` give no value, while `3` and `"3"`
+  both give `"3"`. The SDK checks the number's type, not its value, so set integer cluster values as
+  Swift integers (`JSON(3)`, not `JSON(3.0)`) or as strings. A boolean, a decimal, an object, an
+  array, an empty string or `null` is no value either.
+- Units that disagree, a value outside `switchbackClusterValues`, or no value at all give the control
+  variant (`0`) and publish nothing. So does a time before `switchbackStartAt`, or a schedule that
+  cannot be served.
+- `setOverride`, assignment rules, a strict audience, full-on, traffic and custom assignments apply as
+  for other experiments. Holdouts never apply to a switchback.
+- The cluster is read once per period: a `setAttribute` later in the same period does not move the
+  unit to another cluster.
+
+Context data fetched by the SDK keeps the order of `switchbackClusters`. When you decode context data
+yourself (for example data passed from a server), use `ContextData.decode(from:)`:
+`JSONDecoder().decode(ContextData.self, from:)` cannot verify exact keys or order, so a switchback
+with multiple linked unit types or a non-ASCII source key decoded that way serves only the control variant.
+
+Cross-SDK numeric parity: as in java-sdk and rust-sdk, a whole-number float such as `3.0` gives no
+cluster value. JSON decoders differ in whether they keep `3.0` as a float: `JSONSerialization`,
+`JSON(data:)` and `JSON(parseJSON:)` do, but a value decoded through `JSONDecoder` into `JSON`
+becomes an integer and therefore keys. Attribute publishing is unchanged from 1.5.0 (`JSON(3.0)` is
+still published as `3`).
 
 ### Tracking Goals
 

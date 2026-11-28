@@ -675,6 +675,21 @@ final class DefaultClientTest: XCTestCase {
 		XCTAssertEqual("absmartly-swift-sdk/\(SDKVersion.version)", SDKVersion.agent)
 	}
 
+	// The client decodes through ContextData.decode(from:), so a switchback's cluster map keeps its JSON
+	// key order (a plain JSONDecoder cannot see it and drops a multi-entry map).
+	func testGetContextDataKeepsSwitchbackClusterOrder() throws {
+		let (promise, resolver) = Promise<Response>.pending()
+		httpClient!.getUrlQueryHeadersReturnValue = promise
+		let result = client!.getContextData()
+		let payload = SB.json([
+			SB.switchback(arms: 2, periodMs: SB.hour, clusters: [("z_type", "a"), ("a_type", "b"), ("m_type", "c")])
+		])
+		resolver.fulfill(
+			DefaultHTTPResponse(status: 200, statusMessage: "OK", contentType: "application/json", content: payload))
+		let data = try result.wait()
+		XCTAssertEqual(["z_type", "a_type", "m_type"], data.experiments[0].switchbackClusters?.map { $0.unitType })
+	}
+
 	// A request the HTTP client cancels must still reject the client's promise; PromiseKit's default
 	// catch policy would skip the cancellation and leave it pending forever.
 	func testCancelledRequestsRejectGetContextDataAndPublish() throws {

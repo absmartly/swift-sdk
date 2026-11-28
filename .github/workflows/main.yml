@@ -4,7 +4,11 @@ on:
   push:
     branches:
       - main
+      - 'release/**'
   pull_request:
+    branches:
+      - main
+      - 'release/**'
 
 jobs:
   test:
@@ -99,7 +103,7 @@ jobs:
       # The context lifecycle is lock-based; ThreadSanitizer catches races the assertions cannot.
       - name: Run concurrency and lifecycle tests under ThreadSanitizer
         if: matrix.swift == '6.1'
-        run: swift test --sanitize=thread --filter 'ConcurrencyTests|ContextTest|ContextV140BehaviourTest|AsyncAPITest|DefaultClientTest|ContextHoldoutTest'
+        run: swift test --sanitize=thread --filter 'ConcurrencyTests|ContextTest|ContextV140BehaviourTest|AsyncAPITest|DefaultClientTest|ContextHoldoutTest|ContextSwitchback|SwitchbackDecoding'
 
       # Toolchains 5.9+ read Package@swift-5.9.swift; also build from the tools-version 5.3
       # Package.swift that older toolchains use, so a change to it alone cannot go unnoticed.

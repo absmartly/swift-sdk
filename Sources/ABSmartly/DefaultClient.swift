@@ -74,7 +74,7 @@ public final class DefaultClient: Client {
 					return
 				}
 				do {
-					let result = try JSONDecoder().decode(ContextData.self, from: response.content)
+					let result = try ContextData.decode(from: response.content)
 					seal.fulfill(result)
 				} catch {
 					seal.reject(error)
