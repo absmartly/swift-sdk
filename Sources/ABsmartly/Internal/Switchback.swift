@@ -108,10 +108,13 @@ struct SwitchbackAttributePath: Sendable, Equatable {
 			if c < 0x30 || c > 0x39 {
 				return nil
 			}
-			magnitude = magnitude * 10 + Int64(c - 0x30)
-			if magnitude > (Int64(1) << 31) {
+			// Rejected before the multiply, so the accumulator stays within 2^31 and cannot overflow
+			// whatever the segment's length.
+			let digit = Int64(c - 0x30)
+			if magnitude > ((Int64(1) << 31) - digit) / 10 {
 				return nil
 			}
+			magnitude = magnitude * 10 + digit
 			i += 1
 		}
 		let value = negative ? -magnitude : magnitude
