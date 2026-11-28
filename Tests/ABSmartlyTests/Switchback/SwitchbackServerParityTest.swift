@@ -243,12 +243,10 @@ final class SwitchbackServerParityTest: XCTestCase {
 		}
 	}
 
-	// Published integer tokens are keyed by their base-10 text, so they agree with that text.
+	// Integers are keyed by their base-10 text, so they agree with that text; floats and decimals
+	// give no value (java-sdk SwitchbackClusterKeys.normalize).
 	func testNumericValuesAreKeyedAsText() {
-		let fortyTwo: [JSON] = [
-			JSON(42), JSON(42.0), JSON(Float(42)), JSON(Int64(42)), JSON(Int16(42)), JSON(Int8(42)),
-			JSON(NSDecimalNumber(string: "42")), JSON("42"),
-		]
+		let fortyTwo: [JSON] = [JSON(42), JSON(Int64(42)), JSON(Int16(42)), JSON(Int8(42)), JSON("42")]
 		for storeValue in fortyTwo {
 			for deviceValue in fortyTwo {
 				assertEligible(
@@ -258,11 +256,13 @@ final class SwitchbackServerParityTest: XCTestCase {
 					"\(storeValue)/\(deviceValue)")
 			}
 		}
-		assertSilentControl(
-			serve(
-				Self.experiment([(Self.store, "n")]), [Self.store: "s1"],
-				[("n", JSON(NSDecimalNumber(string: "123456789012345678901234567890")))]),
-			"large decimal publishes with exponent syntax, not as an integer")
+		for value in [
+			JSON(42.0), JSON(Float(42)), JSON(NSDecimalNumber(string: "42")),
+			JSON(NSDecimalNumber(string: "123456789012345678901234567890")),
+		] {
+			assertSilentControl(
+				serve(Self.experiment([(Self.store, "n")]), [Self.store: "s1"], [("n", value)]), "no key for \(value)")
+		}
 		assertEligible(
 			serve(Self.experiment([(Self.store, "n")]), [Self.store: "s1"], [("n", JSON(Int64(-7)))]), Self.store, "-7",
 			"negative")

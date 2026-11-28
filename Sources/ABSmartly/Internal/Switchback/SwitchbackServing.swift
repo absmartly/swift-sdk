@@ -96,12 +96,14 @@ struct SwitchbackServing {
 		}
 	}
 
-	// The Collector normalizes the published JSON, not the attribute's in-memory NSNumber type.
-	// Keep the released attribute encoder unchanged: it can write a whole Double as an integer (3.0
-	// -> 3), and a large whole Decimal as an exponent. Only an integer token gives a numeric key;
-	// fractions and exponents do not, even when mathematically whole. Encode the leaf exactly as
-	// PublishEvent does, including for numbers reached through objects/arrays. Do not round-trip
-	// through JSONSerialization/JSONDecoder: they can erase exponent syntax or lose large integers.
+	// The cluster key an attribute value yields, as java-sdk's SwitchbackClusterKeys.normalize (the
+	// Collector's rule): a non-empty string as-is and an integer as its base-10 text. A float never
+	// keys a cluster, even a whole one: 3.0, 123456789.0 and -0.0 give none, while the integer 3 gives
+	// "3". Booleans, null, empty strings, objects and arrays give none too.
+	//
+	// The decision uses the number's storage type, never its value: JSONSerialization,
+	// JSON(parseJSON:) and JSON(data:) keep a "3.0" token as a double and a "3" token as an integer,
+	// on Linux and Apple. An NSDecimalNumber reports "d" and gives none, like Java's BigDecimal.
 	static func clusterKey(_ value: JSON?) -> String? {
 		guard let value = value else { return nil }
 		switch value.type {
@@ -109,16 +111,19 @@ struct SwitchbackServing {
 			let string = value.stringValue
 			return string.isEmpty ? nil : string
 		case .number:
-			// The array permits top-level scalars on all supported JSONEncoder versions.
-			guard let data = try? JSONEncoder().encode([value]),
-				let encoded = String(data: data, encoding: .utf8)
-			else { return nil }
-			let token = encoded.dropFirst().dropLast()
-			let digits = token.first == "-" ? token.dropFirst() : token[...]
-			guard !digits.isEmpty, digits.utf8.allSatisfy({ $0 >= 48 && $0 <= 57 }) else { return nil }
-			return token == "-0" ? "0" : String(token)
+			guard let number = value.object as? NSNumber, isIntegerStorage(number) else { return nil }
+			return number.stringValue
 		default:
 			return nil
+		}
+	}
+
+	// An integer NSNumber (Objective-C type encoding c, s, i, l, q or an unsigned one). A floating-point
+	// one is f or d. CFNumberIsFloatType is not available on Linux; objCType is, on every platform.
+	static func isIntegerStorage(_ number: NSNumber) -> Bool {
+		switch String(cString: number.objCType) {
+		case "c", "s", "i", "l", "q", "C", "S", "I", "L", "Q": return true
+		default: return false
 		}
 	}
 }
