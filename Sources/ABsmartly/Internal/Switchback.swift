@@ -239,19 +239,9 @@ final class SwitchbackSlot {
 	/// A resolution the Collector records nothing for: no linked unit, an ineligible cluster, or no
 	/// draw (before the anchor or an unservable schedule).
 	var silent = false
-	/// The clock reading that resolved the slot, so its exposure is stamped with the reading the
-	/// period and cluster were chosen at, even when a later read in the period exposes it.
-	let resolvedAt: Int64
-	/// The audience definition the slot was resolved under; a refresh that changes it re-resolves.
-	let audience: String?
-	let audienceStrict: Bool
-
-	init(serving: SwitchbackServing, customAssignment: Int?, resolvedAt: Int64, experiment: Experiment) {
+	init(serving: SwitchbackServing, customAssignment: Int?) {
 		self.serving = serving
 		self.customAssignment = customAssignment
-		self.resolvedAt = resolvedAt
-		audience = experiment.audience
-		audienceStrict = experiment.audienceStrict
 	}
 }
 

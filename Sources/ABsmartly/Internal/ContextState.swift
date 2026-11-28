@@ -585,7 +585,7 @@ struct ContextState {
 
 		if let slot = assignment.switchbackSlot {
 			if !slot.silent {
-				let exposedAt = slot.resolvedAt
+				let exposedAt = reading ?? now()
 				queue(assignment, name: assignment.name, now: { exposedAt }, into: &queued)
 			}
 		} else if !assignment.suppressed || assignment.overridden || assignment.ruleOverride {
@@ -696,9 +696,7 @@ struct ContextState {
 		// Within one period slot the serving unit and cluster key are read once: a slot replaced in the
 		// same epoch, e.g. after setAttribute changed the audience, keeps its cluster.
 		let serving = switchbackServing(entry, cached: cached?.switchbackSlot?.serving, now: now)
-		let slot = SwitchbackSlot(
-			serving: serving, customAssignment: customAssignments[experimentName], resolvedAt: now,
-			experiment: entry.data)
+		let slot = SwitchbackSlot(serving: serving, customAssignment: customAssignments[experimentName])
 		assignment.switchbackSlot = slot
 		if let override = overrides[experimentName] {
 			assignment.id = data.id
@@ -721,10 +719,7 @@ struct ContextState {
 	// Whether a cached switchback slot still holds. It compares the custom assignment it was resolved
 	// with, as most of its branches never read it; a matching rule wins over it.
 	private mutating func isSwitchbackAssignmentCurrent(_ assignment: Assignment, _ entry: DataIndex.Entry) -> Bool {
-		guard let slot = assignment.switchbackSlot,
-			SwitchbackStrings.equal(slot.audience, entry.data.audience),
-			slot.audienceStrict == entry.data.audienceStrict
-		else { return false }
+		guard let slot = assignment.switchbackSlot else { return false }
 		let name = entry.data.name
 		if let override = overrides[name] {
 			return assignment.overridden && assignment.variant == override
@@ -872,6 +867,9 @@ struct ContextState {
 			switchbackSlots[SwitchbackSlotKey(experimentName: experimentName, period: period)] = nil
 		}
 		switchbackSlots[SwitchbackSlotKey(experimentName: experimentName, period: nil)] = nil
+		// A unit assignment cached before the experiment became this switchback is stale too, as in
+		// Java and JavaScript: a switchback that turns back into a unit experiment exposes afresh.
+		assignmentCache[experimentName] = nil
 	}
 
 	// Records a switchback resolution under the current epoch. At most `switchbackRetainedPeriods`

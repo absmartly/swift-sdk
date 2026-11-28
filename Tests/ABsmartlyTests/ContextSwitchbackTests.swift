@@ -547,8 +547,7 @@ import Testing
 		#endif
 	}
 
-	// A peek never queues and never marks the period exposed; the later exposure carries the reading
-	// that resolved the slot.
+	// A peek never queues and never marks the period exposed.
 	@Test func peekingQueuesNothing() async throws {
 		let sb = SwitchbackEnv()
 		let context = sb.context(SB.data([SB.switchback()]))
@@ -557,7 +556,7 @@ import Testing
 		#expect(context.pendingEventCount == 0)
 		sb.clock.now = SB.anchor + 7
 		_ = context.treatment(for: "exp_sb")
-		#expect(try await sb.publish(context) == [SB.exposure(SB.expected2Arms[0], SB.anchor)])
+		#expect(try await sb.publish(context) == [SB.exposure(SB.expected2Arms[0], SB.anchor + 7)])
 	}
 
 	// Re-entering an older period evicts the lowest other period, never the one just resolved.
@@ -1182,9 +1181,9 @@ import Testing
 			])
 	}
 
-	// A slot resolved by a peek is exposed with the reading that chose its period and cluster, not
-	// the later exposing read's, so the stamp and the published attributes agree with the cluster.
-	@Test func peekedSlotIsExposedAtTheReadingThatResolvedIt() async throws {
+	// As in Java and JavaScript, an exposure is stamped with the exposing read's clock reading, also
+	// when a peek earlier in the same period resolved the slot (the period is unchanged).
+	@Test func peekedSlotIsExposedAtTheExposingRead() async throws {
 		let sb = SwitchbackEnv(now: SB.anchor + 10)
 		let context = sb.context(SB.data([SB.switchback(arms: 10)]), attributes: [:])
 		context.setAttribute(SB.clusterPath, to: SB.clusterKey)
@@ -1192,38 +1191,60 @@ import Testing
 		sb.clock.now = SB.anchor + 500
 		context.setAttribute(SB.clusterPath, to: "store-7")
 		#expect(context.treatment(for: "exp_sb") == SB.expected10Arms[0])
-		#expect(try await sb.publish(context)?.map(\.exposedAt) == [SB.anchor + 10])
+		#expect(try await sb.publish(context)?.map(\.exposedAt) == [SB.anchor + 500])
 	}
 
-	// A refresh that changes only the audience text of a strict switchback re-resolves the slot.
-	@Test func strictAudienceTextRefreshReResolvesTheSlot() async throws {
-		let matching = "{\"filter\":[{\"eq\":[{\"var\":\"tier\"},{\"value\":\"silver\"}]}]}"
+	// As in Java, JavaScript and unit experiments, a refresh that changes only the audience text or
+	// its strictness keeps the period's slot: the audience is re-evaluated when an attribute is set.
+	@Test(
+		arguments: [
+			[
+				"audience": "{\"filter\":[{\"eq\":[{\"var\":\"tier\"},{\"value\":\"silver\"}]}]}",
+				"audienceStrict": true,
+			],
+			[
+				"audience": "{\"filter\": [{\"eq\": [{\"var\": \"tier\"}, {\"value\": \"silver\"}]}]}",
+				"audienceStrict": true,
+			],
+			["audience": goldAudience, "audienceStrict": true],
+			["audience": goldAudience, "audienceStrict": false],
+		] as [[String: any Sendable]])
+	func audienceOnlyRefreshKeepsThePeriod(_ change: [String: any Sendable]) async throws {
+		let silver = "{\"filter\":[{\"eq\":[{\"var\":\"tier\"},{\"value\":\"silver\"}]}]}"
 		let sb = SwitchbackEnv()
 		let context = sb.context(
-			SB.data([SB.switchback(arms: 10, extra: ["audience": matching, "audienceStrict": true])]),
+			SB.data([SB.switchback(arms: 10, extra: ["audience": silver, "audienceStrict": true])]),
 			attributes: [SB.clusterPath: .string(SB.clusterKey), "tier": "silver"])
 		#expect(context.treatment(for: "exp_sb") == SB.expected10Arms[0])
-		try await sb.refresh(
-			context, SB.data([SB.switchback(arms: 10, extra: ["audience": Self.goldAudience, "audienceStrict": true])]))
-		#expect(context.treatment(for: "exp_sb") == 0)
+		try await sb.refresh(context, SB.data([SB.switchback(arms: 10, extra: change)]))
+		#expect(context.treatment(for: "exp_sb") == SB.expected10Arms[0])
+		#expect(context.pendingEventCount == 1)
 	}
 
-	// A refresh that changes only the audience or its strictness re-resolves the cached slot.
-	@Test func audienceRefreshReResolvesTheSlot() async throws {
+	// An experiment that is a unit experiment, then a switchback, then a unit experiment again across
+	// refreshes exposes in each stint, as in Java and JavaScript.
+	@Test func unitToSwitchbackToUnitExposesEachStint() async throws {
+		var unit = SB.switchback(extra: ["randomizationType": "unit"])
+		unit["unitType"] = SB.unitType
 		let sb = SwitchbackEnv()
-		let context = sb.context(SB.data([SB.switchback(arms: 10)]))
-		#expect(context.treatment(for: "exp_sb") == SB.expected10Arms[0])
-		try await sb.refresh(
-			context, SB.data([SB.switchback(arms: 10, extra: ["audience": Self.goldAudience, "audienceStrict": true])]))
-		#expect(context.treatment(for: "exp_sb") == 0)
-		try await sb.refresh(context, SB.data([SB.switchback(arms: 10, extra: ["audience": Self.goldAudience])]))
-		#expect(context.treatment(for: "exp_sb") == SB.expected10Arms[0])
-		#expect(
-			try await sb.publish(context) == [
-				SB.exposure(SB.expected10Arms[0], SB.anchor),
-				SB.exposure(0, SB.anchor, assigned: false, audienceMismatch: true),
-				SB.exposure(SB.expected10Arms[0], SB.anchor, audienceMismatch: true),
-			])
+		let context = sb.context(SB.data([unit]))
+		_ = context.treatment(for: "exp_sb")
+		try await sb.refresh(context, SB.data([SB.switchback()]))
+		_ = context.treatment(for: "exp_sb")
+		try await sb.refresh(context, SB.data([unit]))
+		_ = context.treatment(for: "exp_sb")
+		#expect(context.pendingEventCount == 3)
+	}
+
+	// An override read before any linked unit was set, and exposed, is kept when a unit is set: it
+	// is not exposed a second time.
+	@Test func exposedOverrideWithoutAUnitIsKeptAcrossSetUnit() async throws {
+		let sb = SwitchbackEnv()
+		let context = sb.context(SB.data([SB.switchback()]), units: [:], overrides: ["exp_sb": 1])
+		#expect(context.treatment(for: "exp_sb") == 1)
+		try context.setUnit(UnitType(SB.unitType), to: SB.uid)
+		#expect(context.treatment(for: "exp_sb") == 1)
+		#expect(context.pendingEventCount == 1)
 	}
 
 	@Test func contextDataJSONInitThrowsADecodingError() {

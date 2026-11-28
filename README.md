@@ -291,9 +291,10 @@ let variant = context.treatment(for: "exp_store_layout")
   only the normal draw then falls back to silent control.
 - An override, assignment rules, a strict audience, full-on, traffic and custom assignments apply as
   for other experiments, in that order. Holdouts never apply to a switchback.
-- Each period publishes one exposure, stamped with the clock reading that resolved its assignment, unless its
-  assignment is re-resolved within the period (an override, a custom assignment, an assignment rule
-  or the audience result changes), which publishes the new assignment's exposure. Only the two
+- Each period publishes one exposure, stamped with the clock reading of the read that exposes it, unless its
+  assignment is re-resolved within the period (an override, a custom assignment, or the assignment
+  rule or audience result after a `setAttribute`, changes), which publishes the new assignment's
+  exposure. Only the two
   most recent periods are remembered, so returning to an older one (a clock set back) exposes it
   again. The cluster is read once per period: a `setAttribute` later in the same period does not
   move the unit to another cluster.
