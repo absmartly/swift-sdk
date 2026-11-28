@@ -248,6 +248,28 @@ final class ContextTest: XCTestCase {
 
 	// setData moves a loading context to ready without settling readiness; the pending initial load
 	// must still settle waiters registered before it, whether it later succeeds or fails.
+	// A completion that did not win settles readiness but must not schedule the goal publish itself:
+	// setData made the context ready and owns that scheduling.
+	func testLosingInitialLoadDoesNotScheduleQueuedGoals() throws {
+		for fail in [false, true] {
+			scheduler.scheduleAfterExecuteCallsCount = 0
+			let (load, resolver) = Promise<ContextData>.pending()
+			let context = try createContext(config: getContextConfig(withUnits: true), data: load)
+			context.track("queued_goal", properties: ["amount": 1])
+			context.setData(try getContextData())
+			XCTAssertEqual(0, scheduler.scheduleAfterExecuteCallsCount, "fail=\(fail)")
+			let settled = expectation(description: "settled fail=\(fail)")
+			_ = context.waitUntilReady().done { _ in settled.fulfill() }
+			if fail {
+				resolver.reject(ABSmartlyError("load failed"))
+			} else {
+				resolver.fulfill(try getContextData())
+			}
+			wait(for: [settled], timeout: 2.0)
+			XCTAssertEqual(0, scheduler.scheduleAfterExecuteCallsCount, "fail=\(fail)")
+		}
+	}
+
 	func testInitialLoadSettlesReadinessAfterSetDataWonTheRace() throws {
 		for fail in [false, true] {
 			let (load, resolver) = Promise<ContextData>.pending()

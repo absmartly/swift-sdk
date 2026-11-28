@@ -607,4 +607,37 @@ extension SwitchbackDecodingTest {
 	}
 
 
+
+	#if DEBUG
+	// Fields seen once keep the ordinary keyed decode; only a repeated field decodes its raw bytes.
+	func testOnlyRepeatedFieldsDecodeTheirRawBytes() throws {
+		SwitchbackClusterOrder.rawValueDecodeCount = 0
+		let single = try ContextData.decode(from: Data(#"{"experiments":[{"name":"e","randomizationType":"switchback","switchbackPeriodMs":3600000,"switchbackClusters":{"b":"x","a":"y"}}]}"#.utf8))
+		XCTAssertEqual(3_600_000, single.experiments[0].switchbackPeriodMs)
+		XCTAssertEqual(0, SwitchbackClusterOrder.rawValueDecodeCount)
+		_ = try ContextData.decode(from: Data(#"{"experiments":[{"name":"e","randomizationType":"switchback","switchbackPeriodMs":1,"switchbackPeriodMs":3600000}]}"#.utf8))
+		XCTAssertEqual(1, SwitchbackClusterOrder.rawValueDecodeCount)
+	}
+	#endif
+
+	// The array representation keeps the first entry of a repeated unit type, as the object form does.
+	func testArrayFormClustersKeepTheFirstEntryOfARepeatedUnitType() throws {
+		let array = #"[{"unitType":"a","attributePath":"first"},{"unitType":"b","attributePath":"x"},{"unitType":"a","attributePath":"second"}]"#
+		let plain = try JSONDecoder().decode(ContextData.self, from: Data("{\"experiments\":[{\"name\":\"e\",\"switchbackClusters\":\(array)}]}".utf8))
+		XCTAssertEqual(["a=first", "b=x"], clusters(plain.experiments.first))
+		XCTAssertEqual(["a=first", "b=x"], clusters(decodeExperiment("{\"name\":\"e\",\"switchbackClusters\":\(array)}")))
+	}
+
+	#if !canImport(Darwin) && compiler(>=6.0)
+	// The caller's JSON5 setting reaches the private ordered decoder.
+	func testOrderedDecodeKeepsTheCallersJSON5Setting() throws {
+		let json5 = Data("{experiments:[{name:'e',randomizationType:'switchback',switchbackClusters:{b:'x',a:'y'},},],}".utf8)
+		let decoder = JSONDecoder()
+		decoder.allowsJSON5 = true
+		let experiment = try ContextData.decode(from: json5, decoder: decoder).experiments[0]
+		XCTAssertEqual("switchback", experiment.randomizationType)
+		XCTAssertThrowsError(try ContextData.decode(from: json5))
+	}
+	#endif
+
 }

@@ -33,6 +33,27 @@ final class SwitchbackClusterOrder {
 	// Payload scans since the last reset, for the one-scan-per-decode test.
 	private static let scanCountLock = NSLock()
 	private static var scanCountValue = 0
+	private static var rawValueDecodeCountValue = 0
+	// Raw-byte scalar decodes, for the test that only repeated fields take that path.
+	static var rawValueDecodeCount: Int {
+		get {
+			scanCountLock.lock()
+			defer { scanCountLock.unlock() }
+			return rawValueDecodeCountValue
+		}
+		set {
+			scanCountLock.lock()
+			rawValueDecodeCountValue = newValue
+			scanCountLock.unlock()
+		}
+	}
+
+	static func countRawValueDecode() {
+		scanCountLock.lock()
+		rawValueDecodeCountValue += 1
+		scanCountLock.unlock()
+	}
+
 	static var scanCount: Int {
 		get {
 			scanCountLock.lock()
