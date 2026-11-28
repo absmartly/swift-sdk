@@ -448,6 +448,7 @@ extension SwitchbackDecodingTest {
 		let shared = JSONDecoder()
 		XCTAssertEqual(["x_type", "y_type"], order(try ContextData.decode(from: orderPayload(["x_type", "y_type"]), decoder: shared)))
 		XCTAssertNil(shared.userInfo[SwitchbackClusterOrder.userInfoKey])
+		XCTAssertTrue(shared.userInfo.isEmpty)
 		XCTAssertNil(order(try shared.decode(ContextData.self, from: orderPayload(["y_type", "x_type"]))))
 		XCTAssertEqual(["y_type", "x_type"], order(try ContextData.decode(from: orderPayload(["y_type", "x_type"]), decoder: shared)))
 	}
@@ -555,6 +556,34 @@ extension SwitchbackDecodingTest {
 		context.setAttribute(name: "y", value: JSON("south"))
 		XCTAssertEqual(0, context.getTreatment("exp_sb"))
 		XCTAssertEqual(0, context.getPendingCount())
+	}
+
+	func testSharedDecoderIsNotMutatedByConcurrentDecodes() throws {
+		let shared = JSONDecoder()
+		let callerKey = CodingUserInfoKey(rawValue: "test.caller")!
+		shared.userInfo[callerKey] = "kept"
+		let first = orderPayload(["x_type", "y_type"])
+		let second = orderPayload(["y_type", "x_type"])
+		let lock = NSLock()
+		var failures: [String] = []
+		DispatchQueue.concurrentPerform(iterations: 2_000) { index in
+			do {
+				let expected = index.isMultiple(of: 2) ? ["x_type", "y_type"] : ["y_type", "x_type"]
+				let payload = index.isMultiple(of: 2) ? first : second
+				let decoded = try ContextData.decode(from: payload, decoder: shared)
+				if self.order(decoded) != expected {
+					lock.lock(); failures.append("ordered \(index)"); lock.unlock()
+				}
+				if index.isMultiple(of: 5), self.order(try shared.decode(ContextData.self, from: payload)) != nil {
+					lock.lock(); failures.append("plain \(index)"); lock.unlock()
+				}
+			} catch {
+				lock.lock(); failures.append("\(index): \(error)"); lock.unlock()
+			}
+		}
+		XCTAssertEqual([], failures)
+		XCTAssertEqual("kept", shared.userInfo[callerKey] as? String)
+		XCTAssertNil(shared.userInfo[SwitchbackClusterOrder.userInfoKey])
 	}
 
 }

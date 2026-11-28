@@ -33,12 +33,22 @@ public final class ContextData: Codable {
 		guard SwitchbackClusterOrder.mayHaveSwitchbackFields(json) else {
 			return try decoder.decode(ContextData.self, from: json)
 		}
-		let key = SwitchbackClusterOrder.userInfoKey
-		let previous = decoder.userInfo[key]
-		decoder.userInfo[key] = SwitchbackClusterOrder(json: json)
-		// The caller's decoder is left as it was, so a later plain decode never sees this payload's order.
-		defer { decoder.userInfo[key] = previous }
-		return try decoder.decode(ContextData.self, from: json)
+		// Never mutate the caller's decoder: it may be shared across threads. A private decoder keeps
+		// the caller's decoding configuration and adds only this payload's raw switchback metadata.
+		let ordered = JSONDecoder()
+		ordered.dateDecodingStrategy = decoder.dateDecodingStrategy
+		ordered.dataDecodingStrategy = decoder.dataDecodingStrategy
+		ordered.nonConformingFloatDecodingStrategy = decoder.nonConformingFloatDecodingStrategy
+		ordered.keyDecodingStrategy = decoder.keyDecodingStrategy
+		ordered.userInfo = decoder.userInfo
+		#if canImport(Darwin)
+		if #available(macOS 12.0, iOS 15.0, tvOS 15.0, watchOS 8.0, *) {
+			ordered.allowsJSON5 = decoder.allowsJSON5
+			ordered.assumesTopLevelDictionary = decoder.assumesTopLevelDictionary
+		}
+		#endif
+		ordered.userInfo[SwitchbackClusterOrder.userInfoKey] = SwitchbackClusterOrder(json: json)
+		return try ordered.decode(ContextData.self, from: json)
 	}
 
 	public init(from decoder: Decoder) throws {

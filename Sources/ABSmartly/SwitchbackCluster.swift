@@ -31,7 +31,20 @@ final class SwitchbackClusterOrder {
 
 	#if DEBUG
 	// Payload scans since the last reset, for the one-scan-per-decode test.
-	static var scanCount = 0
+	private static let scanCountLock = NSLock()
+	private static var scanCountValue = 0
+	static var scanCount: Int {
+		get {
+			scanCountLock.lock()
+			defer { scanCountLock.unlock() }
+			return scanCountValue
+		}
+		set {
+			scanCountLock.lock()
+			scanCountValue = newValue
+			scanCountLock.unlock()
+		}
+	}
 	#endif
 
 	init(json: Data) {
@@ -55,7 +68,9 @@ final class SwitchbackClusterOrder {
 		defer { lock.unlock() }
 		if scanned == nil {
 			#if DEBUG
-			SwitchbackClusterOrder.scanCount += 1
+			SwitchbackClusterOrder.scanCountLock.lock()
+			SwitchbackClusterOrder.scanCountValue += 1
+			SwitchbackClusterOrder.scanCountLock.unlock()
 			#endif
 			scanned = OrderedJSONScanner.switchbackFields(Array(json))
 		}
