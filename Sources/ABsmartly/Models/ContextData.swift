@@ -249,10 +249,20 @@ public struct Experiment: Sendable, Equatable, Codable {
 		}
 		// Keys and paths come from the ordered reader, with their exact bytes: Foundation's keyed
 		// container merges canonically equivalent keys and has no defined key order.
-		if let entries = (decoder.userInfo[SwitchbackClusterOrder.userInfoKey] as? SwitchbackClusterOrder)?
-			.entries(at: decoder.codingPath)
+		switch (decoder.userInfo[SwitchbackClusterOrder.userInfoKey] as? SwitchbackClusterOrder)?
+			.lookup(at: decoder.codingPath)
 		{
+		case .entries(let entries)?:
 			return entries.map { SwitchbackCluster(unitType: $0.unitType, attributePath: $0.attributePath) }
+		case .ambiguous?:
+			// A key written twice (`"a"` and `"\u0061"`, or exactly) is collapsed by the keyed
+			// container into one entry the Collector may not have meant, so none is used.
+			Log.error(
+				"Ignoring switchbackClusters: a key or member is repeated, so its entries are ambiguous.",
+				detail: "Experiment '\(name)'.")
+			return nil
+		case .unknown?, nil:
+			break
 		}
 		var paths: [String: String?] = [:]
 		for entry in object.allKeys where paths[entry.stringValue] == nil {

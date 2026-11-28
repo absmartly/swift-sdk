@@ -12,16 +12,24 @@ final class SwitchbackClusterOrder: Sendable {
 	#endif
 
 	private let json: Data
-	private let scanned = Locked<[String: [OrderedJSONScanner.Entry]]?>(nil)
+	private let scanned = Locked<OrderedJSONScanner.Result?>(nil)
 
 	init(json: Data) {
 		self.json = json
 	}
 
-	// The entries of the `switchbackClusters` object of the experiment at `codingPath`, in JSON order,
-	// each key with its path (nil when the value is not a string); nil when the bytes have no such
-	// object or its entries are ambiguous (an exactly repeated key, or a repeated member).
-	func entries(at codingPath: [CodingKey]) -> [OrderedJSONScanner.Entry]? {
+	/// What the bytes say about the `switchbackClusters` object of one experiment.
+	enum Lookup {
+		/// Its entries in JSON order, each key with its path (nil when the value is not a string).
+		case entries([OrderedJSONScanner.Entry])
+		/// The order is not known: an exactly repeated key, or a repeated member. The decoder's
+		/// collapsed copy must not be used either.
+		case ambiguous
+		/// The bytes have no such object, or could not be read.
+		case unknown
+	}
+
+	func lookup(at codingPath: [CodingKey]) -> Lookup {
 		scanned.withLock { scanned in
 			if scanned == nil {
 				#if DEBUG
@@ -29,7 +37,12 @@ final class SwitchbackClusterOrder: Sendable {
 				#endif
 				scanned = OrderedJSONScanner.switchbackClusterKeys(Array(json))
 			}
-			return scanned?[Self.pathKey(codingPath)]
+			let path = Self.pathKey(codingPath)
+			guard let scanned = scanned else { return .unknown }
+			if scanned.isAmbiguous(path) {
+				return .ambiguous
+			}
+			return scanned.entries[path].map { .entries($0) } ?? .unknown
 		}
 	}
 
@@ -63,13 +76,20 @@ struct OrderedJSONScanner {
 	private var seenFields: Set<String> = []
 	private var ambiguousFields: Set<String> = []
 
-	static func switchbackClusterKeys(_ bytes: [UInt8]) -> [String: [Entry]] {
-		var scanner = OrderedJSONScanner(bytes: bytes)
-		guard scanner.scanRoot() else { return [:] }
-		return scanner.result.filter { path, _ in
-			!scanner.ambiguous.contains(path)
-				&& !scanner.ambiguousFields.contains(where: { path.hasPrefix($0 + "/") })
+	struct Result {
+		let entries: [String: [Entry]]
+		let ambiguous: Set<String>
+		let ambiguousFields: Set<String>
+
+		func isAmbiguous(_ path: String) -> Bool {
+			ambiguous.contains(path) || ambiguousFields.contains(where: { path.hasPrefix($0 + "/") })
 		}
+	}
+
+	static func switchbackClusterKeys(_ bytes: [UInt8]) -> Result {
+		var scanner = OrderedJSONScanner(bytes: bytes)
+		guard scanner.scanRoot() else { return Result(entries: [:], ambiguous: [], ambiguousFields: []) }
+		return Result(entries: scanner.result, ambiguous: scanner.ambiguous, ambiguousFields: scanner.ambiguousFields)
 	}
 
 	private init(bytes: [UInt8]) {

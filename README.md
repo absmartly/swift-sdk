@@ -275,7 +275,7 @@ time grid (`switchbackStartAt`, `switchbackPeriodMs`).
 try context.setUnit("store_id", to: "store-42")
 context.setAttribute("store", to: ["region": "north"])
 
-// The "north" cluster's variant for the current period; one exposure per period.
+// The "north" cluster's variant for the current period, exposed once in the period (see below).
 let variant = context.treatment(for: "exp_store_layout")
 ```
 

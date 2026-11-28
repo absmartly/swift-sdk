@@ -1149,6 +1149,8 @@ import Testing
 				#"{"id":1,"name":"exp_sb","switchbackClusters":{"a":"x","b":"y"},"switchbackClusters":{"b":"y","a":"x"}}"#
 		),
 		#"{"experiments":[{"id":1,"name":"exp_sb","switchbackClusters":{"a":"x","b":"y"}}],"experiments":[{"id":1,"name":"exp_sb","switchbackClusters":{"b":"y","a":"x"}}]}"#,
+		#"{"experiments":[{"id":1,"name":"exp_sb","switchbackClusters":{"a":"x","a":"y"}}]}"#,
+		#"{"experiments":[{"id":1,"name":"exp_sb","switchbackClusters":{"a":"x","\u0061":"z"}}]}"#,
 	])
 	func ambiguousClusterOrderIsNotGuessed(_ json: String) throws {
 		let data = try ContextData(json: Data(json.utf8))
