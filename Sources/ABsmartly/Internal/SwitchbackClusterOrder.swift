@@ -12,15 +12,16 @@ final class SwitchbackClusterOrder: Sendable {
 	#endif
 
 	private let json: Data
-	private let scanned = Locked<[String: [String]]?>(nil)
+	private let scanned = Locked<[String: [OrderedJSONScanner.Entry]]?>(nil)
 
 	init(json: Data) {
 		self.json = json
 	}
 
-	// The keys of the `switchbackClusters` object of the experiment at `codingPath`, in JSON order and
-	// without duplicates; nil when the bytes have no such object.
-	func keys(at codingPath: [CodingKey]) -> [String]? {
+	// The entries of the `switchbackClusters` object of the experiment at `codingPath`, in JSON order,
+	// each key with its path (nil when the value is not a string); nil when the bytes have no such
+	// object or its entries are ambiguous (an exactly repeated key, or a repeated member).
+	func entries(at codingPath: [CodingKey]) -> [OrderedJSONScanner.Entry]? {
 		scanned.withLock { scanned in
 			if scanned == nil {
 				#if DEBUG
@@ -42,15 +43,33 @@ final class SwitchbackClusterOrder: Sendable {
 // so the experiment's order stays unknown. A cluster key holding an unpaired surrogate escape reads as
 // U+FFFD here; where the decoder keeps it otherwise, the keys do not match and that switchback serves
 // only control.
+//
+// Keys and paths are read here, with their exact bytes: Foundation's keyed container merges keys
+// that are canonically equivalent (`"é"` and `"e\u{301}"`), which are distinct unit types in Java,
+// JavaScript and the Collector. A repeated member (a second `switchbackClusters` in one experiment,
+// or a second top-level `experiments`/`holdouts`) or an exactly repeated cluster key makes that order
+// unknown rather than guessing which copy the decoder kept. Trailing commas, which Foundation
+// accepts, are accepted here too.
 struct OrderedJSONScanner {
+	struct Entry: Equatable {
+		let unitType: String
+		let attributePath: String?
+	}
+
 	private let bytes: [UInt8]
 	private var i = 0
-	private var result: [String: [String]] = [:]
+	private var result: [String: [Entry]] = [:]
+	private var ambiguous: Set<String> = []
+	private var seenFields: Set<String> = []
+	private var ambiguousFields: Set<String> = []
 
-	static func switchbackClusterKeys(_ bytes: [UInt8]) -> [String: [String]] {
+	static func switchbackClusterKeys(_ bytes: [UInt8]) -> [String: [Entry]] {
 		var scanner = OrderedJSONScanner(bytes: bytes)
 		guard scanner.scanRoot() else { return [:] }
-		return scanner.result
+		return scanner.result.filter { path, _ in
+			!scanner.ambiguous.contains(path)
+				&& !scanner.ambiguousFields.contains(where: { path.hasPrefix($0 + "/") })
+		}
 	}
 
 	private init(bytes: [UInt8]) {
@@ -66,6 +85,11 @@ struct OrderedJSONScanner {
 		guard peek() == UInt8(ascii: "{") else { return false }
 		return scanObject { scanner, key in
 			if key == "experiments" || key == "holdouts" {
+				guard scanner.seenFields.insert(key).inserted else {
+					// Which copy the decoder kept is not known, so no order is.
+					scanner.ambiguousFields.insert(key)
+					return scanner.skipValue()
+				}
 				return scanner.scanExperiments(key)
 			}
 			return scanner.skipValue()
@@ -80,21 +104,34 @@ struct OrderedJSONScanner {
 			defer { index += 1 }
 			scanner.skipWhitespace()
 			guard scanner.peek() == UInt8(ascii: "{") else { return scanner.skipValue() }
+			let path = "\(field)/#\(index)"
+			var seenClusters = false
 			return scanner.scanObject { scanner, key in
 				scanner.skipWhitespace()
-				if key == "switchbackClusters" && scanner.peek() == UInt8(ascii: "{") {
-					var keys: [String] = []
-					let ok = scanner.scanObject { scanner, clusterKey in
-						if !keys.contains(clusterKey) {
-							keys.append(clusterKey)
-						}
-						return scanner.skipValue()
-					}
-					// A later duplicate `switchbackClusters` replaces an earlier one, as in the decoder.
-					scanner.result["\(field)/#\(index)"] = keys
-					return ok
+				guard key == "switchbackClusters" else { return scanner.skipValue() }
+				if seenClusters {
+					scanner.ambiguous.insert(path)
 				}
-				return scanner.skipValue()
+				seenClusters = true
+				guard scanner.peek() == UInt8(ascii: "{") else { return scanner.skipValue() }
+				var entries: [Entry] = []
+				let ok = scanner.scanObject { scanner, clusterKey in
+					scanner.skipWhitespace()
+					if entries.contains(where: { SwitchbackStrings.equal($0.unitType, clusterKey) }) {
+						scanner.ambiguous.insert(path)
+					}
+					var value: String?
+					if scanner.peek() == UInt8(ascii: "\"") {
+						guard let string = scanner.readString() else { return false }
+						value = string
+					} else if !scanner.skipValue() {
+						return false
+					}
+					entries.append(Entry(unitType: clusterKey, attributePath: value))
+					return true
+				}
+				scanner.result[path] = entries
+				return ok
 			}
 		}
 	}
@@ -126,6 +163,9 @@ struct OrderedJSONScanner {
 			skipWhitespace()
 			guard let key = readString(), consume(UInt8(ascii: ":")), member(&self, key) else { return false }
 			if consume(UInt8(ascii: ",")) {
+				if consume(UInt8(ascii: "}")) {
+					return true
+				}
 				continue
 			}
 			return consume(UInt8(ascii: "}"))
@@ -140,6 +180,9 @@ struct OrderedJSONScanner {
 		while true {
 			guard element(&self) else { return false }
 			if consume(UInt8(ascii: ",")) {
+				if consume(UInt8(ascii: "]")) {
+					return true
+				}
 				continue
 			}
 			return consume(UInt8(ascii: "]"))

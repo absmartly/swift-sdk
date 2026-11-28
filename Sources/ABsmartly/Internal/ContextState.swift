@@ -97,6 +97,15 @@ struct ContextState {
 	// switchback's definition: kept across a refresh while its identity is unchanged, so a refresh that
 	// only edits, say, the seed keeps the current period's assignment and exposure.
 	var switchbackEpochs: [String: SwitchbackEpoch] = [:]
+	// A switchback's assignments, by experiment and period, kept apart from `assignmentCache` so no
+	// experiment name can address another experiment's period slot.
+	#if DEBUG
+		var switchbackSlots: [SwitchbackSlotKey: Assignment] = [:] {
+			didSet { assignmentCacheWrites += 1 }
+		}
+	#else
+		var switchbackSlots: [SwitchbackSlotKey: Assignment] = [:]
+	#endif
 	var switchbackGenerations: [String: Int] = [:]
 	var switchbackGenerationCounter = 0
 	// At most this many period slots are kept per switchback.
@@ -212,10 +221,13 @@ struct ContextState {
 		// exposed one is kept, so the user never switches variant or gets a second exposure.
 		// A switchback resolved before any linked unit was set is re-resolved now that one may be; unless
 		// overridden it published nothing, so it is dropped even if exposed.
-		assignmentCache = assignmentCache.filter { _, assignment in
-			if let slot = assignment.switchbackSlot, slot.serving.status == .absent {
+		if !switchbackSlots.isEmpty {
+			switchbackSlots = switchbackSlots.filter { _, assignment in
+				guard let slot = assignment.switchbackSlot, slot.serving.status == .absent else { return true }
 				return assignment.overridden && assignment.exposed
 			}
+		}
+		assignmentCache = assignmentCache.filter { _, assignment in
 			return assignment.unitType != unitType || assignment.exposed
 				|| !(assignment.ruleMissingUnit || assignment.holdoutMissingUnit)
 		}
@@ -573,7 +585,7 @@ struct ContextState {
 
 		if let slot = assignment.switchbackSlot {
 			if !slot.silent {
-				let exposedAt = reading ?? now()
+				let exposedAt = slot.resolvedAt
 				queue(assignment, name: assignment.name, now: { exposedAt }, into: &queued)
 			}
 		} else if !assignment.suppressed || assignment.overridden || assignment.ruleOverride {
@@ -671,8 +683,8 @@ struct ContextState {
 		if let epoch = switchbackEpochs[experimentName], epoch.generation != generation {
 			dropSwitchbackEpoch(experimentName)
 		}
-		let cacheKey = SwitchbackSchedule.cacheKey(experimentName, period)
-		let cached = assignmentCache[cacheKey]
+		let cacheKey = SwitchbackSlotKey(experimentName: experimentName, period: period)
+		let cached = switchbackSlots[cacheKey]
 		if let cached, isSwitchbackAssignmentCurrent(cached, entry) {
 			return cached
 		}
@@ -684,7 +696,9 @@ struct ContextState {
 		// Within one period slot the serving unit and cluster key are read once: a slot replaced in the
 		// same epoch, e.g. after setAttribute changed the audience, keeps its cluster.
 		let serving = switchbackServing(entry, cached: cached?.switchbackSlot?.serving, now: now)
-		let slot = SwitchbackSlot(serving: serving, customAssignment: customAssignments[experimentName])
+		let slot = SwitchbackSlot(
+			serving: serving, customAssignment: customAssignments[experimentName], resolvedAt: now,
+			experiment: entry.data)
 		assignment.switchbackSlot = slot
 		if let override = overrides[experimentName] {
 			assignment.id = data.id
@@ -699,7 +713,7 @@ struct ContextState {
 			assignment.variables = entry.variables[assignment.variant]
 		}
 
-		assignmentCache[cacheKey] = assignment
+		switchbackSlots[cacheKey] = assignment
 		retainSwitchbackPeriod(experimentName, generation: generation, period: period)
 		return assignment
 	}
@@ -707,7 +721,10 @@ struct ContextState {
 	// Whether a cached switchback slot still holds. It compares the custom assignment it was resolved
 	// with, as most of its branches never read it; a matching rule wins over it.
 	private mutating func isSwitchbackAssignmentCurrent(_ assignment: Assignment, _ entry: DataIndex.Entry) -> Bool {
-		guard let slot = assignment.switchbackSlot else { return false }
+		guard let slot = assignment.switchbackSlot,
+			SwitchbackStrings.equal(slot.audience, entry.data.audience),
+			slot.audienceStrict == entry.data.audienceStrict
+		else { return false }
 		let name = entry.data.name
 		if let override = overrides[name] {
 			return assignment.overridden && assignment.variant == override
@@ -852,9 +869,9 @@ struct ContextState {
 	private mutating func dropSwitchbackEpoch(_ experimentName: String) {
 		guard let epoch = switchbackEpochs.removeValue(forKey: experimentName) else { return }
 		for period in epoch.periods {
-			assignmentCache[SwitchbackSchedule.cacheKey(experimentName, period)] = nil
+			switchbackSlots[SwitchbackSlotKey(experimentName: experimentName, period: period)] = nil
 		}
-		assignmentCache[experimentName] = nil
+		switchbackSlots[SwitchbackSlotKey(experimentName: experimentName, period: nil)] = nil
 	}
 
 	// Records a switchback resolution under the current epoch. At most `switchbackRetainedPeriods`
@@ -868,7 +885,7 @@ struct ContextState {
 			while epoch.periods.count > Self.switchbackRetainedPeriods {
 				let evicted = epoch.periods[0] == period ? epoch.periods[1] : epoch.periods[0]
 				epoch.periods.removeAll { $0 == evicted }
-				assignmentCache[SwitchbackSchedule.cacheKey(experimentName, evicted)] = nil
+				switchbackSlots[SwitchbackSlotKey(experimentName: experimentName, period: evicted)] = nil
 			}
 		}
 		switchbackEpochs[experimentName] = epoch

@@ -239,11 +239,27 @@ final class SwitchbackSlot {
 	/// A resolution the Collector records nothing for: no linked unit, an ineligible cluster, or no
 	/// draw (before the anchor or an unservable schedule).
 	var silent = false
+	/// The clock reading that resolved the slot, so its exposure is stamped with the reading the
+	/// period and cluster were chosen at, even when a later read in the period exposes it.
+	let resolvedAt: Int64
+	/// The audience definition the slot was resolved under; a refresh that changes it re-resolves.
+	let audience: String?
+	let audienceStrict: Bool
 
-	init(serving: SwitchbackServing, customAssignment: Int?) {
+	init(serving: SwitchbackServing, customAssignment: Int?, resolvedAt: Int64, experiment: Experiment) {
 		self.serving = serving
 		self.customAssignment = customAssignment
+		self.resolvedAt = resolvedAt
+		audience = experiment.audience
+		audienceStrict = experiment.audienceStrict
 	}
+}
+
+/// A switchback assignment's cache slot: the experiment and its period, or no period before the anchor
+/// or for an unservable grid. Typed, so an experiment name can never collide with another's slot.
+struct SwitchbackSlotKey: Hashable {
+	let experimentName: String
+	let period: Int64?
 }
 
 /// One switchback experiment's cache slots: the bare-name slot (before the anchor or an unservable
@@ -287,12 +303,6 @@ enum SwitchbackSchedule {
 	static func seed(_ experiment: Experiment) -> Int64 {
 		(Int64(truncatingIfNeeded: experiment.seedHi) << 32)
 			| (Int64(truncatingIfNeeded: experiment.seedLo) & 0xFFFF_FFFF)
-	}
-
-	/// The cache slot of a resolution: the bare name before the anchor or for an unservable grid.
-	static func cacheKey(_ experimentName: String, _ period: Int64?) -> String {
-		guard let period else { return experimentName }
-		return experimentName + "\u{1F}" + String(period)
 	}
 
 	/// Switchback identity: id, iteration, the ordered cluster map, the allow-list, start, period

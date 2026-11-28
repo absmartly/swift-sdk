@@ -291,14 +291,17 @@ let variant = context.treatment(for: "exp_store_layout")
   only the normal draw then falls back to silent control.
 - An override, assignment rules, a strict audience, full-on, traffic and custom assignments apply as
   for other experiments, in that order. Holdouts never apply to a switchback.
-- Each exposing read publishes at most one exposure per period, stamped with the time that chose the
-  period. The cluster is read once per period: a `setAttribute` later in the same period does not move
-  the unit to another cluster.
+- Each period publishes one exposure, stamped with the clock reading that resolved its assignment, unless its
+  assignment is re-resolved within the period (an override, a custom assignment, an assignment rule
+  or the audience result changes), which publishes the new assignment's exposure. Only the two
+  most recent periods are remembered, so returning to an older one (a clock set back) exposes it
+  again. The cluster is read once per period: a `setAttribute` later in the same period does not
+  move the unit to another cluster.
 
 Context data fetched by the SDK keeps the order of `switchbackClusters`. When you decode it yourself
 (for example data passed from your server), use `ContextData(json:)`: `JSONDecoder` cannot see that
-order, so a switchback with more than one linked unit type decoded that way serves only the control
-variant. Encoding a `ContextData` writes each cluster map as an ordered array, which any decoder reads
+order, so a switchback with more than one linked unit type decoded that way has no cluster map: it
+cannot draw and serves the control variant, though an override still applies. Encoding a `ContextData` writes each cluster map as an ordered array, which any decoder reads
 back in order.
 
 ### Attributes and units

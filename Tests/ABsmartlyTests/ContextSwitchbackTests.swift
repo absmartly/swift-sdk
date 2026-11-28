@@ -547,7 +547,8 @@ import Testing
 		#endif
 	}
 
-	// A peek never queues and never marks the period exposed.
+	// A peek never queues and never marks the period exposed; the later exposure carries the reading
+	// that resolved the slot.
 	@Test func peekingQueuesNothing() async throws {
 		let sb = SwitchbackEnv()
 		let context = sb.context(SB.data([SB.switchback()]))
@@ -556,7 +557,7 @@ import Testing
 		#expect(context.pendingEventCount == 0)
 		sb.clock.now = SB.anchor + 7
 		_ = context.treatment(for: "exp_sb")
-		#expect(try await sb.publish(context) == [SB.exposure(SB.expected2Arms[0], SB.anchor + 7)])
+		#expect(try await sb.publish(context) == [SB.exposure(SB.expected2Arms[0], SB.anchor)])
 	}
 
 	// Re-entering an older period evicts the lowest other period, never the one just resolved.
@@ -1115,8 +1116,126 @@ import Testing
 		#expect(experiment.name == "exp_sb")
 	}
 
+	// Canonically equivalent but byte-distinct unit types are two clusters, kept in order, through
+	// both the object wire form and the encoded array form.
+	@Test func byteDistinctUnitTypesSurviveDecoding() async throws {
+		let composed = "unit_\u{E9}"
+		let decomposed = "unit_e\u{301}"
+		let data = SB.data([SB.switchback(clusters: [(composed, "a"), (decomposed, "b")])])
+		let clusters = try #require(data.experiments.first?.switchbackClusters)
+		#expect(clusters.map { Array($0.unitType.utf8) } == [Array(composed.utf8), Array(decomposed.utf8)])
+		#expect(clusters.map(\.attributePath) == ["a", "b"])
+		let roundTripped = try JSONDecoder().decode(ContextData.self, from: JSONEncoder().encode(data))
+		#expect(
+			roundTripped.experiments[0].switchbackClusters?.map { Array($0.unitType.utf8) }
+				== [Array(composed.utf8), Array(decomposed.utf8)])
+
+		// The dropped spelling is still served when it is the only unit the context has.
+		let sb = SwitchbackEnv()
+		let context = sb.context(data, units: [UnitType(decomposed): SB.uid], attributes: ["b": "store-42"])
+		#expect(context.treatment(for: "exp_sb") == SB.expected2Arms[0])
+		#expect(try await sb.publish(context) == [SB.exposure(SB.expected2Arms[0], SB.anchor, unit: decomposed)])
+	}
+
+	// A key written twice (exactly, or once escaped) is ambiguous, as is a repeated
+	// switchbackClusters or experiments member: the order is not guessed, so it serves only control.
+	@Test(arguments: [
+		#"{"experiments":[EXP]}"#.replacingOccurrences(
+			of: "EXP", with: #"{"id":1,"name":"exp_sb","switchbackClusters":{"a":"x","b":"y","a":"z"}}"#),
+		#"{"experiments":[EXP]}"#.replacingOccurrences(
+			of: "EXP", with: #"{"id":1,"name":"exp_sb","switchbackClusters":{"a":"x","b":"y","\u0061":"z"}}"#),
+		#"{"experiments":[EXP]}"#.replacingOccurrences(
+			of: "EXP",
+			with:
+				#"{"id":1,"name":"exp_sb","switchbackClusters":{"a":"x","b":"y"},"switchbackClusters":{"b":"y","a":"x"}}"#
+		),
+		#"{"experiments":[{"id":1,"name":"exp_sb","switchbackClusters":{"a":"x","b":"y"}}],"experiments":[{"id":1,"name":"exp_sb","switchbackClusters":{"b":"y","a":"x"}}]}"#,
+	])
+	func ambiguousClusterOrderIsNotGuessed(_ json: String) throws {
+		let data = try ContextData(json: Data(json.utf8))
+		#expect(data.experiments.first?.switchbackClusters == nil, "\(json)")
+	}
+
+	// Trailing commas, which Foundation accepts, do not discard the order.
+	@Test func trailingCommasKeepClusterOrder() throws {
+		let json =
+			#"{"experiments":[{"id":1,"name":"exp_sb","switchbackClusters":{"z":"p","a":"q",},"x":{"k":1,},},],}"#
+		let data = try ContextData(json: Data(json.utf8))
+		#expect(data.experiments.first?.switchbackClusters?.map(\.unitType) == ["z", "a"])
+	}
+
+	// A unit experiment whose name looks like a switchback's period slot never shares its cache.
+	@Test func unitExperimentNamedLikeAPeriodSlotIsIndependent() async throws {
+		var unit = SB.switchback(2, "exp_sb\u{1F}0", extra: ["randomizationType": "unit"])
+		unit["unitType"] = SB.unitType
+		unit["variants"] = [["name": "0", "config": "{\"u\":0}"], ["name": "1", "config": "{\"u\":1}"]]
+		let sb = SwitchbackEnv()
+		let context = sb.context(
+			SB.data([SB.switchback(), unit]), overrides: ["exp_sb": 1, "exp_sb\u{1F}0": 1])
+		#expect(context.treatment(for: "exp_sb") == 1)
+		#expect(context.treatment(for: "exp_sb\u{1F}0") == 1)
+		#expect(context.variableValue("u") == 1)
+		#expect(
+			try await sb.publish(context) == [
+				SB.exposure(1, SB.anchor, assigned: false, overridden: true),
+				SB.exposure(1, SB.anchor, id: 2, name: "exp_sb\u{1F}0", assigned: false, overridden: true),
+			])
+	}
+
+	// A slot resolved by a peek is exposed with the reading that chose its period and cluster, not
+	// the later exposing read's, so the stamp and the published attributes agree with the cluster.
+	@Test func peekedSlotIsExposedAtTheReadingThatResolvedIt() async throws {
+		let sb = SwitchbackEnv(now: SB.anchor + 10)
+		let context = sb.context(SB.data([SB.switchback(arms: 10)]), attributes: [:])
+		context.setAttribute(SB.clusterPath, to: SB.clusterKey)
+		#expect(context.treatment(for: "exp_sb", exposing: false) == SB.expected10Arms[0])
+		sb.clock.now = SB.anchor + 500
+		context.setAttribute(SB.clusterPath, to: "store-7")
+		#expect(context.treatment(for: "exp_sb") == SB.expected10Arms[0])
+		#expect(try await sb.publish(context)?.map(\.exposedAt) == [SB.anchor + 10])
+	}
+
+	// A refresh that changes only the audience text of a strict switchback re-resolves the slot.
+	@Test func strictAudienceTextRefreshReResolvesTheSlot() async throws {
+		let matching = "{\"filter\":[{\"eq\":[{\"var\":\"tier\"},{\"value\":\"silver\"}]}]}"
+		let sb = SwitchbackEnv()
+		let context = sb.context(
+			SB.data([SB.switchback(arms: 10, extra: ["audience": matching, "audienceStrict": true])]),
+			attributes: [SB.clusterPath: .string(SB.clusterKey), "tier": "silver"])
+		#expect(context.treatment(for: "exp_sb") == SB.expected10Arms[0])
+		try await sb.refresh(
+			context, SB.data([SB.switchback(arms: 10, extra: ["audience": Self.goldAudience, "audienceStrict": true])]))
+		#expect(context.treatment(for: "exp_sb") == 0)
+	}
+
+	// A refresh that changes only the audience or its strictness re-resolves the cached slot.
+	@Test func audienceRefreshReResolvesTheSlot() async throws {
+		let sb = SwitchbackEnv()
+		let context = sb.context(SB.data([SB.switchback(arms: 10)]))
+		#expect(context.treatment(for: "exp_sb") == SB.expected10Arms[0])
+		try await sb.refresh(
+			context, SB.data([SB.switchback(arms: 10, extra: ["audience": Self.goldAudience, "audienceStrict": true])]))
+		#expect(context.treatment(for: "exp_sb") == 0)
+		try await sb.refresh(context, SB.data([SB.switchback(arms: 10, extra: ["audience": Self.goldAudience])]))
+		#expect(context.treatment(for: "exp_sb") == SB.expected10Arms[0])
+		#expect(
+			try await sb.publish(context) == [
+				SB.exposure(SB.expected10Arms[0], SB.anchor),
+				SB.exposure(0, SB.anchor, assigned: false, audienceMismatch: true),
+				SB.exposure(SB.expected10Arms[0], SB.anchor, audienceMismatch: true),
+			])
+	}
+
 	@Test func contextDataJSONInitThrowsADecodingError() {
-		#expect(throws: ABsmartlyError.self) { try ContextData(json: Data("{".utf8)) }
+		do {
+			_ = try ContextData(json: Data("{".utf8))
+			Issue.record("malformed JSON decoded")
+		} catch {
+			guard case .decoding = error else {
+				Issue.record("expected .decoding, got \(error)")
+				return
+			}
+		}
 	}
 
 	// The SDK's own fetch keeps cluster order.

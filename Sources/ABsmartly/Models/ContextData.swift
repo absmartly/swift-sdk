@@ -22,7 +22,8 @@ public struct ContextData: Sendable, Equatable, Codable {
 	/// Decodes the body of `GET /context`, keeping each experiment's `switchbackClusters` in its JSON
 	/// key order, which decides which unit serves a switchback. Use it for context data you fetch
 	/// yourself: `JSONDecoder` cannot see that order, so a switchback with more than one linked unit
-	/// type decoded that way serves only control (and logs an error).
+	/// type decoded that way has no cluster map and cannot draw: it serves control, though an
+	/// override still applies (and logs an error).
 	public init(json: Data) throws(ABsmartlyError) {
 		let decoder = JSONDecoder()
 		decoder.userInfo[SwitchbackClusterOrder.userInfoKey] = SwitchbackClusterOrder(json: json)
@@ -232,14 +233,23 @@ public struct Experiment: Sendable, Equatable, Codable {
 			return nil
 		}
 		if let clusters = try? container.decode([SwitchbackCluster].self, forKey: key) {
+			// Unit types are compared by their bytes, as the SDK serves them.
 			var unique: [SwitchbackCluster] = []
-			for cluster in clusters where !unique.contains(where: { $0.unitType == cluster.unitType }) {
+			for cluster in clusters
+			where !unique.contains(where: { SwitchbackStrings.equal($0.unitType, cluster.unitType) }) {
 				unique.append(cluster)
 			}
 			return unique
 		}
 		guard let object = try? container.nestedContainer(keyedBy: AnyKey.self, forKey: key) else {
 			return nil
+		}
+		// Keys and paths come from the ordered reader, with their exact bytes: Foundation's keyed
+		// container merges canonically equivalent keys and has no defined key order.
+		if let entries = (decoder.userInfo[SwitchbackClusterOrder.userInfoKey] as? SwitchbackClusterOrder)?
+			.entries(at: decoder.codingPath)
+		{
+			return entries.map { SwitchbackCluster(unitType: $0.unitType, attributePath: $0.attributePath) }
 		}
 		var paths: [String: String?] = [:]
 		for entry in object.allKeys where paths[entry.stringValue] == nil {
@@ -248,15 +258,10 @@ public struct Experiment: Sendable, Equatable, Codable {
 		if paths.count < 2 {
 			return paths.map { SwitchbackCluster(unitType: $0.key, attributePath: $0.value) }
 		}
-		let order = (decoder.userInfo[SwitchbackClusterOrder.userInfoKey] as? SwitchbackClusterOrder)?
-			.keys(at: decoder.codingPath)
-		guard let order, order.count == paths.count, Set(order) == Set(paths.keys) else {
-			Log.error(
-				"Ignoring switchbackClusters: the order of its entries is not known. Decode the context data with ContextData(json:).",
-				detail: "Experiment '\(name)'.")
-			return nil
-		}
-		return order.map { SwitchbackCluster(unitType: $0, attributePath: paths[$0] ?? nil) }
+		Log.error(
+			"Ignoring switchbackClusters: the order of its entries is not known. Decode the context data with ContextData(json:).",
+			detail: "Experiment '\(name)'.")
+		return nil
 	}
 }
 
