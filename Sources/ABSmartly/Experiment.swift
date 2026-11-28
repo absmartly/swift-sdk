@@ -85,7 +85,8 @@ public struct Experiment: Codable {
 		let fields = (decoder.userInfo[SwitchbackClusterOrder.userInfoKey] as? SwitchbackClusterOrder)?
 			.fields(at: decoder.codingPath)
 		func switchbackValue<T: Decodable>(_ type: T.Type, _ key: CodingKeys) throws -> T? {
-			if let raw = fields?.values[key.stringValue] {
+			if fields?.repeated.contains(key.stringValue) == true, let raw = fields?.values[key.stringValue] {
+				if raw.elementsEqual("null".utf8) { return nil }
 				// Wrapped in an array: Foundation before Swift 5.2 (iOS 13.3, macOS 10.15.3 and earlier)
 				// rejects a bare top-level scalar.
 				var wrapped = Data("[".utf8)
@@ -109,7 +110,7 @@ public struct Experiment: Codable {
 		// match. A non-array or nested value cannot be applied, so the cluster map is dropped with it.
 		var clusterValues: [String]? = nil
 		var clusterValuesReadable = true
-		if fields?.values["switchbackClusterValues"] != nil {
+		if fields?.repeated.contains("switchbackClusterValues") == true, fields?.values["switchbackClusterValues"] != nil {
 			do {
 				clusterValues = try switchbackValue([SwitchbackAllowedValue].self, .switchbackClusterValues)?
 					.map { $0.text ?? "" }

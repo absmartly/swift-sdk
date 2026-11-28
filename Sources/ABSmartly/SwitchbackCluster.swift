@@ -113,6 +113,9 @@ struct OrderedJSONScanner {
 	struct Fields {
 		var clusters: Clusters?
 		var values: [String: Data] = [:]
+		// A field repeated in this object, so only the raw last value matches Java/JS. A field seen
+		// once keeps Foundation's ordinary decode path.
+		var repeated: Set<String> = []
 	}
 
 	private static let valueFields: Set<String> = [
@@ -189,6 +192,9 @@ struct OrderedJSONScanner {
 				if Self.valueFields.contains(key) {
 					let start = scanner.i
 					guard scanner.skipValue() else { return false }
+					if scanner.result[path, default: Fields()].values[key] != nil {
+						scanner.result[path, default: Fields()].repeated.insert(key)
+					}
 					scanner.result[path, default: Fields()].values[key] = Data(scanner.bytes[start..<scanner.i])
 					return true
 				}

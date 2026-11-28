@@ -314,7 +314,7 @@ final class ContextSwitchbackLifecycleTest: SwitchbackTestCase {
 		try context.publish().wait()
 
 		XCTAssertEqual(2, handler.publishEventCallsCount)
-		let variants = handler.publishEventReceivedInvocations.flatMap { ($0.exposures ?? []).map { $0.variant } }
+		let variants = handler.publishEventReceivedInvocations.flatMap { $0.exposures.map { $0.variant } }
 		XCTAssertEqual([SB.expected2Arms[0], SB.expected2Arms[1]], variants)
 	}
 
