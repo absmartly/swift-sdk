@@ -212,8 +212,10 @@ public final class Context {
 				if wins {
 					self.setRefreshTimer()
 					self.deliverOnMain { self.logEvent(event: .ready(data: data)) }
-					self.settleReadiness()
 				}
+				// Even when it did not win (close or setData got there first), the initial load settles
+				// readiness waiters. settleReadiness() releases its resolver once, so this never doubles.
+				self.settleReadiness(scheduleGoals: wins)
 				#if DEBUG
 				Context.runTestHook(.initialLoadSettled)
 				#endif
@@ -246,10 +248,10 @@ public final class Context {
 				Logger.error("Context initialization failed: \(error.safeLocalizedDescription)")
 				if wins {
 					self.deliverOnMain { self.logError(error: error) }
-					// Goals queued while loading wait for a successful refresh (setTimeout() schedules
-					// nothing on a failed context).
-					self.settleReadiness()
 				}
+				// Goals queued while loading wait for a successful refresh (setTimeout() schedules nothing
+				// on a failed context). Readiness settles whether or not this completion won.
+				self.settleReadiness(scheduleGoals: wins)
 				#if DEBUG
 				Context.runTestHook(.initialLoadSettled)
 				#endif
@@ -259,8 +261,8 @@ public final class Context {
 
 	// Called once, by whichever completion made the context ready (or failed): schedules goals that
 	// were queued while loading, then settles waitUntilReady() callers.
-	private func settleReadiness() {
-		if pendingCount.load(ordering: .acquiring) > 0 {
+	private func settleReadiness(scheduleGoals: Bool = true) {
+		if scheduleGoals && pendingCount.load(ordering: .acquiring) > 0 {
 			setTimeout()
 		}
 		promiseLock.lock()

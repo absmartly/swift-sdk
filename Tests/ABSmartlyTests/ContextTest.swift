@@ -202,6 +202,105 @@ final class ContextTest: XCTestCase {
 		wait(for: [expectation], timeout: 1.0)
 	}
 
+	// close() while the initial data request is still pending must not strand readiness waiters: the
+	// request's later success or failure settles waitUntilReady() exactly once.
+	func testCloseDuringPendingInitialLoadThenSuccessSettlesReadiness() throws {
+		try assertCloseDuringPendingInitialLoadSettlesReadiness(fail: false)
+	}
+
+	func testCloseDuringPendingInitialLoadThenFailureSettlesReadiness() throws {
+		try assertCloseDuringPendingInitialLoadSettlesReadiness(fail: true)
+	}
+
+	// A refresh racing the pending initial load, with close() winning before either completes: the
+	// refresh drops its result, and the initial load must still settle readiness.
+	func testCloseDuringPendingInitialLoadAndRefreshSettlesReadiness() throws {
+		for (refreshFirst, failLoad) in [(true, false), (true, true), (false, false), (false, true)] {
+			let (load, loadResolver) = Promise<ContextData>.pending()
+			let (refresh, refreshResolver) = Promise<ContextData>.pending()
+			provider.getContextDataReturnValue = refresh
+			let context = try createContext(config: getContextConfig(withUnits: true), data: load)
+			let refreshed = context.refresh()
+
+			let settled = expectation(description: "waiter settles \(refreshFirst) \(failLoad)")
+			settled.assertForOverFulfill = true
+			_ = context.waitUntilReady().done { _ in settled.fulfill() }
+			let closed = expectation(description: "close settles")
+			context.close().ensure { closed.fulfill() }.catch(policy: .allErrors) { _ in }
+			wait(for: [closed], timeout: 2.0)
+
+			let refreshSettled = expectation(description: "refresh settles")
+			refreshed.ensure { refreshSettled.fulfill() }.catch(policy: .allErrors) { _ in }
+			let settleLoad = { failLoad ? loadResolver.reject(ABSmartlyError("load failed")) : loadResolver.fulfill(try! self.getContextData()) }
+			if refreshFirst {
+				refreshResolver.fulfill(try getContextData())
+				wait(for: [refreshSettled], timeout: 2.0)
+				settleLoad()
+			} else {
+				settleLoad()
+				refreshResolver.fulfill(try getContextData())
+				wait(for: [refreshSettled], timeout: 2.0)
+			}
+			wait(for: [settled], timeout: 2.0)
+			XCTAssertTrue(context.isReady(), "\(refreshFirst) \(failLoad)")
+		}
+	}
+
+	// setData moves a loading context to ready without settling readiness; the pending initial load
+	// must still settle waiters registered before it, whether it later succeeds or fails.
+	func testInitialLoadSettlesReadinessAfterSetDataWonTheRace() throws {
+		for fail in [false, true] {
+			let (load, resolver) = Promise<ContextData>.pending()
+			let context = try createContext(config: getContextConfig(withUnits: true), data: load)
+			let settled = expectation(description: "waiter settles, fail=\(fail)")
+			settled.assertForOverFulfill = true
+			_ = context.waitUntilReady().done { _ in settled.fulfill() }
+			_ = context.close()
+			context.setData(try getContextData())
+			if fail {
+				resolver.reject(ABSmartlyError("load failed"))
+			} else {
+				resolver.fulfill(try getContextData())
+			}
+			wait(for: [settled], timeout: 2.0)
+			XCTAssertTrue(context.isReady())
+		}
+	}
+
+	private func assertCloseDuringPendingInitialLoadSettlesReadiness(fail: Bool) throws {
+		let (promise, resolver) = Promise<ContextData>.pending()
+		let context = try createContext(config: getContextConfig(withUnits: true), data: promise)
+		XCTAssertFalse(context.isReady())
+
+		let settledBefore = expectation(description: "waiter registered before close settles")
+		settledBefore.assertForOverFulfill = true
+		_ = context.waitUntilReady().done { _ in settledBefore.fulfill() }
+
+		let closed = expectation(description: "close settles")
+		context.close().ensure { closed.fulfill() }.catch(policy: .allErrors) { _ in }
+		wait(for: [closed], timeout: 2.0)
+		XCTAssertTrue(context.isClosed())
+
+		let settledAfter = expectation(description: "waiter registered after close settles")
+		settledAfter.assertForOverFulfill = true
+		_ = context.waitUntilReady().done { _ in settledAfter.fulfill() }
+
+		if fail {
+			resolver.reject(ABSmartlyError("load failed"))
+		} else {
+			resolver.fulfill(try getContextData())
+		}
+		wait(for: [settledBefore, settledAfter], timeout: 2.0)
+		XCTAssertTrue(context.isReady())
+		XCTAssertEqual(fail, context.isFailed())
+		XCTAssertTrue(context.isClosed())
+
+		// Settled once: a third waiter resolves immediately, and nothing fires twice.
+		let settledLater = expectation(description: "later waiter")
+		_ = context.waitUntilReady().done { _ in settledLater.fulfill() }
+		wait(for: [settledLater], timeout: 1.0)
+	}
+
 	func testReadyErrorReturnsNilOnSuccess() throws {
 		let contextConfig: ContextConfig = getContextConfig(withUnits: true)
 		let context = try createContext(config: contextConfig)
