@@ -53,13 +53,31 @@ final class SwitchbackClusterOrder {
 
 	// Whether the bytes can hold a switchback field at all. A payload without one keeps the plain
 	// decode path and is never scanned. An escaped key spelling is kept on the scanned path.
+	// One pass over the bytes: every needle starts with "s", "r" or a backslash.
 	static func mayHaveSwitchbackFields(_ json: Data) -> Bool {
-		for needle in ["switchback", "randomizationType", "\\u"] {
-			if json.range(of: Data(needle.utf8)) != nil {
+		let switchback = Array("switchback".utf8)
+		let randomization = Array("randomizationType".utf8)
+		return json.withUnsafeBytes { (raw: UnsafeRawBufferPointer) -> Bool in
+			let bytes = raw.bindMemory(to: UInt8.self)
+			let count = bytes.count
+			func matches(_ needle: [UInt8], at index: Int) -> Bool {
+				guard index + needle.count <= count else { return false }
+				for offset in 1..<needle.count where bytes[index + offset] != needle[offset] {
+					return false
+				}
 				return true
 			}
+			var index = 0
+			while index < count {
+				switch bytes[index] {
+				case UInt8(ascii: "s") where matches(switchback, at: index): return true
+				case UInt8(ascii: "r") where matches(randomization, at: index): return true
+				case UInt8(ascii: "\\") where index + 1 < count && bytes[index + 1] == UInt8(ascii: "u"): return true
+				default: index += 1
+				}
+			}
+			return false
 		}
-		return false
 	}
 
 	// Nil when the bytes were not scanned there (not a top-level experiment or holdout, or unreadable).

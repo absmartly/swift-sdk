@@ -586,4 +586,24 @@ extension SwitchbackDecodingTest {
 		XCTAssertNil(shared.userInfo[SwitchbackClusterOrder.userInfoKey])
 	}
 
+	// The caller's non-conforming float strategy reaches the private ordered decoder.
+	func testOrderedDecodeKeepsTheCallersNonConformingFloatStrategy() throws {
+		let payload = Data(#"{"experiments":[{"name":"e","split":["NaN","+Inf"],"randomizationType":"switchback","switchbackClusters":{"b":"x","a":"y"}}]}"#.utf8)
+		let decoder = JSONDecoder()
+		decoder.nonConformingFloatDecodingStrategy = .convertFromString(positiveInfinity: "+Inf", negativeInfinity: "-Inf", nan: "NaN")
+		let experiment = try ContextData.decode(from: payload, decoder: decoder).experiments[0]
+		XCTAssertEqual(2, experiment.split.count)
+		XCTAssertTrue(experiment.split[0].isNaN)
+		XCTAssertEqual(Double.infinity, experiment.split[1])
+		XCTAssertEqual(["b", "a"], experiment.switchbackClusters?.map { $0.unitType })
+		XCTAssertEqual([], try ContextData.decode(from: payload).experiments[0].split)
+	}
+
+	func testPrefilterFindsEveryNeedleAndSkipsPlainPayloads() {
+		for (text, expected) in [("{\"switchbackX\":1}", true), ("{\"randomizationType\":1}", true), (#"{"a":"\u0041"}"#, true),
+			("{\"s\":\"swit\",\"r\":\"random\"}", false), ("{\"experiments\":[]}", false), ("", false), ("s", false), ("\\", false)] {
+			XCTAssertEqual(expected, SwitchbackClusterOrder.mayHaveSwitchbackFields(Data(text.utf8)), text)
+		}
+	}
+
 }

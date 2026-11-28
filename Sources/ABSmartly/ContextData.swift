@@ -41,11 +41,17 @@ public final class ContextData: Codable {
 		ordered.nonConformingFloatDecodingStrategy = decoder.nonConformingFloatDecodingStrategy
 		ordered.keyDecodingStrategy = decoder.keyDecodingStrategy
 		ordered.userInfo = decoder.userInfo
-		#if canImport(Darwin)
+		// JSON5 settings exist from the iOS 15 / macOS 12 SDKs (Swift 5.5) on Apple platforms and from
+		// swift-foundation (Swift 6) on Linux; older toolchains have no such settings to copy. A
+		// JSONDecoder subclass's decode override is not called on this path.
+		#if canImport(Darwin) && compiler(>=5.5)
 		if #available(macOS 12.0, iOS 15.0, tvOS 15.0, watchOS 8.0, *) {
 			ordered.allowsJSON5 = decoder.allowsJSON5
 			ordered.assumesTopLevelDictionary = decoder.assumesTopLevelDictionary
 		}
+		#elseif !canImport(Darwin) && compiler(>=6.0)
+		ordered.allowsJSON5 = decoder.allowsJSON5
+		ordered.assumesTopLevelDictionary = decoder.assumesTopLevelDictionary
 		#endif
 		ordered.userInfo[SwitchbackClusterOrder.userInfoKey] = SwitchbackClusterOrder(json: json)
 		return try ordered.decode(ContextData.self, from: json)
