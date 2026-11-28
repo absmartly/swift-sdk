@@ -181,6 +181,10 @@ import Testing
 		#expect(SwitchbackAttributePath.tryParseInt("007") == 7)
 		#expect(SwitchbackAttributePath.tryParseInt("2147483647") == 2_147_483_647)
 		#expect(SwitchbackAttributePath.tryParseInt("-2147483648") == -2_147_483_648)
+		// Leading zeros at the boundary, as Guava reads them.
+		#expect(SwitchbackAttributePath.tryParseInt("02147483647") == 2_147_483_647)
+		#expect(SwitchbackAttributePath.tryParseInt("-02147483648") == -2_147_483_648)
+		#expect(SwitchbackAttributePath.tryParseInt("00000000002147483648") == nil)
 		// A long digit run is not an int, so it reads as an object key, and parsing never overflows.
 		let long = String(repeating: "9", count: 10_000)
 		#expect(SwitchbackAttributePath.tryParseInt(long) == nil)
