@@ -877,23 +877,27 @@ private typealias H = Holdouts
 	// MARK: - Switchbacks
 
 	// Holdouts never apply to a switchback (cross-sdk scenario 417's data): the holdout's split [1, 0]
-	// holds every unit out, yet the switchback is neither suppressed nor fires the holdout. This SDK
-	// does not serve switchbacks yet, so the experiment resolves on its ordinary path.
+	// holds every unit out, yet the switchback serves its cluster's draw and never fires the holdout.
 	@Test func holdoutsNeverApplyToASwitchback() {
-		var switchback = H.experiment(410, "exp_sb_holdout_ignored", holdoutIds: [1], split: [0.0, 1.0])
+		var switchback = H.experiment(410, "exp_sb_holdout_ignored", holdoutIds: [1], split: [0.5, 0.5])
 		switchback["randomizationType"] = "switchback"
 		switchback["switchbackClusters"] = ["session_id": "city"]
+		switchback["switchbackStartAt"] = 0
+		switchback["switchbackPeriodMs"] = SB.hour
 		var plain = H.experiment(411, "exp_plain_covered", holdoutIds: [1], split: [0.0, 1.0])
 		plain["randomizationType"] = "unit"
 		let data = H.contextData(
 			[switchback, plain], holdouts: [H.holdout(1, "holdout_sb_everyone", seeds: H.holdoutA, split: [1.0, 0.0])])
 		let env = HoldoutEnv()
-		let context = env.context(data)
+		let context = env.context(data, attributes: ["city": "Lisbon"])
 
-		#expect(context.treatment(for: "exp_sb_holdout_ignored") == 1)
-		#expect(env.exposures == [H.own(410, "exp_sb_holdout_ignored", 1)])
+		let period = Fixtures.now / SB.hour
+		let drawn = SwitchbackAssigner.assign("Lisbon", periodIndex: period, seed: (100 << 32) | 200, armCount: 2)
+		#expect(context.treatment(for: "exp_sb_holdout_ignored") == drawn)
+		#expect(env.exposures == [H.own(410, "exp_sb_holdout_ignored", drawn)])
 		// The same holdout still applies to a covered experiment of another randomization type.
 		#expect(context.treatment(for: "exp_plain_covered") == 0)
-		#expect(env.exposures == [H.own(410, "exp_sb_holdout_ignored", 1), H.held(1, "holdout_sb_everyone", 0)])
+		#expect(
+			env.exposures == [H.own(410, "exp_sb_holdout_ignored", drawn), H.held(1, "holdout_sb_everyone", 0)])
 	}
 }

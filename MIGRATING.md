@@ -20,13 +20,16 @@ experiments, then move to 2.0.
 **Using holdouts?** Move to 2.1.0 or later, which applies holdouts as 1.5.0 does. 2.0.0 ignored the
 payload's holdout data.
 
+**Using switchback experiments?** Move to 2.2.0 or later, which serves them by cluster and period.
+2.1.x and earlier served a switchback as an ordinary unit experiment.
+
 1.x stays supported on the `release/1.x` branch (see [SUPPORT.md](SUPPORT.md)). You cannot use 1.x
 and 2.x in the same app: a Swift package graph holds one major version of a package.
 
 ## Step by step
 
-1. Update the dependency: `from: "2.1.0"` in SwiftPM (product `ABsmartly`), or `pod 'ABsmartly', '~> 2.1'`
-   (the 1.x pod was `ABSmartlySwiftSDK`).
+1. Update the dependency: `from: "2.2.0"` in SwiftPM (product `ABsmartly`). 2.x is SwiftPM only; the
+   1.x pod was `ABSmartlySwiftSDK`.
 2. Replace `import ABSmartly` with `import ABsmartly`, and remove `import PromiseKit` and
    `import SwiftyJSON` if you only used them for the SDK.
 3. Replace the SDK setup and context creation (below).
@@ -190,6 +193,9 @@ main thread on Apple platforms.
 | `Experiment`, `ExperimentVariant`, `CustomFieldValue` | Same names, now structs with public initializers; `applications` and `customFieldValues` are non-optional (empty when absent) |
 | `Application` | `ExperimentApplication` |
 | `ContextData(experiments:holdouts:)`, `ContextData.holdouts`, `Experiment.holdoutIds`, `Experiment.holdoutType` (1.5.0) | Same names, from 2.1.0 (`holdouts`, `holdoutIds` and `holdoutType` are `var`s) |
+| `Experiment.randomizationType`, `switchbackClusters` (`[SwitchbackCluster]`), `switchbackClusterValues`, `switchbackStartAt`, `switchbackPeriodMs`, `switchbackCarryoverDurationMs`, `switchbackBurnInDurationMs`, `switchbackBurnOutDurationMs`, `switchbackDesignType`, `switchbackEstimand` (1.x switchbacks) | Same names, from 2.2.0 (`var`s) |
+| `ContextData.decode(from:)` (1.x switchbacks) | `ContextData(json:)`, from 2.2.0 (throws `ABsmartlyError.decoding`) |
+| `SwitchbackAssigner.variant(...)`, `SwitchbackAssigner.permutation(...)` (1.x switchbacks, conformance tooling) | `Diagnostics.switchbackVariant(...)`, `Diagnostics.switchbackPermutation(...)` with `@_spi(Diagnostics) import ABsmartly`, from 2.2.0 |
 | `Exposure`, `PublishEvent` | Same names (structs) |
 | `GoalAchievement` | `Goal` |
 | `Unit`, `Attribute` (publish payload) | `PublishEvent.Unit`, `PublishEvent.Attribute` |
@@ -197,7 +203,7 @@ main thread on Apple platforms.
 
 ## Behaviour notes
 
-Assignment and publishing retain 1.5.0 behaviour (holdouts from 2.1.0) apart from these
+Assignment and publishing retain 1.5.0 behaviour (holdouts from 2.1.0, switchbacks from 2.2.0) apart from these
 extreme-number differences (see also the note for 1.4.x users at the top):
 
 - `UInt64`/`UInt` attributes above `Int64.max` are stored as doubles: `12345678901234567890` is

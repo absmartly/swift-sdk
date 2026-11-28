@@ -29,7 +29,7 @@ Building needs Swift 6.0 or later (Xcode 16 or later).
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/absmartly/swift-sdk.git", from: "2.1.0")
+    .package(url: "https://github.com/absmartly/swift-sdk.git", from: "2.2.0")
 ],
 targets: [
     .target(name: "App", dependencies: [
@@ -45,11 +45,11 @@ and choose the `ABsmartly` (and optionally `ABsmartlyUI`) product.
 
 ### CocoaPods
 
-**2.1.0 is Swift Package Manager only.** It is not published to CocoaPods; use the SwiftPM
-installation above for holdouts and the 2.x API.
+**No 2.x release is published to CocoaPods** (2.1.0 is Swift Package Manager only). Use the SwiftPM
+installation above for holdouts, switchbacks and the 2.x API.
 
 The last available CocoaPods release is **`ABSmartlySwiftSDK` 1.3.4** (legacy 1.x API and module
-`ABSmartly`), not `ABsmartly` 2.0.0 or 2.1.0. It does not include holdouts or the Swift 6 API:
+`ABSmartly`), not `ABsmartly` 2.x. It does not include holdouts, switchbacks or the Swift 6 API:
 
 ```ruby
 pod 'ABSmartlySwiftSDK', '1.3.4'  # legacy SDK, not Swift 2.x
@@ -115,7 +115,9 @@ let context = client.context(units: [.deviceID: deviceID], data: contextData)
 ```
 
 `contextData` is a `ContextData` (it is `Codable`): fetch it on your server, or with
-`try await client.fetchContextData()`.
+`try await client.fetchContextData()`. To decode the body of `GET /context` yourself, use
+`try ContextData(json: body)`, which keeps the order of each switchback's `switchbackClusters`
+(see [Switchback experiments](#switchback-experiments)).
 
 All three take the same optional arguments:
 
@@ -260,6 +262,48 @@ malformed id in `holdoutIds`, is ignored on its own.
 // Held out by a covering holdout: 0, and only the holdout's exposure is published.
 let variant = context.treatment(for: "exp_checkout")
 ```
+
+### Switchback experiments
+
+Switchback experiments are set up in the ABsmartly dashboard and need no code beyond the
+attributes that hold the cluster. Each experiment names, in `switchbackClusters`, the unit types it is
+linked to and the attribute path holding each one's cluster value (for example `store_id` →
+`store/region`). Units in the same cluster get the same variant, and the variant changes on a fixed
+time grid (`switchbackStartAt`, `switchbackPeriodMs`).
+
+```swift
+try context.setUnit("store_id", to: "store-42")
+context.setAttribute("store", to: ["region": "north"])
+
+// The "north" cluster's variant for the current period, exposed once in the period (see below).
+let variant = context.treatment(for: "exp_store_layout")
+```
+
+- The first linked unit, in `switchbackClusters` order, whose path gives a value serves the
+  experiment, and its exposure is published under that unit. A path is `/`-separated; a quoted segment
+  (`'a/b'`) is a literal key and an integer segment indexes an array. A path with a `.` is invalid.
+- A cluster value is a non-empty string, or an integer, read as its decimal text. A floating-point
+  number (including `3.0`), a boolean, an object, an array, an empty string or `null` is no value: set
+  integer cluster values as Swift integers, not `Double`s.
+- Without an override, units that disagree, a value outside `switchbackClusterValues`, or no value
+  at all give control (`0`) and publish nothing. With an eligible cluster, assignment rules, a strict
+  audience and full-on are evaluated even before `switchbackStartAt` or on an unservable schedule;
+  only the normal draw then falls back to silent control.
+- An override, assignment rules, a strict audience, full-on, traffic and custom assignments apply as
+  for other experiments, in that order. Holdouts never apply to a switchback.
+- Each period publishes one exposure, stamped with the clock reading of the read that exposes it, unless its
+  assignment is re-resolved within the period (an override, a custom assignment, or the assignment
+  rule or audience result after a `setAttribute`, changes), which publishes the new assignment's
+  exposure. Only the two
+  most recent periods are remembered, so returning to an older one (a clock set back) exposes it
+  again. The cluster is read once per period: a `setAttribute` later in the same period does not
+  move the unit to another cluster.
+
+Context data fetched by the SDK keeps the order of `switchbackClusters`. When you decode it yourself
+(for example data passed from your server), use `ContextData(json:)`: `JSONDecoder` cannot see that
+order, so a switchback with more than one linked unit type decoded that way has no cluster map: it
+cannot draw and serves the control variant, though an override still applies. Encoding a `ContextData` writes each cluster map as an ordered array, which any decoder reads
+back in order.
 
 ### Attributes and units
 

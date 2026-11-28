@@ -97,12 +97,28 @@ class PublishWorkflowTests(unittest.TestCase):
     def test_version_checks_still_run_for_210(self):
         block, script = step("Check versions match the tag")
         self.assertNotRegex(block, r"(?m)^        if:")
-        result = self.run_script(script, TAG="v2.1.0")
+        # Run against a copy pinned to 2.1.0, so the check does not depend on the working tree's
+        # version as later releases bump it.
+        tree = self.directory / "tree"
+        (tree / "Sources").mkdir(parents=True)
+        (tree / "ABsmartly.podspec").write_text("Pod::Spec.new do |spec|\n  spec.version = '2.1.0'\nend\n")
+        (tree / "Sources" / "Version.swift").write_text('enum SDKVersion {\n\tstatic let version = "2.1.0"\n}\n')
+        run = lambda tag: subprocess.run(["bash", "-e", "-c", script], cwd=tree,
+                                         env=dict(self.env, TAG=tag), capture_output=True, text=True)
+        result = run("v2.1.0")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("tag=2.1.0 podspec=2.1.0 sdk=2.1.0", result.stdout)
-        result = self.run_script(script, TAG="v2.1.1")
+        result = run("v2.1.1")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("does not match", result.stdout)
+
+    def test_version_check_accepts_the_working_tree_version(self):
+        _, script = step("Check versions match the tag")
+        podspec = (ROOT / "ABsmartly.podspec").read_text()
+        version = re.search(r"spec\.version\s*=\s*'([^']+)'", podspec).group(1)
+        result = self.run_script(script, TAG="v" + version)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn(f"tag={version} podspec={version} sdk={version}", result.stdout)
 
     def test_checks_and_release_have_no_skip_guard(self):
         for name in ("Build and test", "Create GitHub release"):
