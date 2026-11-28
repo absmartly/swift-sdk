@@ -140,9 +140,12 @@ private enum CheckoutVariant: Int {
 		let context = client.makeContext(units: [.deviceID: deviceID])
 
 		// README: Events
+		// Subscribed before the task starts, so the stream cannot be taken after close() (it would
+		// already be finished then).
+		let events = context.events
 		let listener = Task {
 			var seen: [String] = []
-			for await event in context.events {
+			for await event in events {
 				switch event {
 				case .ready: seen.append("ready")
 				case .exposure(let exposure): seen.append("exposure \(exposure.name)")

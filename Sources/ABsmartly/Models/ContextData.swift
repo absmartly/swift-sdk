@@ -206,12 +206,15 @@ public struct Experiment: Sendable, Equatable, Codable {
 		switchbackDesignType = try? container.decodeIfPresent(String.self, forKey: .switchbackDesignType)
 		switchbackEstimand = try? container.decodeIfPresent(String.self, forKey: .switchbackEstimand)
 
-		// An allow-list that is not an array of strings cannot be applied, so the cluster map is dropped
+		// An allow-list entry that is an integer or a boolean is compared by its text, as Java (Jackson's
+		// String[] coercion) and JavaScript (String(value)) read it. A list that is not an array, or has a
+		// floating-point, null, object or array entry, cannot be applied, so the cluster map is dropped
 		// with it: the switchback then serves only control, never every value.
 		if container.contains(.switchbackClusterValues),
 			(try? container.decodeNil(forKey: .switchbackClusterValues)) == false
 		{
-			switchbackClusterValues = try? container.decode([String].self, forKey: .switchbackClusterValues)
+			switchbackClusterValues = (try? container.decode([ClusterValue].self, forKey: .switchbackClusterValues))?
+				.map(\.text)
 			if switchbackClusterValues == nil {
 				Log.error(
 					"Ignoring switchbackClusters: switchbackClusterValues is not an array of strings.",
@@ -327,6 +330,25 @@ public struct CustomFieldValue: Sendable, Equatable, Codable {
 }
 
 /// Decodes an array element, or nil when it does not decode, so one bad element does not fail the array.
+/// A `switchbackClusterValues` entry: a string, or an integer or boolean read as its text.
+private struct ClusterValue: Decodable {
+	let text: String
+
+	init(from decoder: Decoder) throws {
+		let container = try decoder.singleValueContainer()
+		if let string = try? container.decode(String.self) {
+			text = string
+		} else if let bool = try? container.decode(Bool.self) {
+			text = bool ? "true" : "false"
+		} else if case .int(let int) = try container.decode(JSONValue.self) {
+			text = String(int)
+		} else {
+			throw DecodingError.dataCorruptedError(
+				in: container, debugDescription: "Not a string, integer or boolean")
+		}
+	}
+}
+
 private struct Lenient<Element: Decodable>: Decodable {
 	let value: Element?
 

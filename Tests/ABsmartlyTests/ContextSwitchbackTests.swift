@@ -1102,7 +1102,7 @@ import Testing
 			SB.switchback(
 				extra: [
 					"switchbackStartAt": "x", "switchbackPeriodMs": [1], "switchbackDesignType": 3,
-					"switchbackClusterValues": [1, 2],
+					"switchbackClusterValues": [1.5, 2],
 				])
 		])
 		let experiment = try #require(data.experiments.first)
@@ -1245,6 +1245,25 @@ import Testing
 		try context.setUnit(UnitType(SB.unitType), to: SB.uid)
 		#expect(context.treatment(for: "exp_sb") == 1)
 		#expect(context.pendingEventCount == 1)
+	}
+
+	// Integer and boolean allow-list entries are compared by their text, as Java and JavaScript read
+	// them; a fractional, null, object or array entry drops the cluster map, so only control serves.
+	@Test func allowListEntriesAreReadAsText() async throws {
+		let sb = SwitchbackEnv()
+		let numeric = sb.context(
+			SB.data([SB.switchback(extra: ["switchbackClusterValues": ["store-1", 42, true]])]),
+			attributes: [SB.clusterPath: 42])
+		#expect(numeric.contextData?.experiments[0].switchbackClusterValues == ["store-1", "42", "true"])
+		#expect(numeric.treatment(for: "exp_sb") == SB.draw("42", 0, arms: 2))
+		#expect(numeric.pendingEventCount == 1)
+		for bad: Any in [[1.5], [NSNull()], [["a": 1]], [["a"]], "store-42", 42] {
+			let data = SB.data([SB.switchback(extra: ["switchbackClusterValues": bad])])
+			#expect(data.experiments[0].switchbackClusters == nil, "\(bad)")
+			let context = sb.context(data)
+			#expect(context.treatment(for: "exp_sb") == 0)
+			#expect(context.pendingEventCount == 0)
+		}
 	}
 
 	@Test func contextDataJSONInitThrowsADecodingError() {
