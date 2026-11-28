@@ -7,6 +7,16 @@ import Foundation
 // malformed, and its experiment unservable, when a quote is left unterminated or the path contains a
 // '.' anywhere, quoted or not (dotted paths are not a nesting syntax; nesting is written with '/').
 struct SwitchbackAttributePath {
+	#if DEBUG
+	private static let countLock = NSLock()
+	private static var count = 0
+	static var parseCount: Int {
+		countLock.lock()
+		defer { countLock.unlock() }
+		return count
+	}
+	#endif
+
 	private let keys: [String]
 	// Parallel to keys; nil where the segment is an object key.
 	private let indices: [Int?]
@@ -14,6 +24,11 @@ struct SwitchbackAttributePath {
 	// Nil for an unsupported path: malformed (see above), empty, or an array index that is negative,
 	// first, last, or directly after another index. Analysis cannot read those.
 	static func parseSupported(_ path: String?) -> SwitchbackAttributePath? {
+		#if DEBUG
+		countLock.lock()
+		count += 1
+		countLock.unlock()
+		#endif
 		guard let path = path, let parsed = parse(path) else { return nil }
 		let n = parsed.keys.count
 		if n == 0 {

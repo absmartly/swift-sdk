@@ -76,6 +76,21 @@ final class ContextSwitchbackEpochTest: SwitchbackTestCase {
 		}
 	}
 
+	#if DEBUG
+	func testWarmedReadsReuseParsedSourcePaths() {
+		let context = createContext(SB.data([SB.switchback(arms: 2, periodMs: SB.hour)]))
+		clock.now = SB.anchor + 10
+		_ = context.getTreatment("exp_sb")
+		let parsed = SwitchbackAttributePath.parseCount
+		for _ in 0..<100 {
+			_ = context.peekTreatment("exp_sb")
+			_ = context.getTreatment("exp_sb")
+			_ = context.peekVariableValue("sb.arm", defaultValue: JSON(-1))
+		}
+		XCTAssertEqual(parsed, SwitchbackAttributePath.parseCount)
+	}
+	#endif
+
 	// One getVariableValue call takes one clock reading (SWITCHBACK.md "Serving"; java-sdk
 	// reads `now` once per call), so every switchback visited on a shared key resolves in the same period:
 	// the strict-mismatched first candidate consumes the only pre-boundary reading, and the winner still
