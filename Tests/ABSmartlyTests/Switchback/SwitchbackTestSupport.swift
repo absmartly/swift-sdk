@@ -250,3 +250,32 @@ class SwitchbackTestCase: XCTestCase {
 		return String(data: try! encoder.encode(value), encoding: .utf8)!
 	}
 }
+
+// A value shared with detached threads, guarded by a lock (Sendable-clean under Swift 6 checking).
+final class LockedBox<Value>: @unchecked Sendable {
+	private let lock = NSLock()
+	private var stored: Value
+
+	init(_ value: Value) {
+		stored = value
+	}
+
+	var value: Value {
+		get {
+			lock.lock()
+			defer { lock.unlock() }
+			return stored
+		}
+		set {
+			lock.lock()
+			stored = newValue
+			lock.unlock()
+		}
+	}
+
+	func update(_ body: (inout Value) -> Void) {
+		lock.lock()
+		body(&stored)
+		lock.unlock()
+	}
+}

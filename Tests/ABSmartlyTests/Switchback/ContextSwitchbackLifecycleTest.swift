@@ -795,16 +795,16 @@ final class ContextSwitchbackLifecycleTest: SwitchbackTestCase {
 	// return within the bound.
 	func getTreatmentWithin(_ context: Context, _ name: String, timeout: TimeInterval) -> Int? {
 		let done = DispatchSemaphore(value: 0)
-		var result: Int?
+		let result = LockedBox<Int?>(nil)
 		Thread.detachNewThread {
-			result = context.getTreatment(name)
+			result.value = context.getTreatment(name)
 			done.signal()
 		}
 		guard done.wait(timeout: .now() + timeout) == .success else {
 			XCTFail("getTreatment did not return: refresh from audience evaluation deadlocked")
 			return nil
 		}
-		return result
+		return result.value
 	}
 
 	func waitForRefreshes(_ matcher: RefreshingAudienceMatcher) {
@@ -919,9 +919,8 @@ final class ContextSwitchbackLifecycleTest: SwitchbackTestCase {
 			context.setAttribute(name: "city", value: JSON(city))
 		}
 
-		let lock = NSLock()
-		var variants: [Int] = []
-		var readersDone = 0
+		let variants = LockedBox<[Int]>([])
+		let readersDone = LockedBox(0)
 		let start = DispatchSemaphore(value: 0)
 		let finished = DispatchGroup()
 		for _ in 0..<2 {
@@ -929,10 +928,8 @@ final class ContextSwitchbackLifecycleTest: SwitchbackTestCase {
 			Thread.detachNewThread {
 				start.wait()
 				let variant = context.getTreatment("exp_sb")
-				lock.lock()
-				variants.append(variant)
-				readersDone += 1
-				lock.unlock()
+				variants.update { $0.append(variant) }
+				readersDone.update { $0 += 1 }
 				finished.leave()
 			}
 		}
@@ -942,9 +939,7 @@ final class ContextSwitchbackLifecycleTest: SwitchbackTestCase {
 				start.wait()
 				var writes = 0
 				while writes < 100_000 {
-					lock.lock()
-					let done = readersDone == 2
-					lock.unlock()
+					let done = readersDone.value == 2
 					if done && writes >= 1000 {
 						break
 					}
@@ -959,7 +954,7 @@ final class ContextSwitchbackLifecycleTest: SwitchbackTestCase {
 		}
 		XCTAssertEqual(.success, finished.wait(timeout: .now() + 10))
 
-		XCTAssertEqual([expectedVariant, expectedVariant], variants)
+		XCTAssertEqual([expectedVariant, expectedVariant], variants.value)
 		XCTAssertGreaterThanOrEqual(matcher.evaluations, 2)
 		XCTAssertEqual(1, context.getPendingCount())
 		XCTAssertEqual(

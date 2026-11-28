@@ -310,6 +310,10 @@ contextConfig.setUnit(unitType: "session_id", uid: "5ebf06d8cb5d8137290c4abb6415
 let context = sdk.createContextWithData(config: contextConfig, contextData: contextData)
 ```
 
+Decode the server's context data with `ContextData.decode(from:)`, not `JSONDecoder().decode(ContextData.self, from:)`:
+only the former keeps the order of a switchback's `switchbackClusters`, and a switchback with more than one cluster
+source decoded the other way serves only the control variant.
+
 ### Refreshing the Context with Fresh Experiment Data
 
 For long-running contexts, the context is usually created once when the application is first started. However, any experiments being tracked in your production code, but started after the context was created, will not be triggered.

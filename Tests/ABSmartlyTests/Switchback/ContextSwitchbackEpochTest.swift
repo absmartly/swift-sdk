@@ -91,6 +91,24 @@ final class ContextSwitchbackEpochTest: SwitchbackTestCase {
 	}
 	#endif
 
+	#if DEBUG
+	// A context that never resolved a switchback skips the switchback-epoch table on every unit read.
+	func testUnitReadsSkipTheEpochTableUntilASwitchbackResolves() {
+		var unit = SB.switchback(2, "exp_unit", arms: 2, periodMs: SB.hour)
+		unit["randomizationType"] = "unit"
+		let context = createContext(SB.data([SB.switchback(arms: 2, periodMs: SB.hour), unit]))
+		clock.now = SB.anchor + 10
+		for _ in 0..<50 {
+			_ = context.getTreatment("exp_unit")
+			_ = context.peekTreatment("exp_unit")
+		}
+		XCTAssertEqual(0, context.unitPathEpochLookups)
+		_ = context.getTreatment("exp_sb")
+		_ = context.getTreatment("exp_unit")
+		XCTAssertEqual(1, context.unitPathEpochLookups)
+	}
+	#endif
+
 	// One getVariableValue call takes one clock reading (SWITCHBACK.md "Serving"; java-sdk
 	// reads `now` once per call), so every switchback visited on a shared key resolves in the same period:
 	// the strict-mismatched first candidate consumes the only pre-boundary reading, and the winner still

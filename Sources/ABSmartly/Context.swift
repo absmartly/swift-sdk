@@ -64,6 +64,10 @@ public final class Context {
 	private var switchbackEpochs: [String: SwitchbackEpoch] = [:]
 	// Set once a switchback slot was cached, so unit lookups skip `switchbackEpochs` until then.
 	private var hasSwitchbackEpochs = false
+	#if DEBUG
+	// Lookups of `switchbackEpochs` from the unit-experiment path, for the fast-path test.
+	var unitPathEpochLookups = 0
+	#endif
 	// Source of `ExperimentVariables.switchbackGeneration`. Guarded by `contextLock`.
 	private var switchbackGenerationCounter = 0
 
@@ -1316,8 +1320,13 @@ public final class Context {
 		}
 		// An epoch is dropped once its experiment is no longer that switchback, so a unit experiment
 		// never reads a switchback slot. A context that never resolved a switchback has no epochs.
-		if hasSwitchbackEpochs, switchbackEpochs[experimentName] != nil {
-			dropSwitchbackEpoch(experimentName)
+		if hasSwitchbackEpochs {
+			#if DEBUG
+			unitPathEpochLookups += 1
+			#endif
+			if switchbackEpochs[experimentName] != nil {
+				dropSwitchbackEpoch(experimentName)
+			}
 		}
 
 		if let assignment = assignmentCache[experimentName] {

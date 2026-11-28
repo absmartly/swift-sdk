@@ -34,13 +34,12 @@ public final class ContextData: Codable {
 			return try decoder.decode(ContextData.self, from: json)
 		}
 		// Never mutate the caller's decoder: it may be shared across threads. A private decoder keeps
-		// the caller's decoding configuration and adds only this payload's raw switchback metadata.
+		// the caller's decoding strategies and adds only this payload's raw switchback metadata.
 		let ordered = JSONDecoder()
 		ordered.dateDecodingStrategy = decoder.dateDecodingStrategy
 		ordered.dataDecodingStrategy = decoder.dataDecodingStrategy
 		ordered.nonConformingFloatDecodingStrategy = decoder.nonConformingFloatDecodingStrategy
 		ordered.keyDecodingStrategy = decoder.keyDecodingStrategy
-		ordered.userInfo = decoder.userInfo
 		// JSON5 settings exist from the iOS 15 / macOS 12 SDKs (Swift 5.5) on Apple platforms and from
 		// swift-foundation (Swift 6) on Linux; older toolchains have no such settings to copy. A
 		// JSONDecoder subclass's decode override is not called on this path.
