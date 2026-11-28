@@ -141,6 +141,17 @@ import Testing
 		#expect(parse(path) == nil)
 	}
 
+	// A quoted segment ends at its closing quote, and a following unquoted segment starts there with no
+	// separator, exactly as in the Collector, java-sdk and javascript-sdk (`"a"b` is `a`, then `b`).
+	// Rejecting it would serve control where they serve the cluster.
+	@Test func quotedSegmentEndsAtItsClosingQuote() {
+		let attributes: [String: JSONValue] = ["a": ["b": "store-42", "c": ["d": "x"]]]
+		#expect(resolve("\"a\"b", attributes) == "store-42")
+		#expect(resolve("'a'b", attributes) == "store-42")
+		#expect(resolve("a/'c'd", attributes) == "x")
+		#expect(resolve("\"a\"/b", attributes) == "store-42")
+	}
+
 	@Test func separatorsAreCollapsed() {
 		let attributes: [String: JSONValue] = ["geo": ["city": "Porto"]]
 		#expect(resolve("/geo//city/", attributes) == "Porto")
